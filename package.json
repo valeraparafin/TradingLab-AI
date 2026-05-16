@@ -1,6 +1,7 @@
 {
   "name": "claude-tradingview-mcp-trading",
   "version": "1.0.0",
+  "type": "module",
   "description": "Automated trading bot — Claude + TradingView strategy + BitGet execution",
   "main": "bot.js",
   "scripts": {
@@ -9,9 +10,25 @@
   },
   "dependencies": {
     "dotenv": "^16.4.5",
-    "node-fetch": "^3.3.2"
+    "node-fetch": "^3.3.2",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^6.0.1"
   },
   "engines": {
     "node": ">=18.0.0"
-  }
+  },
+  "directories": {
+    "doc": "docs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jackson-video-resources/claude-tradingview-mcp-trading.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/jackson-video-resources/claude-tradingview-mcp-trading/issues"
+  },
+  "homepage": "https://github.com/jackson-video-resources/claude-tradingview-mcp-trading#readme"
 }
