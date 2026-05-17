@@ -23,7 +23,8 @@ export async function initDB() {
             name TEXT UNIQUE NOT NULL,
             config TEXT,
             status TEXT DEFAULT 'stopped',
-            last_run DATETIME
+            last_run DATETIME,
+            is_archived BOOLEAN DEFAULT FALSE
         );
 
         CREATE TABLE IF NOT EXISTS trades (
@@ -62,6 +63,12 @@ export async function initDB() {
             FOREIGN KEY (strategy_id) REFERENCES strategies (id) ON DELETE CASCADE
         );
     `);
+
+    try {
+        await db.exec('ALTER TABLE strategies ADD COLUMN is_archived BOOLEAN DEFAULT FALSE');
+    } catch (e) {
+        // Column already exists, ignore error
+    }
 
     return db;
 }
