@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { strategyApi, type Strategy } from '../lib/api';
-import { Card, CardHeader, CardTitle, CardContent, Badge, Button, Separator, Tabs, TabsList, TabsTrigger, TabsContent, ToggleGroup, ToggleGroupItem } from './ui/components';
+import { Card, CardHeader, CardTitle, CardContent, Badge, Button, Separator, Tabs, TabsList, TabsTrigger, TabsContent, ToggleGroup, ToggleGroupItem, ResizablePanelGroup, ResizablePanel, ResizableHandle } from './ui/components';
 import { StrategyTerminal } from './StrategyTerminal';
 import { cn } from '../lib/utils';
 import { ArrowLeft, Play, Square, Settings, ArrowUp, ArrowDown } from 'lucide-react';
@@ -192,113 +192,69 @@ export const StrategyDetails = () => {
         <StatCard label="Avg Profit" value={`$${stats?.avgTradeProfit?.toFixed(2) || '0.00'}`} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Active Positions */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="text-lg">Active Positions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="text-muted-foreground border-b border-border">
-                    <th className="pb-3 font-medium">Symbol</th>
-                    <th className="pb-3 font-medium">Side</th>
-                    <th className="pb-3 font-medium">Entry</th>
-                    <th className="pb-3 font-medium">Current</th>
-                    <th className="pb-3 font-medium">PnL</th>
-                    <th className="pb-3 font-medium">SL/TP</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {positions.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="py-8 text-center text-muted-foreground italic">No active positions</td>
+      <div className="h-[calc(100vh-300px)]">
+        <ResizablePanelGroup direction="horizontal" className="h-full gap-6">
+          <ResizablePanel className="flex-1 overflow-hidden">
+            <Card className="h-full flex flex-col">
+              <CardHeader>
+                <CardTitle className="text-lg">Active Positions</CardTitle>
+              </CardHeader>
+              <CardContent className="flex-1 overflow-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="sticky top-0 bg-card z-10">
+                    <tr className="text-muted-foreground border-b border-border">
+                      <th className="pb-3 font-medium">Symbol</th>
+                      <th className="pb-3 font-medium">Side</th>
+                      <th className="pb-3 font-medium">Entry</th>
+                      <th className="pb-3 font-medium">Current</th>
+                      <th className="pb-3 font-medium">PnL</th>
+                      <th className="pb-3 font-medium">SL/TP</th>
                     </tr>
-                  ) : (
-                    positions.map((pos, i) => (
-                      <tr key={i} className="hover:bg-muted/50">
-                        <td className="py-3 font-medium">{pos.symbol}</td>
-                        <td className="py-3">
-                          <Badge variant={pos.side === 'LONG' ? 'success' : 'danger'} className="text-[10px]">
-                            {pos.side}
-                          </Badge>
-                        </td>
-                        <td className="py-3">{pos.entryPrice?.toFixed(2) || '0.00'}</td>
-                        <td className="py-3">{pos.currentPrice?.toFixed(2) || '0.00'}</td>
-                        <td className={cn("py-3 font-medium", pos.pnl >= 0 ? "text-emerald-500" : "text-rose-500")}>
-                          {pos.pnl >= 0 ? `+${pos.pnl?.toFixed(2) || '0.00'}` : pos.pnl?.toFixed(2) || '0.00'}
-                        </td>
-                        <td className="py-3 text-xs text-muted-foreground">
-                          {pos.sl?.toFixed(2) || '0.00'} / {pos.tp?.toFixed(2) || '0.00'}
-                        </td>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {positions.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="py-8 text-center text-muted-foreground italic">No active positions</td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Control Panel */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Control Panel</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="space-y-3">
-              <label className="text-sm font-medium">Trigger Mode</label>
-              <div className="flex p-1 bg-muted rounded-lg gap-1">
-                {(['Adaptive', 'Manual'] as const).map((mode) => (
-                  <Button
-                    key={mode}
-                    onClick={() => {
-                      setTriggerMode(mode);
-                      handleUpdateConfig({ settings: { triggerMode: mode } });
-                    }}
-                    variant={triggerMode === mode ? 'primary' : 'ghost'}
-                    className="flex-1 text-xs h-7"
-                  >
-                    {mode}
-                  </Button>
-                ))}
-              </div>
-            </div>
-
-            {triggerMode === 'Manual' && (
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <label className="text-sm font-medium">Check Interval</label>
-                  <span className="text-xs text-muted-foreground">{interval}s</span>
+                    ) : (
+                      positions.map((pos, i) => (
+                        <tr key={i} className="hover:bg-muted/50">
+                          <td className="py-3 font-medium">{pos.symbol}</td>
+                          <td className="py-3">
+                            <Badge variant={pos.side === 'LONG' ? 'success' : 'danger'} className="text-[10px]">
+                              {pos.side}
+                            </Badge>
+                          </td>
+                          <td className="py-3">{pos.entryPrice?.toFixed(2) || '0.00'}</td>
+                          <td className="py-3">{pos.currentPrice?.toFixed(2) || '0.00'}</td>
+                          <td className={cn("py-3 font-medium", pos.pnl >= 0 ? "text-emerald-500" : "text-rose-500")}>
+                            {pos.pnl >= 0 ? `+${pos.pnl?.toFixed(2) || '0.00'}` : pos.pnl?.toFixed(2) || '0.00'}
+                          </td>
+                          <td className="py-3 text-xs text-muted-foreground">
+                            {pos.sl?.toFixed(2) || '0.00'} / {pos.tp?.toFixed(2) || '0.00'}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </CardContent>
+            </Card>
+          </ResizablePanel>
+          <ResizableHandle />
+          <ResizablePanel className="w-[35%] overflow-hidden">
+            <Card className="h-full flex flex-col bg-zinc-950 text-zinc-300 border-zinc-800">
+              <CardHeader className="border-b border-zinc-800 py-3">
+                <CardTitle className="text-sm font-mono text-zinc-400">Strategy Terminal</CardTitle>
+              </CardHeader>
+              <CardContent className="flex-1 p-0 overflow-hidden">
+                <div className="h-full overflow-y-auto">
+                  <StrategyTerminal strategyId={id!} />
                 </div>
-                <input
-                  type="range"
-                  min="10"
-                  max="3600"
-                  step="10"
-                  value={interval}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value);
-                    setIntervalValue(val);
-                    handleUpdateConfig({ settings: { interval: val } });
-                  }}
-                  className="w-full accent-primary"
-                />
-                <div className="flex justify-between text-[10px] text-muted-foreground">
-                  <span>10s</span>
-                  <span>1h</span>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Strategy Terminal */}
-      <div className="h-[400px]">
-        <StrategyTerminal strategyId={id!} />
+              </CardContent>
+            </Card>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </div>
     </div>
   );
