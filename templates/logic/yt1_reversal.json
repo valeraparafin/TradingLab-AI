@@ -1,0 +1,32 @@
+{
+  "id": "yt1-reversal",
+  "name": "YT1 Reversal Strategy",
+  "type": "Reversal",
+  "indicators": {
+    "htf_timeframe": "15m",
+    "ltf_timeframe": "1m",
+    "fvg_lookback": 20
+  },
+  "safety_checks": [
+    {
+      "id": "htf_location",
+      "description": "Price must be at a 15m support/resistance zone or trendline"
+    },
+    {
+      "id": "unhealthy_move",
+      "description": "An overextended move (FVG) must be detected"
+    },
+    {
+      "id": "structure_shift",
+      "description": "LTF must show a shift in market structure (HL/HH for long, LH/LL for short)"
+    },
+    {
+      "id": "rejection_candle",
+      "description": "A strong rejection candle must form after an attempted continuation"
+    },
+    {
+      "id": "confirmation_break",
+      "description": "Price must break the extreme of the rejection candle"
+    }
+  ]
+}

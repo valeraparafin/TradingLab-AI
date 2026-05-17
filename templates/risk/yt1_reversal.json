@@ -1,0 +1,11 @@
+{
+  "name": "YT1 Reversal Risk",
+  "settings": {
+    "min_rr": 2.0,
+    "target_rr": 3.0,
+    "stop_loss_type": "rejection_candle_extreme",
+    "move_to_be": "after_initial_impulse",
+    "trailing_stop": "swing_based",
+    "beginner_mode": true
+  }
+}

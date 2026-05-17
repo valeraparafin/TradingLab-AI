@@ -1,0 +1,10 @@
+{
+  "name": "Negative Risk",
+  "settings": {
+    "riskPerTradePercent": -1,
+    "maxTradeSizeUSD": 100,
+    "stopLossPercent": 1,
+    "takeProfitPercent": 1,
+    "maxTradesPerDay": 1
+  }
+}

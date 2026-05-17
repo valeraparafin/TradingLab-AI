@@ -34,7 +34,7 @@ export function resolveConfig(strategyConfig) {
 
   // Templates are expected to have a 'settings' object
   const mergedRisk = {
-    ...(riskTemplate.settings || riskTemplate),
+    ...(riskTemplate.settings || riskTemplate.content?.settings || riskTemplate),
     ...riskOverrides
   };
 
@@ -52,7 +52,7 @@ export function resolveConfig(strategyConfig) {
   const logicTemplate = JSON.parse(fs.readFileSync(logicTemplatePath, 'utf8'));
 
   const mergedLogic = {
-    ...(logicTemplate.settings || logicTemplate),
+    ...(logicTemplate.settings || logicTemplate.content?.settings || logicTemplate),
     ...logicOverrides
   };
 

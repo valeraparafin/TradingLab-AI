@@ -1,0 +1,25 @@
+{
+  "timeframe": "5m",
+  "watchlist": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "LTCUSDT"
+  ],
+  "paperTrading": true,
+  "tradeMode": "spot",
+  "maxTradeSizeUSD": 100,
+  "maxTradesPerDay": 500,
+  "name": "Smart Money Breakout Channels [AlgoAlpha]",
+  "metadata": {
+    "logicTemplateId": "smc",
+    "riskTemplateId": "aggressive",
+    "assembledAt": "2026-05-17T20:40:36.170Z"
+  },
+  "riskTemplateId": "aggressive",
+  "logicTemplateId": "smc",
+  "riskOverrides": {
+    "maxTradeSizeUSD": 100,
+    "maxTradesPerDay": 500
+  },
+  "logicOverrides": {}
+}

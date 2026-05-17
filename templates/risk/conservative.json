@@ -1,0 +1,11 @@
+{
+  "id": "conservative",
+  "name": "Conservative",
+  "settings": {
+    "riskPerTradePercent": 0.01,
+    "maxTradeSizeUSD": 100,
+    "stopLossPercent": 0.02,
+    "takeProfitPercent": 0.05,
+    "maxTradesPerDay": 3
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "watchlist": ["BTCUSDT"],
+  "default_timeframe": "4H",
+
+  "strategy": {
+    "name": "Smart Money Breakout Channels [AlgoAlpha]",
+    "sources": ["AlgoAlpha"],
+    "description": "Identifies periods of low volatility (consolidation channels) and trades the high-momentum breakout from these ranges using a 'Strong Close' filter to avoid wicks."
+  },
+
+  "indicators": {
+    "channel_top": "The upper boundary of the detected consolidation range.",
+    "channel_bottom": "The lower boundary of the detected consolidation range.",
+    "body_midpoint": "The average of Open and Close ( (Open+Close)/2 ) used to confirm a strong breakout."
+  },
+
+  "bias_criteria": {
+    "bullish": ["Price is breaking above the channel top"],
+    "bearish": ["Price is breaking below the channel bottom"]
+  },
+
+  "entry_rules": {
+    "long": [
+      "A consolidation channel has been formed",
+      "The body midpoint ( (Open+Close)/2 ) is strictly above the channel top boundary",
+      "Price action shows high momentum breaking the upper bound"
+    ],
+    "short": [
+      "A consolidation channel has been formed",
+      "The body midpoint ( (Open+Close)/2 ) is strictly below the channel bottom boundary",
+      "Price action shows high momentum breaking the lower bound"
+    ]
+  },
+
+  "exit_rules": [
+    "Exit when price returns inside the channel boundaries",
+    "Hard stop: 1% opposite to the breakout direction",
+    "Take profit: Target a 2:1 Reward-to-Risk ratio based on the channel height"
+  ],
+
+  "risk_rules": [
+    "Risk maximum 1% of portfolio per trade",
+    "Maximum trade size capped by MAX_TRADE_SIZE_USD in .env",
+    "Maximum trades per day capped by MAX_TRADES_PER_DAY in .env",
+    "Ignore breakouts that happen during extreme volatility spikes (avoid 'fakeouts')"
+  ],
+
+  "notes": "Strategy relies on the detection of 'Smart Money' accumulation/distribution zones. The 'Strong Close' rule is critical to avoid getting trapped by wicks."
+}

@@ -1,0 +1,23 @@
+{
+  "timeframe": "4H",
+  "watchlist": [
+    "BTCUSDT"
+  ],
+  "paperTrading": true,
+  "tradeMode": "spot",
+  "maxTradeSizeUSD": 100,
+  "maxTradesPerDay": 55,
+  "name": "Smart Money Concepts [LuxAlgo]",
+  "metadata": {
+    "logicTemplateId": "smc",
+    "riskTemplateId": "aggressive",
+    "assembledAt": "2026-05-17T19:06:07.666Z"
+  },
+  "riskTemplateId": "aggressive",
+  "logicTemplateId": "smc",
+  "riskOverrides": {
+    "maxTradeSizeUSD": 100,
+    "maxTradesPerDay": 55
+  },
+  "logicOverrides": {}
+}

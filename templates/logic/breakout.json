@@ -1,0 +1,19 @@
+{
+  "id": "breakout-standard",
+  "name": "Breakout Channels",
+  "type": "Breakout",
+  "indicators": {
+    "length_": 100,
+    "length": 14
+  },
+  "safety_checks": [
+    {
+      "id": "channel_active",
+      "description": "Consolidation channel must be active"
+    },
+    {
+      "id": "strong_close",
+      "description": "Body midpoint must be outside the channel boundary"
+    }
+  ]
+}

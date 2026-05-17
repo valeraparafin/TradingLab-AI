@@ -1,0 +1,21 @@
+{
+  "id": "smc-standard",
+  "name": "Smart Money Concepts",
+  "type": "SMC",
+  "indicators": {
+    "pivot_length": 50,
+    "structure_detection": true,
+    "ob_detection": true,
+    "fvg_detection": true
+  },
+  "safety_checks": [
+    {
+      "id": "trend_filter",
+      "description": "Ensure a clear bullish or bearish trend is detected"
+    },
+    {
+      "id": "zone_filter",
+      "description": "Price must be within an Order Block or Fair Value Gap"
+    }
+  ]
+}

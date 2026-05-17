@@ -5,6 +5,8 @@ import cors from 'cors';
 import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import { promises as fsp } from 'fs';
+import { z } from 'zod';
 import { initDB, getDB, createStatsView } from './db.js';
 
 const app = express();
@@ -23,6 +25,94 @@ app.use(express.json());
 const activeBots = new Map();
 
 /**
+ * Zod Schemas for Template Validation
+ */
+const LogicTemplateSchema = z.object({
+  name: z.string().min(1),
+  type: z.string(),
+  indicators: z.record(z.any()),
+  safety_checks: z.array(z.object({
+    id: z.string(),
+    description: z.string(),
+  })).optional(),
+});
+
+const RiskTemplateSchema = z.object({
+  name: z.string().min(1),
+  settings: z.object({
+    riskPerTradePercent: z.number().positive(),
+    maxTradeSizeUSD: z.number().positive(),
+    stopLossPercent: z.number().positive(),
+    takeProfitPercent: z.number().positive(),
+    maxTradesPerDay: z.number().int().positive(),
+  }),
+});
+
+/**
+ * TemplateService: Business logic for managing templates
+ */
+class TemplateService {
+  constructor() {
+    this.templatesDir = path.join(process.cwd(), 'templates');
+  }
+
+  async loadTemplate(type, id) {
+    try {
+      const filePath = path.join(this.templatesDir, type, `${id}.json`);
+      const data = await fsp.readFile(filePath, 'utf8');
+      return JSON.parse(data);
+    } catch (err) {
+      return null;
+    }
+  }
+
+  async saveTemplate(type, id, data) {
+    const schema = type === 'logic' ? LogicTemplateSchema : RiskTemplateSchema;
+    schema.parse(data);
+
+    const dir = path.join(this.templatesDir, type);
+    await fsp.mkdir(dir, { recursive: true });
+
+    const filePath = path.join(dir, `${id}.json`);
+    await fsp.writeFile(filePath, JSON.stringify(data, null, 2));
+  }
+
+  async listTemplates(type, lockChecker) {
+    const dir = path.join(this.templatesDir, type);
+    try {
+      const files = await fsp.readdir(dir);
+      const jsonFiles = files.filter(f => f.endsWith('.json'));
+
+      return await Promise.all(jsonFiles.map(async (f) => {
+        const id = f.replace('.json', '');
+        const content = await this.loadTemplate(type, id);
+        const lock = await lockChecker(type, id);
+        return {
+          id,
+          name: content?.name || id,
+          ...lock
+        };
+      }));
+    } catch (err) {
+      return [];
+    }
+  }
+
+  async deleteTemplate(type, id) {
+    const filePath = path.join(this.templatesDir, type, `${id}.json`);
+    await fsp.unlink(filePath);
+  }
+
+  async duplicateTemplate(type, id, newId) {
+    const data = await this.loadTemplate(type, id);
+    if (!data) throw new Error(`Template ${id} of type ${type} not found`);
+    await this.saveTemplate(type, newId, data);
+  }
+}
+
+const templateService = new TemplateService();
+
+/**
  * Helper to slugify strategy names for filenames
  */
 function slugify(text) {
@@ -35,9 +125,14 @@ function slugify(text) {
 async function checkTemplateLock(type, id) {
   const db = getDB();
 
+  // Use json_extract to filter strategies that use this template ID in the metadata
+  // config is stored as a JSON string in the database.
+  // path: '$.metadata.logicTemplateId' or '$.metadata.riskTemplateId'
+  const jsonPath = type === 'logic' ? '$.metadata.logicTemplateId' : '$.metadata.riskTemplateId';
+
   const strategies = await db.all(
-    `SELECT id, name, status, config FROM strategies WHERE config LIKE ?`,
-    [`%${id}%`]
+    `SELECT id, name, status, config FROM strategies WHERE json_extract(config, ?) = ?`,
+    [jsonPath, id]
   );
 
   const usedBy = [];
@@ -45,17 +140,12 @@ async function checkTemplateLock(type, id) {
   let isLocked = false;
 
   for (const s of strategies) {
-    const config = JSON.parse(s.config);
-    const templateId = type === 'logic' ? config.metadata?.logicTemplateId : config.metadata?.riskTemplateId;
+    usedBy.push({ id: s.id, name: s.name });
 
-    if (templateId === id) {
-      usedBy.push({ id: s.id, name: s.name });
-
-      const isRunning = activeBots.has(s.id) || s.status === 'running';
-      if (isRunning) {
-        isLocked = true;
-        activeCount++;
-      }
+    const isRunning = activeBots.has(s.id) || s.status === 'running';
+    if (isRunning) {
+      isLocked = true;
+      activeCount++;
     }
   }
 
@@ -63,40 +153,54 @@ async function checkTemplateLock(type, id) {
 }
 
 /**
- * Helper to load templates from disk
- */
-function loadTemplate(type, id) {
-  const filePath = path.join(process.cwd(), 'templates', type, `${id}.json`);
-  if (!fs.existsSync(filePath)) return null;
-  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
-}
-
-/**
  * Assembler: Merges logic, risk, and user settings into a final strategy config
  */
-function assembleStrategy(name, settings, logicTemplateId, riskTemplateId) {
-  const logic = loadTemplate('logic', logicTemplateId);
-  const risk = loadTemplate('risk', riskTemplateId);
+async function assembleStrategy(name, settings, logicTemplateId, riskTemplateId) {
+  const [logic, risk] = await Promise.all([
+    templateService.loadTemplate('logic', logicTemplateId),
+    templateService.loadTemplate('risk', riskTemplateId)
+  ]);
 
   if (!logic) throw new Error(`Logic template ${logicTemplateId} not found`);
   if (!risk) throw new Error(`Risk template ${riskTemplateId} not found`);
 
-  // Extract risk-related settings from the root of settings if they exist
-  // This ensures that UI fields like maxTradeSizeUSD actually override the template
-  const riskOverrides = {
+  // Calculate Risk Overrides
+  const riskSettings = risk.settings || {};
+  const riskOverrides = {};
+
+  // Combine potential override sources
+  const userRiskInputs = {
     ...(settings.risk || {}),
     ...(settings.maxTradeSizeUSD !== undefined && { maxTradeSizeUSD: settings.maxTradeSizeUSD }),
     ...(settings.maxTradesPerDay !== undefined && { maxTradesPerDay: settings.maxTradesPerDay }),
+    ...(settings.riskPerTradePercent !== undefined && { riskPerTradePercent: settings.riskPerTradePercent }),
+    ...(settings.stopLossPercent !== undefined && { stopLossPercent: settings.stopLossPercent }),
+    ...(settings.takeProfitPercent !== undefined && { takeProfitPercent: settings.takeProfitPercent }),
   };
 
+  for (const [key, value] of Object.entries(userRiskInputs)) {
+    if (value !== undefined && value !== riskSettings[key]) {
+      riskOverrides[key] = value;
+    }
+  }
+
+  // Calculate Logic Overrides (if any settings are provided for logic)
+  const logicOverrides = {};
+  if (settings.logic) {
+    for (const [key, value] of Object.entries(settings.logic)) {
+      if (value !== undefined && JSON.stringify(value) !== JSON.stringify(logic[key])) {
+        logicOverrides[key] = value;
+      }
+    }
+  }
+
   return {
-    ...settings, // Spread all user settings (watchlist, timeframe, etc.)
+    ...settings,
     name,
-    logic: logic,
-    risk: {
-      ...risk.settings, // Base risk from template
-      ...riskOverrides   // User overrides (both from settings.risk and root settings)
-    },
+    riskTemplateId,
+    riskOverrides,
+    logicTemplateId,
+    logicOverrides,
     metadata: {
       logicTemplateId,
       riskTemplateId,
@@ -200,30 +304,8 @@ async function stopBot(strategyId) {
  */
 app.get('/api/templates', async (req, res) => {
   try {
-    const logicDir = path.join(process.cwd(), 'templates', 'logic');
-    const riskDir = path.join(process.cwd(), 'templates', 'risk');
-
-    const logicFiles = fs.existsSync(logicDir)
-      ? fs.readdirSync(logicDir).filter(f => f.endsWith('.json'))
-      : [];
-
-    const riskFiles = fs.existsSync(riskDir)
-      ? fs.readdirSync(riskDir).filter(f => f.endsWith('.json'))
-      : [];
-
-    const logicTemplates = await Promise.all(logicFiles.map(async (f) => {
-      const id = f.replace('.json', '');
-      const content = JSON.parse(fs.readFileSync(path.join(logicDir, f), 'utf8'));
-      const lock = await checkTemplateLock('logic', id);
-      return { id, name: content.name, ...lock };
-    }));
-
-    const riskTemplates = await Promise.all(riskFiles.map(async (f) => {
-      const id = f.replace('.json', '');
-      const content = JSON.parse(fs.readFileSync(path.join(riskDir, f), 'utf8'), 'utf8');
-      const lock = await checkTemplateLock('risk', id);
-      return { id, name: content.name, ...lock };
-    }));
+    const logicTemplates = await templateService.listTemplates('logic', checkTemplateLock);
+    const riskTemplates = await templateService.listTemplates('risk', checkTemplateLock);
 
     res.json({ logic: logicTemplates, risk: riskTemplates });
   } catch (err) {
@@ -235,10 +317,10 @@ app.get('/api/templates', async (req, res) => {
  * GET /api/templates/:type/:id
  * Returns the content of a specific template
  */
-app.get('/api/templates/:type/:id', (req, res) => {
+app.get('/api/templates/:type/:id', async (req, res) => {
   const { type, id } = req.params;
   try {
-    const template = loadTemplate(type, id);
+    const template = await templateService.loadTemplate(type, id);
     if (!template) {
       return res.status(404).json({ error: `Template ${id} of type ${type} not found` });
     }
@@ -252,7 +334,7 @@ app.get('/api/templates/:type/:id', (req, res) => {
  * POST /api/templates/:type
  * Creates a new template
  */
-app.post('/api/templates/:type', (req, res) => {
+app.post('/api/templates/:type', async (req, res) => {
   const { type } = req.params;
   const { name, ...content } = req.body;
 
@@ -262,23 +344,16 @@ app.post('/api/templates/:type', (req, res) => {
 
   try {
     const id = slugify(name);
-    const dir = path.join(process.cwd(), 'templates', type);
-
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-
-    const filePath = path.join(dir, `${id}.json`);
-    if (fs.existsSync(filePath)) {
-      return res.status(400).json({ error: `Template with id ${id} already exists` });
-    }
-
     const templateData = { name, ...content };
-    fs.writeFileSync(filePath, JSON.stringify(templateData, null, 2));
+    await templateService.saveTemplate(type, id, templateData);
 
     res.json({ id, name, type });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: err.message });
+    } else {
+      res.status(500).json({ error: err.message });
+    }
   }
 });
 
@@ -302,34 +377,38 @@ app.put('/api/templates/:type/:id', async (req, res) => {
     }
 
     // 2. Verify template exists
-    const original = loadTemplate(type, id);
+    const original = await templateService.loadTemplate(type, id);
     if (!original) {
       return res.status(404).json({ error: `Template ${id} of type ${type} not found` });
     }
 
     // 3. Handle potential ID change if name changed
     const newId = name ? slugify(name) : id;
-    const dir = path.join(process.cwd(), 'templates', type);
-    const oldFilePath = path.join(dir, `${id}.json`);
-    const newFilePath = path.join(dir, `${newId}.json`);
 
     // If name changed, check if new ID is already taken
-    if (newId !== id && fs.existsSync(newFilePath)) {
-      return res.status(400).json({ error: `Template with id ${newId} already exists` });
+    if (newId !== id) {
+      const exists = await templateService.loadTemplate(type, newId);
+      if (exists) {
+        return res.status(400).json({ error: `Template with id ${newId} already exists` });
+      }
     }
 
     // 4. Update content
     const templateData = { name: name || original.name, ...content };
-    fs.writeFileSync(newFilePath, JSON.stringify(templateData, null, 2));
+    await templateService.saveTemplate(type, newId, templateData);
 
     // 5. Delete old file if ID changed
     if (newId !== id) {
-      fs.unlinkSync(oldFilePath);
+      await templateService.deleteTemplate(type, id);
     }
 
     res.json({ id: newId, name: templateData.name, type });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: err.message });
+    } else {
+      res.status(500).json({ error: err.message });
+    }
   }
 });
 
@@ -346,21 +425,8 @@ app.post('/api/templates/:type/:id/duplicate', async (req, res) => {
   }
 
   try {
-    const original = loadTemplate(type, id);
-    if (!original) {
-      return res.status(404).json({ error: `Template ${id} of type ${type} not found` });
-    }
-
     const newId = slugify(newName);
-    const dir = path.join(process.cwd(), 'templates', type);
-    const newFilePath = path.join(dir, `${newId}.json`);
-
-    if (fs.existsSync(newFilePath)) {
-      return res.status(400).json({ error: `Template with id ${newId} already exists` });
-    }
-
-    const newTemplateData = { ...original, name: newName };
-    fs.writeFileSync(newFilePath, JSON.stringify(newTemplateData, null, 2));
+    await templateService.duplicateTemplate(type, id, newId);
 
     res.json({ id: newId, name: newName, type });
   } catch (err) {
@@ -387,13 +453,13 @@ app.delete('/api/templates/:type/:id', async (req, res) => {
     }
 
     // 2. Verify template exists
-    const filePath = path.join(process.cwd(), 'templates', type, `${id}.json`);
-    if (!fs.existsSync(filePath)) {
+    const template = await templateService.loadTemplate(type, id);
+    if (!template) {
       return res.status(404).json({ error: `Template ${id} of type ${type} not found` });
     }
 
-    // 3. Delete file
-    fs.unlinkSync(filePath);
+    // 3. Delete template
+    await templateService.deleteTemplate(type, id);
 
     res.json({ status: 'deleted', id, type });
   } catch (err) {
@@ -416,7 +482,7 @@ app.post('/api/strategies', async (req, res) => {
     const db = getDB();
 
     // Assemble the full strategy config
-    const finalConfig = assembleStrategy(name, settings || {}, logicTemplateId, riskTemplateId);
+    const finalConfig = await assembleStrategy(name, settings || {}, logicTemplateId, riskTemplateId);
     const configString = JSON.stringify(finalConfig);
 
     // Insert into database
@@ -580,18 +646,30 @@ app.delete('/api/strategies/:id', async (req, res) => {
  */
 app.post('/api/strategies/config', async (req, res) => {
   const { strategyId, name, logicTemplateId, riskTemplateId, settings } = req.body;
-  if (!strategyId || !logicTemplateId || !riskTemplateId) {
-    return res.status(400).json({ error: 'strategyId, logicTemplateId, and riskTemplateId are required' });
-  }
+  if (!strategyId) return res.status(400).json({ error: 'strategyId is required' });
 
   try {
     const db = getDB();
-    const oldStrategy = await db.get('SELECT name FROM strategies WHERE id = ?', [strategyId]);
+    const oldStrategy = await db.get('SELECT name, config FROM strategies WHERE id = ?', [strategyId]);
     if (!oldStrategy) throw new Error(`Strategy ${strategyId} not found`);
+
+    // Use provided template IDs or fallback to existing ones from config
+    let finalLogicTemplateId = logicTemplateId;
+    let finalRiskTemplateId = riskTemplateId;
+
+    if (!finalLogicTemplateId || !finalRiskTemplateId) {
+      const existingConfig = JSON.parse(oldStrategy.config);
+      finalLogicTemplateId = logicTemplateId || existingConfig.metadata?.logicTemplateId;
+      finalRiskTemplateId = riskTemplateId || existingConfig.metadata?.riskTemplateId;
+    }
+
+    if (!finalLogicTemplateId || !finalRiskTemplateId) {
+      return res.status(400).json({ error: 'logicTemplateId and riskTemplateId are required' });
+    }
 
     // Re-assemble the strategy using templates
     const finalName = name || oldStrategy.name;
-    const finalConfig = assembleStrategy(finalName, settings || {}, logicTemplateId, riskTemplateId);
+    const finalConfig = await assembleStrategy(finalName, settings || {}, finalLogicTemplateId, finalRiskTemplateId);
 
     await db.run(
       'UPDATE strategies SET name = ?, config = ? WHERE id = ?',
@@ -630,9 +708,71 @@ app.post('/api/strategies/config', async (req, res) => {
 });
 
 /**
- * GET /api/analytics/leaderboard
- * Aggregated metrics for all strategies.
+ * GET /api/strategies/stats/:id
+ * Returns KPI stats for a specific strategy from the strategy_stats view.
  */
+app.get('/api/strategies/stats/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const db = getDB();
+    const stats = await db.get('SELECT * FROM strategy_stats WHERE strategy_id = ?', [id]);
+
+    if (!stats) {
+      return res.json({
+        strategy_id: id,
+        netPnL: 0,
+        totalTrades: 0,
+        totalOrders: 0,
+        winRate: 0,
+        profitFactor: 0,
+        successfulTrades: 0,
+        failedTrades: 0,
+        avgTradeProfit: 0
+      });
+    }
+    res.json(stats);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/strategies/positions/:id
+ * Returns all active positions for a specific strategy.
+ */
+app.get('/api/strategies/positions/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const db = getDB();
+    const positions = await db.all('SELECT * FROM active_positions WHERE strategy_id = ?', [id]);
+    res.json(positions);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/strategies/events/:strategyId', async (req, res) => {
+  const { strategyId } = req.params;
+  const limit = req.query.limit ? parseInt(req.query.limit) : 100;
+
+  try {
+    const db = getDB();
+    const events = await db.all(
+      'SELECT id, strategy_id as strategyId, timestamp, type, payload FROM events WHERE strategy_id = ? ORDER BY timestamp DESC LIMIT ?',
+      [strategyId, limit]
+    );
+
+    const transformedEvents = events.map(e => ({
+      ...e,
+      payload: e.payload ? JSON.parse(e.payload) : null
+    }));
+
+    res.json(transformedEvents.reverse());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/analytics/leaderboard', async (req, res) => {
   try {
     const db = getDB();

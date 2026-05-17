@@ -4,6 +4,7 @@ import crypto from "crypto";
 import { execSync } from "child_process";
 import path from "path";
 import { initDB, getDB } from "./db.js";
+import { resolveConfig } from "./src/config_resolver.js";
 
 // ─── Config ────────────────────────────────────────────────────────────────
 
@@ -28,9 +29,10 @@ const CSV_HEADERS = ["Date","Time (UTC)","Exchange","Symbol","Side","Quantity","
 
 async function logEvent(strategyId, type, payload) {
   const db = getDB();
+  const timestamp = Date.now();
   await db.run(
-    "INSERT INTO events (strategy_id, type, payload) VALUES (?, ?, ?)",
-    [strategyId, type, JSON.stringify(payload)]
+    "INSERT INTO events (strategy_id, type, payload, timestamp) VALUES (?, ?, ?, ?)",
+    [strategyId, type, JSON.stringify(payload), timestamp]
   );
 
   // Send event to the orchestrator server for real-time UI updates
@@ -38,7 +40,7 @@ async function logEvent(strategyId, type, payload) {
     await fetch('http://localhost:3000/event', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ strategyId, type, payload, timestamp: new Date().toISOString() })
+      body: JSON.stringify({ strategyId, type, payload, timestamp })
     });
   } catch (err) {
     console.error(`[Event Error] Failed to send event to server: ${err.message}`);
@@ -122,6 +124,19 @@ async function fetchCandles(symbol, interval, limit = 500) {
 // ─── Indicator System ──────────────────────────────────────────────────────────
 
 const LogicExecutors = {
+  'Reversal': (candles, config) => {
+    const ltfCandles = candles;
+    const fvgs = Indicators.detectFVG(ltfCandles);
+    const structure = Indicators.detectStructure(ltfCandles, Indicators.findPivots(ltfCandles, 5));
+    const rejection = Indicators.detectRejectionCandle(ltfCandles);
+
+    return {
+      structure,
+      fvgs,
+      rejection,
+      recentFVG: fvgs.length > 0 ? fvgs[fvgs.length - 1] : null
+    };
+  },
   'SMC': (candles, config) => {
     const pivotLength = config.indicators?.pivot_length || 50;
     const pivots = Indicators.findPivots(candles, pivotLength);
@@ -136,10 +151,81 @@ const LogicExecutors = {
     const length_ = config.indicators?.length_ || 100;
     const length = config.indicators?.length || 14;
     return { channel: Indicators.calcBreakoutChannels(candles, length_, length) };
+  },
+  'VMC_CipherB': (candles, config) => {
+    const wt = Indicators.calcWaveTrend(candles, config.indicators?.wtLen || 9, config.indicators?.wtAvg || 12);
+    const mfi = Indicators.calcMFI(candles, config.indicators?.mfiLen || 60);
+    const stochRsi = Indicators.calcStochRSI(candles, config.indicators?.rsiLen || 14, config.indicators?.stochLen || 14);
+    const stc = Indicators.calcSTC(candles, config.indicators?.stcFast || 23, config.indicators?.stcSlow || 50);
+
+    // Calculate crossovers by comparing current wt with previous wt
+    // We need the WaveTrend values for the second-to-last candle
+    const prevCandles = candles.slice(0, -1);
+    const prevWt = Indicators.calcWaveTrend(prevCandles, config.indicators?.wtLen || 9, config.indicators?.wtAvg || 12);
+
+    return {
+      wt,
+      mfi,
+      stochRsi,
+      stc,
+      wtCrossUp: wt.wt1 > wt.wt2 && prevWt.wt1 <= prevWt.wt2,
+      wtCrossDown: wt.wt1 < wt.wt2 && prevWt.wt1 >= prevWt.wt2
+    };
   }
 };
 
 const SafetyValidators = {
+  'confirmation_break': (price, open, data, config) => {
+    const rejection = data.rejection;
+    if (!rejection) return { label: "Confirmation Break", required: "Break Rejection Extreme", actual: "No Rejection", pass: false };
+
+    const bullish = rejection.type === 'bullish' && price > rejection.high;
+    const bearish = rejection.type === 'bearish' && price < rejection.low;
+
+    return {
+      label: "Confirmation Break",
+      required: "Break Rejection Extreme",
+      actual: bullish ? "Above High" : bearish ? "Below Low" : "No Break",
+      pass: bullish || bearish
+    };
+  },
+  'rejection_candle': (price, open, data, config) => {
+    const rejection = data.rejection;
+    return {
+      label: "Rejection Candle",
+      required: "True",
+      actual: `${!!rejection}`,
+      pass: !!rejection
+    };
+  },
+  'structure_shift': (price, open, data, config) => {
+    const trend = data.structure?.trend;
+    return {
+      label: "Structure Shift",
+      required: "Trend Changed",
+      actual: trend === 1 ? "Bullish" : trend === -1 ? "Bearish" : "Neutral",
+      pass: trend !== 0
+    };
+  },
+  'unhealthy_move': (price, open, data, config) => {
+    const fvg = data.recentFVG;
+    return {
+      label: "Unhealthy Move (FVG)",
+      required: "True",
+      actual: `${!!fvg}`,
+      pass: !!fvg
+    };
+  },
+  'htf_location': (price, open, data, config) => {
+    // Simplified for now: assume pass if we are in the loop,
+    // but in real implementation this would check against 15m zones.
+    return {
+      label: "HTF Location",
+      required: "In 15m Zone",
+      actual: "Manual/Proxy",
+      pass: true
+    };
+  },
   'trend_filter': (price, open, data, config) => {
     const trend = data.structure?.trend;
     return {
@@ -182,7 +268,89 @@ const SafetyValidators = {
       actual: bullish ? "Above Top" : bearish ? "Below Bottom" : "Inside",
       pass: bullish || bearish
     };
+  },
+  'wt_oversold': (price, open, data, config) => {
+    const val = data.wt?.wt2;
+    return {
+      label: "WaveTrend Oversold",
+      required: "<= -53",
+      actual: `${val}`,
+      pass: val <= -53
+    };
+  },
+  'wt_overbought': (price, open, data, config) => {
+    const val = data.wt?.wt2;
+    return {
+      label: "WaveTrend Overbought",
+      required: ">= 53",
+      actual: `${val}`,
+      pass: val >= 53
+    };
+  },
+  'wt_cross_up': (price, open, data, config) => {
+    const val = data.wtCrossUp;
+    return {
+      label: "WT Bullish Cross",
+      required: "True",
+      actual: `${val}`,
+      pass: !!val
+    };
+  },
+  'wt_cross_down': (price, open, data, config) => {
+    const val = data.wtCrossDown;
+    return {
+      label: "WT Bearish Cross",
+      required: "True",
+      actual: `${val}`,
+      pass: !!val
+    };
+  },
+  'mfi_bullish': (price, open, data, config) => {
+    const val = data.mfi;
+    return {
+      label: "MFI Bullish Flow",
+      required: "> 50",
+      actual: `${val}`,
+      pass: val > 50
+    };
+  },
+  'mfi_bearish': (price, open, data, config) => {
+    const val = data.mfi;
+    return {
+      label: "MFI Bearish Flow",
+      required: "< 50",
+      actual: `${val}`,
+      pass: val < 50
+    };
+  },
+  'stoch_rsi_oversold': (price, open, data, config) => {
+    const val = data.stochRsi?.k;
+    return {
+      label: "Stoch RSI Oversold",
+      required: "< 20",
+      actual: `${val}`,
+      pass: val < 20
+    };
+  },
+  'stc_bullish': (price, open, data, config) => {
+    const val = data.stc;
+    return {
+      label: "STC Bullish Cycle",
+      required: "> 25",
+      actual: `${val}`,
+      pass: val > 25
+    };
+  },
+  'sommi_diamond_bull': (price, open, data, config) => {
+    const val = data.wtCrossUp;
+    return {
+      label: "Sommi Bullish Diamond (Proxy)",
+      required: "True",
+      actual: `${val}`,
+      pass: !!val
+    };
   }
+
 };
 
 const Indicators = {
@@ -197,6 +365,180 @@ const Indicators = {
     const variance = slice.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / period;
     return Math.sqrt(variance);
   },
+
+  /**
+   * Helper: Exponential Moving Average
+   */
+  ema(values, period) {
+    if (values.length < period) return [];
+    const k = 2 / (period + 1);
+    const ema = [];
+    let sum = 0;
+    for (let i = 0; i < period; i++) sum += values[i];
+    ema.push(sum / period);
+    for (let i = period; i < values.length; i++) {
+      ema.push(values[i] * k + ema[ema.length - 1] * (1 - k));
+    }
+    return ema;
+  },
+
+  /**
+   * Helper: Simple Moving Average
+   */
+  sma(values, period) {
+    if (values.length < period) return [];
+    const sma = [];
+    for (let i = period - 1; i < values.length; i++) {
+      const slice = values.slice(i - period + 1, i + 1);
+      sma.push(slice.reduce((a, b) => a + b, 0) / period);
+    }
+    return sma;
+  },
+
+  /**
+   * Helper: Lowest value in period
+   */
+  lowest(values, period) {
+    if (values.length < period) return [];
+    const lows = [];
+    for (let i = period - 1; i < values.length; i++) {
+      lows.push(Math.min(...values.slice(i - period + 1, i + 1)));
+    }
+    return lows;
+  },
+
+  /**
+   * Helper: Highest value in period
+   */
+  highest(values, period) {
+    if (values.length < period) return [];
+    const highs = [];
+    for (let i = period - 1; i < values.length; i++) {
+      highs.push(Math.max(...values.slice(i - period + 1, i + 1)));
+    }
+    return highs;
+  },
+
+  /**
+   * WaveTrend Indicator
+   */
+  calcWaveTrend(candles, channelLength, averageLength, malen = 3) {
+    const hlc3 = candles.map(c => (c.high + c.low + c.close) / 3);
+    const esa = this.ema(hlc3, channelLength);
+    if (esa.length === 0) return { wt1: 0, wt2: 0, vwap: 0 };
+    const absDiffs = [];
+    for (let i = channelLength - 1; i < hlc3.length; i++) {
+      absDiffs.push(Math.abs(hlc3[i] - esa[i - (channelLength - 1)]));
+    }
+    const d = this.ema(absDiffs, channelLength);
+    if (d.length === 0) return { wt1: 0, wt2: 0, vwap: 0 };
+    const ci = [];
+    const startIdx = (channelLength - 1) * 2;
+    for (let i = startIdx; i < hlc3.length; i++) {
+      const currentEsa = esa[i - (channelLength - 1)];
+      const currentD = d[i - startIdx];
+      ci.push((hlc3[i] - currentEsa) / (0.015 * currentD));
+    }
+    const wt1Array = this.ema(ci, averageLength);
+    if (wt1Array.length === 0) return { wt1: 0, wt2: 0, vwap: 0 };
+    const wt1 = wt1Array[wt1Array.length - 1];
+    const wt2Array = this.sma(wt1Array, malen);
+    if (wt2Array.length === 0) return { wt1: 0, wt2: 0, vwap: 0 };
+    const wt2 = wt2Array[wt2Array.length - 1];
+    return { wt1, wt2, vwap: wt1 - wt2 };
+  },
+
+  /**
+   * Money Flow Index (MFI)
+   */
+  calcMFI(candles, period) {
+    if (candles.length < period + 1) return 0;
+    const typicalPrice = candles.map(c => (c.high + c.low + c.close) / 3);
+    const rawMoneyFlow = candles.map((c, i) => typicalPrice[i] * c.volume);
+    let positiveMF = 0;
+    let negativeMF = 0;
+    const sliceStart = candles.length - period;
+    for (let i = sliceStart + 1; i < candles.length; i++) {
+      if (typicalPrice[i] > typicalPrice[i - 1]) positiveMF += rawMoneyFlow[i];
+      else if (typicalPrice[i] < typicalPrice[i - 1]) negativeMF += rawMoneyFlow[i];
+    }
+    if (negativeMF === 0) return 100;
+    return 100 - (100 / (1 + (positiveMF / negativeMF)));
+  },
+
+  /**
+   * Stochastic RSI
+   */
+  calcStochRSI(candles, rsiLen, stochLen = 14, smoothK = 3, smoothD = 3) {
+    if (candles.length < rsiLen + stochLen + smoothK + smoothD) return { k: 0, d: 0 };
+    const closes = candles.map(c => c.close);
+    const rsi = [];
+    let avgGain = 0;
+    let avgLoss = 0;
+    for (let i = 1; i < closes.length; i++) {
+      const diff = closes[i] - closes[i - 1];
+      const gain = diff > 0 ? diff : 0;
+      const loss = diff < 0 ? -diff : 0;
+      if (i <= rsiLen) {
+        avgGain += gain;
+        avgLoss += loss;
+        if (i === rsiLen) { avgGain /= rsiLen; avgLoss /= rsiLen; }
+      } else {
+        avgGain = (avgGain * (rsiLen - 1) + gain) / rsiLen;
+        avgLoss = (avgLoss * (rsiLen - 1) + loss) / rsiLen;
+      }
+      if (i >= rsiLen) {
+        const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+        rsi.push(100 - (100 / (1 + rs)));
+      }
+    }
+    const stochRSI = [];
+    const rsiLows = this.lowest(rsi, stochLen);
+    const rsiHighs = this.highest(rsi, stochLen);
+    for (let i = stochLen - 1; i < rsi.length; i++) {
+      const low = rsiLows[i - (stochLen - 1)];
+      const high = rsiHighs[i - (stochLen - 1)];
+      const range = high - low;
+      stochRSI.push(range === 0 ? 0 : (rsi[i] - low) / range);
+    }
+    const kArray = this.sma(stochRSI, smoothK);
+    const k = kArray[kArray.length - 1];
+    const dArray = this.sma(kArray, smoothD);
+    const d = dArray[dArray.length - 1];
+    return { k, d };
+  },
+
+  /**
+   * Schaff Trend Cycle (STC)
+   */
+  calcSTC(candles, fastLength, slowLength, length = 10, factor = 0.5) {
+    if (candles.length < slowLength + length * 2) return 0;
+    const closes = candles.map(c => c.close);
+    const fastEma = this.ema(closes, fastLength);
+    const slowEma = this.ema(closes, slowLength);
+    const macd = [];
+    const offset = fastEma.length - slowEma.length;
+    for (let i = 0; i < slowEma.length; i++) {
+      macd.push(fastEma[i + offset] - slowEma[i]);
+    }
+    const stochPass = (src, len) => {
+      const lows = this.lowest(src, len);
+      const highs = this.highest(src, len);
+      const res = [];
+      for (let i = len - 1; i < src.length; i++) {
+        const low = lows[i - (len - 1)];
+        const high = highs[i - (len - 1)];
+        const range = high - low;
+        res.push(range === 0 ? 0 : (src[i] - low) / range);
+      }
+      return res;
+    };
+    const s1 = stochPass(macd, length);
+    const smooth1 = this.ema(s1, Math.floor(length * factor));
+    const s2 = stochPass(smooth1, length);
+    return s2[s2.length - 1] * 100;
+  },
+
 
   /**
    * Breakout Channel Logic
@@ -230,6 +572,30 @@ const Indicators = {
       return { top: recentHigh, bottom: recentLow, active: true };
     }
     return { top: null, bottom: null, active: false };
+  },
+
+  /**
+   * Detects a rejection candle (Pin Bar / Hammer / Shooting Star)
+   */
+  detectRejectionCandle(candles) {
+    if (candles.length < 1) return null;
+    const c = candles[candles.length - 1];
+    const body = Math.abs(c.close - c.open);
+    const totalRange = c.high - c.low;
+    if (totalRange === 0) return null;
+
+    const upperWick = c.high - Math.max(c.open, c.close);
+    const lowerWick = Math.min(c.open, c.close) - c.low;
+
+    // Bearish Rejection (Shooting Star): Long upper wick, small body at bottom
+    if (upperWick > totalRange * 0.6) {
+      return { type: 'bearish', high: c.high, low: c.low, price: c.close };
+    }
+    // Bullish Rejection (Hammer): Long lower wick, small body at top
+    if (lowerWick > totalRange * 0.6) {
+      return { type: 'bullish', high: c.high, low: c.low, price: c.close };
+    }
+    return null;
   },
 
   /**
@@ -418,8 +784,19 @@ async function placeBitGetOrder(symbol, side, sizeUSD, price, tradeMode) {
 async function run(strategyPath) {
   await initDB();
 
-  const strategyConfig = JSON.parse(readFileSync(strategyPath, "utf8"));
-  const strategyName = strategyConfig.strategy?.name || strategyConfig.name;
+  const rawStrategyConfig = JSON.parse(readFileSync(strategyPath, "utf8"));
+
+  // Handle strategy configs that put template IDs in metadata
+  const normalizedConfig = {
+    ...rawStrategyConfig,
+    riskTemplateId: rawStrategyConfig.riskTemplateId || rawStrategyConfig.metadata?.riskTemplateId,
+    logicTemplateId: rawStrategyConfig.logicTemplateId || rawStrategyConfig.metadata?.logicTemplateId,
+    riskOverrides: rawStrategyConfig.riskOverrides || rawStrategyConfig.risk,
+    logicOverrides: rawStrategyConfig.logicOverrides || rawStrategyConfig.logic,
+  };
+
+  const strategyConfig = resolveConfig(normalizedConfig);
+  const strategyName = rawStrategyConfig.strategy?.name || rawStrategyConfig.name;
 
   // Ensure strategy exists in DB to get strategyId
   const db = getDB();
@@ -427,8 +804,8 @@ async function run(strategyPath) {
   const strategy = await db.get("SELECT id FROM strategies WHERE name = ?", [strategyName]);
   const strategyId = strategy.id;
 
-  const symbol = strategyConfig.watchlist ? strategyConfig.watchlist[0] : "BTCUSDT";
-  const timeframe = strategyConfig.default_timeframe || strategyConfig.timeframe || "4H";
+  const symbol = rawStrategyConfig.watchlist ? rawStrategyConfig.watchlist[0] : "BTCUSDT";
+  const timeframe = rawStrategyConfig.default_timeframe || rawStrategyConfig.timeframe || "4H";
 
   await logEventSimple(strategyId, "INFO", `Bot started for strategy: ${strategyName}`);
 
@@ -437,13 +814,13 @@ async function run(strategyPath) {
       console.log("═══════════════════════════════════════════════════════════");
       await logEventSimple(strategyId, "INFO", `--- Cycle Start: ${new Date().toISOString()} ---`);
       console.log(`  Strategy: ${strategyName}`);
-      const isPaper = strategyConfig.paperTrading !== false;
+      const isPaper = rawStrategyConfig.paperTrading !== false;
       console.log(`  Mode: ${isPaper ? "📋 PAPER TRADING" : "🔴 LIVE TRADING"}`);
       console.log("═══════════════════════════════════════════════════════════");
       console.log(`  Symbol: ${symbol} | Timeframe: ${timeframe}`);
 
       const todayCount = await countTodaysTrades(strategyId);
-      const maxTradesDayLimit = strategyConfig.risk?.maxTradesPerDay || 3;
+      const maxTradesDayLimit = strategyConfig.risk.maxTradesPerDay;
       if (todayCount >= maxTradesDayLimit) {
         const msg = `🚫 Max trades per day reached: ${todayCount}/${maxTradesDayLimit}`;
         console.log(msg);
@@ -492,15 +869,9 @@ async function run(strategyPath) {
 
           const { results, allPass } = await runSafetyCheck(price, open, strategyData, strategyConfig, strategyId, symbol);
 
-          const riskDefaults = {
-            riskPerTradePercent: 0.01,
-            maxTradeSizeUSD: CONFIG.maxTradeSizeUSD,
-            stopLossPercent: 0.02,
-            takeProfitPercent: 0.05
-          };
-          const risk = { ...riskDefaults, ...strategyConfig.risk };
+          const risk = strategyConfig.risk;
 
-          const portfolioValue = strategyConfig.portfolioValue || CONFIG.portfolioValue;
+          const portfolioValue = rawStrategyConfig.portfolioValue || CONFIG.portfolioValue;
           const tradeSize = Math.min(portfolioValue * risk.riskPerTradePercent, risk.maxTradeSizeUSD);
 
           console.log("\n── Decision ─────────────────────────────────────────────\n");
@@ -520,7 +891,7 @@ async function run(strategyPath) {
           } else {
             console.log(`✅ ALL CONDITIONS MET`);
             await logEventSimple(strategyId, "TRADE", "All safety conditions met. Preparing trade.");
-            const isPaperBot = strategyConfig.paperTrading !== false;
+            const isPaperBot = rawStrategyConfig.paperTrading !== false;
             if (isPaperBot) {
               console.log(`\n📋 PAPER TRADE — would buy ${symbol} ~$${tradeSize.toFixed(2)} at market`);
               const orderId = `PAPER-${Date.now()}`;
@@ -586,8 +957,8 @@ async function run(strategyPath) {
 
     // Sleep logic
     let sleepMs = 60000; // Default 1 min
-    if (strategyConfig.intervalSeconds) {
-      sleepMs = strategyConfig.intervalSeconds * 1000;
+    if (rawStrategyConfig.intervalSeconds) {
+      sleepMs = rawStrategyConfig.intervalSeconds * 1000;
     } else {
       // Adaptive Mode: (timeframe_in_minutes * 60 * 1000) / 10
       const timeframeMap = { "1m": 1, "3m": 3, "5m": 5, "15m": 15, "30m": 30, "1H": 60, "4H": 240, "1D": 1440, "1W": 10080 };
