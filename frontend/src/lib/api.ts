@@ -41,13 +41,33 @@ export const strategyApi = {
   getLeaderboard: () => api.get('/analytics/leaderboard'),
   getSummary: () => api.get('/analytics/summary'),
   exportTrades: (strategyId: number) => api.get(`/export/${strategyId}`, { responseType: 'blob' }),
+  getStats: (id: number) => api.get(`/strategies/stats/${id}`),
+  getPositions: (id: number) => api.get(`/strategies/positions/${id}`),
 };
 
 export const templateApi = {
-  getTemplates: () => api.get<TemplatesResponse>('/templates'),
-  getTemplate: (type: TemplateType, id: string) => api.get<Template>(`/templates/${type}/${id}`),
-  createTemplate: (type: TemplateType, data: Partial<Template>) => api.post(`/templates/${type}`, data),
-  updateTemplate: (type: TemplateType, id: string, data: Partial<Template>) => api.put(`/templates/${type}/${id}`, data),
-  deleteTemplate: (type: TemplateType, id: string) => api.delete(`/templates/${type}/${id}`),
-  duplicateTemplate: (type: TemplateType, id: string, newName: string) => api.post(`/templates/${type}/${id}/duplicate`, { newName }),
+  getTemplates: async () => {
+    const res = await api.get<TemplatesResponse>('/templates');
+    return res.data;
+  },
+  getTemplate: async (type: TemplateType, id: string) => {
+    const res = await api.get<Template>(`/templates/${type}/${id}`);
+    return res.data;
+  },
+  createTemplate: async (type: TemplateType, data: Partial<Template>) => {
+    const res = await api.post(`/templates/${type}`, data);
+    return res.data;
+  },
+  updateTemplate: async (type: TemplateType, id: string, data: Partial<Template>) => {
+    const res = await api.put(`/templates/${type}/${id}`, data);
+    return res.data;
+  },
+  deleteTemplate: async (type: TemplateType, id: string) => {
+    const res = await api.delete(`/templates/${type}/${id}`);
+    return res.data;
+  },
+  duplicateTemplate: async (type: TemplateType, id: string, newName: string) => {
+    const res = await api.post(`/templates/${type}/${id}/duplicate`, { newName });
+    return res.data;
+  },
 };

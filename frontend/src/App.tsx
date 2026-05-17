@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import { StrategyHub } from './components/StrategyHub';
 import { LiveMonitor } from './components/LiveMonitor';
 import { TemplateManager } from './components/TemplateManager';
+import { StrategyDetails } from './components/StrategyDetails';
 import { Card } from './components/ui/components';
 import { cn } from './lib/utils';
 import { strategyApi } from './lib/api';
@@ -87,6 +88,7 @@ function App() {
               </div>
             } />
             <Route path="/templates" element={<TemplateManager />} />
+            <Route path="/strategy/:id" element={<StrategyDetails />} />
           </Routes>
         </div>
       </div>
