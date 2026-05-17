@@ -4,7 +4,7 @@ import { strategyApi, type Strategy } from '../lib/api';
 import { Card, CardHeader, CardTitle, CardContent, Badge, Button, Separator, Tabs, TabsList, TabsTrigger, TabsContent, ToggleGroup, ToggleGroupItem } from './ui/components';
 import { StrategyTerminal } from './StrategyTerminal';
 import { cn } from '../lib/utils';
-import { ArrowLeft, Play, Square, Settings } from 'lucide-react';
+import { ArrowLeft, Play, Square, Settings, ArrowUp, ArrowDown } from 'lucide-react';
 
 interface StrategyStats {
   netPnL: number;
@@ -176,7 +176,7 @@ export const StrategyDetails = () => {
       </div>
 
       {/* KPI Header */}
-      <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-8 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
         <StatCard
           label="Net PnL"
           value={`$${stats?.netPnL?.toFixed(2) || '0.00'}`}
@@ -305,15 +305,15 @@ export const StrategyDetails = () => {
 };
 
 const StatCard = ({ label, value, trend, className }: { label: string; value: string; trend?: 'up' | 'down'; className?: string }) => (
-  <Card>
-    <CardContent className="p-4 flex flex-col justify-center">
-      <p className="text-xs text-muted-foreground mb-1">{label}</p>
-      <div className="flex items-end gap-2">
-        <span className={cn("text-2xl font-bold", className)}>{value}</span>
+  <Card className="overflow-hidden border-none bg-muted/30">
+    <CardContent className="p-3 flex flex-col justify-center">
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-1">{label}</p>
+      <div className="flex items-center gap-2">
+        <span className={cn("text-lg font-bold leading-none", className)}>{value}</span>
         {trend && (
-          <span className={cn("text-xs mb-1", trend === 'up' ? "text-emerald-500" : "text-rose-500")}>
-            {trend === 'up' ? '↑' : '↓'}
-          </span>
+          <div className={cn("flex items-center", trend === 'up' ? "text-emerald-500" : "text-rose-500")}>
+            {trend === 'up' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+          </div>
         )}
       </div>
     </CardContent>
