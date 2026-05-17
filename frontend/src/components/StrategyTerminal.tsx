@@ -100,10 +100,11 @@ export const StrategyTerminal: React.FC<StrategyTerminalProps> = ({ strategyId }
 
   const getColorClass = (type: string) => {
     switch (type) {
-      case 'CHECK':
-      case 'SAFETY_CHECK': return 'text-emerald-400';
-      case 'TRADE': return 'text-blue-400';
-      case 'ERROR': return 'text-rose-400';
+      case 'INFO': return 'text-blue-400';
+      case 'SAFETY_CHECK': return 'text-amber-400';
+      case 'CHECK': return 'text-rose-400';
+      case 'TRADE': return 'text-emerald-400';
+      case 'ERROR': return 'text-rose-600';
       default: return 'text-zinc-300';
     }
   };

@@ -6,6 +6,7 @@ import { templateApi } from '../lib/api';
 import { Input, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/components';
 import { cn } from '../lib/utils';
 import { ArrowLeft, Play, Square, Settings, ArrowUp, ArrowDown } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface StrategyStats {
   netPnL: number;
@@ -104,6 +105,46 @@ export const StrategyDetails = () => {
     }
   }, [strategyId]);
 
+  useEffect(() => {
+    // Subscribe to real-time updates via WebSocket
+    const socket = new WebSocket(`ws://${window.location.hostname}:3000`);
+
+    socket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+
+      // Only process updates for the current strategy
+      if (data.strategyId !== strategyId) return;
+
+      if (data.type === 'position_active') {
+        const payload = data.payload;
+
+        setPositions(prev => {
+          const existingIndex = prev.findIndex(p => p.symbol === payload.symbol);
+
+          const updatedPos: Position = {
+            symbol: payload.symbol,
+            side: payload.side === 'BUY' ? 'LONG' : 'SHORT',
+            entryPrice: payload.entry_price,
+            currentPrice: payload.current_price,
+            pnl: payload.pnl,
+            sl: payload.stop_loss,
+            tp: payload.take_profit,
+          };
+
+          if (existingIndex > -1) {
+            const newPositions = [...prev];
+            newPositions[existingIndex] = updatedPos;
+            return newPositions;
+          } else {
+            return [...prev, updatedPos];
+          }
+        });
+      }
+    };
+
+    return () => socket.close();
+  }, [strategyId]);
+
   const handleToggle = async () => {
     if (!strategy) return;
     try {
@@ -111,8 +152,9 @@ export const StrategyDetails = () => {
       const strategiesRes = await strategyApi.getStrategies();
       const s = strategiesRes.data.find(item => item.id === strategyId);
       if (s) setStrategy(s);
+      toast.success(`Strategy ${s ? s.name : ''} ${s?.status === 'running' ? 'started' : 'stopped'} successfully`);
     } catch (err: any) {
-      alert('Failed to toggle strategy: ' + err.message);
+      toast.error('Failed to toggle strategy: ' + err.message);
     }
   };
 
@@ -128,8 +170,9 @@ export const StrategyDetails = () => {
         riskTemplateId,
         ...updates
       });
+      toast.success('Configuration updated');
     } catch (err: any) {
-      alert('Failed to update configuration: ' + err.message);
+      toast.error('Failed to update configuration: ' + err.message);
     }
   };
 
@@ -154,9 +197,9 @@ export const StrategyDetails = () => {
       setIntervalValue(settingsInterval);
 
       setIsSettingsOpen(false);
-      alert('Settings saved and strategy restarted successfully.');
+      toast.success('Settings saved and strategy restarted successfully.');
     } catch (err: any) {
-      alert('Failed to save settings: ' + err.message);
+      toast.error('Failed to save settings: ' + err.message);
     }
   };
 
@@ -171,9 +214,9 @@ export const StrategyDetails = () => {
       setTriggerMode(settingsTriggerMode);
       setIntervalValue(settingsInterval);
       setIsSettingsOpen(false);
-      alert('Runtime settings updated.');
+      toast.success('Runtime settings updated.');
     } catch (err: any) {
-      alert('Failed to update runtime settings: ' + err.message);
+      toast.error('Failed to update runtime settings: ' + err.message);
     }
   };
 
