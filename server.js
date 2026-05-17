@@ -5,7 +5,7 @@ import cors from 'cors';
 import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
-import { initDB, getDB } from './db.js';
+import { initDB, getDB, createStatsView } from './db.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -34,10 +34,6 @@ function slugify(text) {
  */
 async function checkTemplateLock(type, id) {
   const db = getDB();
-  // We need to find strategies that use this template.
-  // Since templates are stored in the 'config' JSON, we have to search the JSON.
-  // However, in assembleStrategy, we store them in metadata.
-  // We'll search for strategies where config contains the template ID in metadata.
 
   const strategies = await db.all(
     `SELECT id, name, status, config FROM strategies WHERE config LIKE ?`,
@@ -45,6 +41,7 @@ async function checkTemplateLock(type, id) {
   );
 
   const usedBy = [];
+  let activeCount = 0;
   let isLocked = false;
 
   for (const s of strategies) {
@@ -52,15 +49,17 @@ async function checkTemplateLock(type, id) {
     const templateId = type === 'logic' ? config.metadata?.logicTemplateId : config.metadata?.riskTemplateId;
 
     if (templateId === id) {
+      usedBy.push({ id: s.id, name: s.name });
+
       const isRunning = activeBots.has(s.id) || s.status === 'running';
       if (isRunning) {
         isLocked = true;
-        usedBy.push({ id: s.id, name: s.name });
+        activeCount++;
       }
     }
   }
 
-  return { isLocked, usedBy };
+  return { isLocked, usedBy, activeCount };
 }
 
 /**
@@ -158,7 +157,10 @@ async function spawnBot(filePath, strategyId) {
   });
 
   activeBots.set(Number(strategyId), botProcess);
-  await getDB().run('UPDATE strategies SET status = ? WHERE id = ?', ['running', strategyId]);
+  await getDB().run(
+    'UPDATE strategies SET status = ?, last_run = CURRENT_TIMESTAMP WHERE id = ?',
+    ['running', strategyId]
+  );
 
   // Notify frontend via WebSocket that the bot has started
   io.emit('event:update', {
@@ -218,7 +220,7 @@ app.get('/api/templates', async (req, res) => {
 
     const riskTemplates = await Promise.all(riskFiles.map(async (f) => {
       const id = f.replace('.json', '');
-      const content = JSON.parse(fs.readFileSync(path.join(riskDir, f), 'utf8'));
+      const content = JSON.parse(fs.readFileSync(path.join(riskDir, f), 'utf8'), 'utf8');
       const lock = await checkTemplateLock('risk', id);
       return { id, name: content.name, ...lock };
     }));
@@ -281,24 +283,75 @@ app.post('/api/templates/:type', (req, res) => {
 });
 
 /**
- * POST /api/templates/:type/:id/duplicate
- * Duplicates an existing template
+ * PUT /api/templates/:type/:id
+ * Updates a template's name and content.
+ * Enforces lock if the template is used by a running bot.
  */
-app.post('/api/templates/:type/:id/duplicate', (req, res) => {
+app.put('/api/templates/:type/:id', async (req, res) => {
   const { type, id } = req.params;
-  const { name } = req.body;
+  const { name, ...content } = req.body;
 
-  if (!name) {
-    return res.status(400).json({ error: 'New template name is required' });
+  try {
+    // 1. Check for lock
+    const lock = await checkTemplateLock(type, id);
+    if (lock.isLocked) {
+      return res.status(403).json({
+        error: 'Template is locked because it is used by running strategies',
+        activeStrategies: lock.usedBy
+      });
+    }
+
+    // 2. Verify template exists
+    const original = loadTemplate(type, id);
+    if (!original) {
+      return res.status(404).json({ error: `Template ${id} of type ${type} not found` });
+    }
+
+    // 3. Handle potential ID change if name changed
+    const newId = name ? slugify(name) : id;
+    const dir = path.join(process.cwd(), 'templates', type);
+    const oldFilePath = path.join(dir, `${id}.json`);
+    const newFilePath = path.join(dir, `${newId}.json`);
+
+    // If name changed, check if new ID is already taken
+    if (newId !== id && fs.existsSync(newFilePath)) {
+      return res.status(400).json({ error: `Template with id ${newId} already exists` });
+    }
+
+    // 4. Update content
+    const templateData = { name: name || original.name, ...content };
+    fs.writeFileSync(newFilePath, JSON.stringify(templateData, null, 2));
+
+    // 5. Delete old file if ID changed
+    if (newId !== id) {
+      fs.unlinkSync(oldFilePath);
+    }
+
+    res.json({ id: newId, name: templateData.name, type });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/templates/:type/:id/duplicate
+ * Creates a copy of an existing template with a new name.
+ */
+app.post('/api/templates/:type/:id/duplicate', async (req, res) => {
+  const { type, id } = req.params;
+  const { newName } = req.body;
+
+  if (!newName) {
+    return res.status(400).json({ error: 'newName is required for duplication' });
   }
 
   try {
     const original = loadTemplate(type, id);
     if (!original) {
-      return res.status(404).json({ error: `Original template ${id} not found` });
+      return res.status(404).json({ error: `Template ${id} of type ${type} not found` });
     }
 
-    const newId = slugify(name);
+    const newId = slugify(newName);
     const dir = path.join(process.cwd(), 'templates', type);
     const newFilePath = path.join(dir, `${newId}.json`);
 
@@ -306,14 +359,48 @@ app.post('/api/templates/:type/:id/duplicate', (req, res) => {
       return res.status(400).json({ error: `Template with id ${newId} already exists` });
     }
 
-    const newTemplateData = { ...original, name };
+    const newTemplateData = { ...original, name: newName };
     fs.writeFileSync(newFilePath, JSON.stringify(newTemplateData, null, 2));
 
-    res.json({ id: newId, name, type });
+    res.json({ id: newId, name: newName, type });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
+/**
+ * DELETE /api/templates/:type/:id
+ * Removes a template file.
+ * Enforces lock if the template is used by a running bot.
+ */
+app.delete('/api/templates/:type/:id', async (req, res) => {
+  const { type, id } = req.params;
+
+  try {
+    // 1. Check for lock
+    const lock = await checkTemplateLock(type, id);
+    if (lock.isLocked) {
+      return res.status(403).json({
+        error: 'Template is locked because it is used by running strategies',
+        activeStrategies: lock.usedBy
+      });
+    }
+
+    // 2. Verify template exists
+    const filePath = path.join(process.cwd(), 'templates', type, `${id}.json`);
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: `Template ${id} of type ${type} not found` });
+    }
+
+    // 3. Delete file
+    fs.unlinkSync(filePath);
+
+    res.json({ status: 'deleted', id, type });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 /**
  * POST /api/strategies
@@ -685,6 +772,7 @@ const PORT = process.env.PORT || 3000;
 async function startServer() {
   try {
     await initDB();
+    await createStatsView();
     await syncStrategies();
     httpServer.listen(PORT, () => {
       console.log(`🚀 Orchestrator Server running on http://localhost:${PORT}`);
