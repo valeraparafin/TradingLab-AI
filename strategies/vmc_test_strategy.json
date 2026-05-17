@@ -1,4 +1,11 @@
 {
+  "name": "VMC Test Strategy",
+  "riskTemplateId": "vmc_cipherb",
+  "riskOverrides": {
+    "maxTradesPerDay": 1000
+  },
+  "logicTemplateId": "vmc_cipherb",
+  "logicOverrides": {},
   "timeframe": "5m",
   "watchlist": [
     "BTCUSDT",
@@ -8,19 +15,9 @@
   ],
   "paperTrading": true,
   "tradeMode": "spot",
-  "maxTradeSizeUSD": 100,
-  "maxTradesPerDay": 100,
-  "name": "VMC Test Strategy",
   "metadata": {
     "logicTemplateId": "vmc_cipherb",
     "riskTemplateId": "vmc_cipherb",
-    "assembledAt": "2026-05-17T20:25:21.456Z"
-  },
-  "riskTemplateId": "vmc_cipherb",
-  "logicTemplateId": "vmc_cipherb",
-  "riskOverrides": {
-    "maxTradeSizeUSD": 100,
-    "maxTradesPerDay": 100
-  },
-  "logicOverrides": {}
+    "assembledAt": "2026-05-17T22:08:20.789Z"
+  }
 }

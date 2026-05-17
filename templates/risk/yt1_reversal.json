@@ -1,6 +1,11 @@
 {
   "name": "YT1 Reversal Risk",
   "settings": {
+    "maxTradesPerDay": 5,
+    "maxTradeSizeUSD": 100,
+    "riskPerTradePercent": 1,
+    "stopLossPercent": 2,
+    "takeProfitPercent": 4,
     "min_rr": 2.0,
     "target_rr": 3.0,
     "stop_loss_type": "rejection_candle_extreme",

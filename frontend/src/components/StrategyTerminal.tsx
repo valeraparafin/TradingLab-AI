@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useSocket } from '../hooks/useSocket';
 import { Button } from './ui/components';
+import { strategyApi } from '../lib/api';
 
 interface StrategyTerminalProps {
   strategyId: string;
@@ -14,22 +15,82 @@ interface LogEvent {
 }
 
 export const StrategyTerminal: React.FC<StrategyTerminalProps> = ({ strategyId }) => {
-  const { events } = useSocket();
+  const { events: realtimeEvents } = useSocket();
   const [localLogs, setLocalLogs] = useState<LogEvent[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Filter events for this specific strategy
-    const filtered = events
-      .filter((e: any) => e.strategyId === strategyId)
-      .map((e: any) => e as LogEvent);
+    const fetchHistoricalEvents = async () => {
+      try {
+        const res = await strategyApi.getEvents(Number(strategyId), 100);
+        const historicalLogs = res.data.map((e: any) => {
+          let message = e.payload;
+          if (typeof e.payload === 'object' && e.payload !== null) {
+            if (e.type === 'safety_check') {
+              const allPass = e.payload.allPass ? '✅ PASSED' : '🚫 FAILED';
+              const details = e.payload.results
+                ?.map((r: any) => `${r.pass ? '✅' : '🚫'} ${r.label}: ${r.actual}`)
+                .join(' | ');
+              message = `${allPass} | ${details}`;
+            } else {
+              message = JSON.stringify(e.payload, null, 2);
+            }
+          }
+          return {
+            strategyId: e.strategyId,
+            type: e.type.toUpperCase(),
+            message: message,
+            timestamp: e.timestamp,
+          };
+        });
+        setLocalLogs(historicalLogs);
+      } catch (err) {
+        console.error('Failed to fetch historical events:', err);
+      }
+    };
 
-    setLocalLogs(filtered);
-  }, [events, strategyId]);
+    if (strategyId) {
+      fetchHistoricalEvents();
+    }
+  }, [strategyId]);
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollIntoView({ behavior: 'smooth' });
+    const filtered = realtimeEvents
+      .filter((e: any) => Number(e.strategyId) === Number(strategyId))
+      .map((e: any) => {
+        let message = e.payload;
+        if (typeof e.payload === 'object' && e.payload !== null) {
+          if (e.type === 'safety_check') {
+            const allPass = e.payload.allPass ? '✅ PASSED' : '🚫 FAILED';
+            const details = e.payload.results
+              ?.map((r: any) => `${r.pass ? '✅' : '🚫'} ${r.label}: ${r.actual}`)
+              .join(' | ');
+            message = `${allPass} | ${details}`;
+          } else {
+            message = JSON.stringify(e.payload, null, 2);
+          }
+        }
+        return {
+          strategyId: e.strategyId,
+          type: e.type.toUpperCase(),
+          message: message,
+          timestamp: e.timestamp,
+        };
+      });
+
+    setLocalLogs(prev => {
+      const existingTimestamps = new Set(prev.map(l => `${l.timestamp}-${l.type}`));
+      const newEvents = filtered.filter(
+        e => !existingTimestamps.has(`${e.timestamp}-${e.type}`)
+      );
+      return [...prev, ...newEvents];
+    });
+  }, [realtimeEvents, strategyId]);
+
+  useEffect(() => {
+    if (containerRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
     }
   }, [localLogs]);
 
@@ -37,9 +98,10 @@ export const StrategyTerminal: React.FC<StrategyTerminalProps> = ({ strategyId }
     setLocalLogs([]);
   };
 
-  const getColorClass = (type: LogEvent['type']) => {
+  const getColorClass = (type: string) => {
     switch (type) {
-      case 'CHECK': return 'text-emerald-400';
+      case 'CHECK':
+      case 'SAFETY_CHECK': return 'text-emerald-400';
       case 'TRADE': return 'text-blue-400';
       case 'ERROR': return 'text-rose-400';
       default: return 'text-zinc-300';
@@ -59,20 +121,26 @@ export const StrategyTerminal: React.FC<StrategyTerminalProps> = ({ strategyId }
         </Button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 font-mono text-xs space-y-1 scrollbar-thin scrollbar-thumb-zinc-800">
+      <div
+        ref={containerRef}
+        className="flex-1 overflow-y-auto p-4 font-mono text-xs space-y-1 scrollbar-thin scrollbar-thumb-zinc-800"
+      >
         {localLogs.length === 0 ? (
           <div className="text-zinc-600 italic">No events for this strategy...</div>
         ) : (
-          localLogs.map((log, idx) => (
-            <div key={`${log.timestamp}-${idx}`} className="flex gap-3 leading-relaxed">
-              <span className="text-zinc-600 shrink-0">
-                {new Date(log.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-              </span>
-              <span className={getColorClass(log.type)}>
-                [{log.type}] {log.message}
-              </span>
-            </div>
-          ))
+          localLogs.map((log, idx) => {
+            const logId = `${log.timestamp}-${log.type}`;
+            return (
+              <div key={`${logId}-${idx}`} className="flex gap-3 leading-relaxed">
+                <span className="text-zinc-600 shrink-0">
+                  {new Date(typeof log.timestamp === 'number' ? log.timestamp : parseInt(log.timestamp)).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                </span>
+                <span className={getColorClass(log.type)}>
+                  [{log.type}] {log.message}
+                </span>
+              </div>
+            );
+          })
         )}
         <div ref={scrollRef} />
       </div>

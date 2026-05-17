@@ -26,5 +26,9 @@
   "risk_rules": [
     "Risk maximum 1% of portfolio per trade",
     "Prioritize trades with Risk:Reward > 1:3"
-  ]
+  ],
+  "riskTemplateId": "default_risk",
+  "logicTemplateId": "default_logic",
+  "riskOverrides": {},
+  "logicOverrides": {}
 }

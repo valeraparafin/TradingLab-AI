@@ -22,7 +22,7 @@ export const TemplateManager = () => {
     setLoading(true);
     try {
       const res = await templateApi.getTemplates();
-      setTemplates(res.data[type]);
+      setTemplates(res[type]);
     } catch (err) {
       console.error('Failed to fetch templates', err);
     } finally {
@@ -39,7 +39,6 @@ export const TemplateManager = () => {
     try {
       await templateApi.createTemplate(type, {
         name: newTemplateName,
-        config: {},
       });
       setNewTemplateName('');
       setIsCreateOpen(false);
@@ -52,10 +51,14 @@ export const TemplateManager = () => {
   const handleSelectTemplate = async (template: Template) => {
     setEditorLoading(true);
     try {
-      const res = await templateApi.getTemplate(type, template.id);
-      const data = res.data;
-      setSelectedTemplate(data);
-      setEditingConfig(JSON.stringify(data.config, null, 2));
+      const data = await templateApi.getTemplate(type, template.id);
+      setSelectedTemplate({
+        ...data,
+        id: template.id
+      });
+      // The server returns the template content directly.
+      // We use the whole data object as the config to be edited.
+      setEditingConfig(JSON.stringify(data, null, 2));
       setIsLocked((data as any).isLocked || false);
     } catch (err) {
       alert('Failed to load template: ' + (err as any).message);
@@ -68,7 +71,19 @@ export const TemplateManager = () => {
     if (!selectedTemplate) return;
     try {
       const config = JSON.parse(editingConfig);
-      await templateApi.updateTemplate(type, selectedTemplate.id, { config });
+      // Ensure the name from the editor is also sent
+      const updated = await templateApi.updateTemplate(type, selectedTemplate.id, {
+        ...config,
+        name: config.name || selectedTemplate.name,
+      });
+
+      setSelectedTemplate({
+        ...selectedTemplate,
+        id: updated.id,
+        name: updated.name
+      });
+
+      await fetchTemplates();
       alert('Template saved successfully!');
     } catch (err: any) {
       if (err.response?.status === 403) {
@@ -120,8 +135,8 @@ export const TemplateManager = () => {
     }
   }, [editingConfig]);
 
-  const filteredTemplates = templates.filter(t =>
-    t.name.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredTemplates = (templates || []).filter(t =>
+    t.name?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -187,9 +202,24 @@ export const TemplateManager = () => {
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                    {(t as any).usedBy?.length || 0} strategies
-                  </Badge>
+                  <div className="flex gap-2">
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] px-1.5 py-0"
+                      title="Total number of strategies using this template"
+                    >
+                      {(t as any).usedBy?.length || 0} strategies
+                    </Badge>
+                    {(t as any).activeCount > 0 && (
+                      <Badge
+                        variant="success"
+                        className="text-[10px] px-1.5 py-0"
+                        title="Number of strategies currently running with this template"
+                      >
+                        {(t as any).activeCount} online
+                      </Badge>
+                    )}
+                  </div>
                 </div>
               </div>
             ))

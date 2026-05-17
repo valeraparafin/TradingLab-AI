@@ -1,7 +1,10 @@
 {
   "name": "VMC Cipher B Risk",
-  "riskPerTradePercent": 0.01,
-  "stopLossPercent": 0.02,
-  "takeProfitPercent": 0.05,
-  "maxTradesPerDay": 3
+  "settings": {
+    "riskPerTradePercent": 0.01,
+    "stopLossPercent": 0.02,
+    "takeProfitPercent": 0.05,
+    "maxTradesPerDay": 3,
+    "maxTradeSizeUSD": 100
+  }
 }

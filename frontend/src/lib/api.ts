@@ -17,11 +17,27 @@ export interface Strategy {
   last_run: string;
 }
 
-export interface Template {
+export interface LogicTemplate {
   id: string;
   name: string;
-  config: any;
+  type: string;
+  indicators: Record<string, any>;
+  safety_checks?: Array<{ id: string; description: string }>;
 }
+
+export interface RiskTemplate {
+  id: string;
+  name: string;
+  settings: {
+    riskPerTradePercent: number;
+    maxTradeSizeUSD: number;
+    stopLossPercent: number;
+    takeProfitPercent: number;
+    maxTradesPerDay: number;
+  };
+}
+
+export type Template = LogicTemplate | RiskTemplate;
 
 export interface TemplatesResponse {
   logic: Template[];
@@ -34,7 +50,7 @@ export const strategyApi = {
   getStrategies: (archived = false) => api.get<Strategy[]>(`/strategies?archived=${archived}`),
   createStrategy: (data: { name: string; logicTemplateId: string; riskTemplateId: string; settings?: any }) => api.post('/strategies', data),
   toggleStrategy: (strategyId: number) => api.post('/strategies/toggle', { strategyId }),
-  updateConfig: (strategyId: number, data: { name?: string; logicTemplateId: string; riskTemplateId: string; settings?: any }) => api.post('/strategies/config', { strategyId, ...data }),
+  updateConfig: (strategyId: number, data: { name?: string; logicTemplateId?: string; riskTemplateId?: string; settings?: any }) => api.post('/strategies/config', { strategyId, ...data }),
   archiveStrategy: (id: number) => api.post('/strategies/archive', { strategyId: id }),
   restoreStrategy: (id: number) => api.post('/strategies/restore', { strategyId: id }),
   deleteStrategyPermanently: (id: number) => api.delete(`/strategies/${id}`),
@@ -43,6 +59,7 @@ export const strategyApi = {
   exportTrades: (strategyId: number) => api.get(`/export/${strategyId}`, { responseType: 'blob' }),
   getStats: (id: number) => api.get(`/strategies/stats/${id}`),
   getPositions: (id: number) => api.get(`/strategies/positions/${id}`),
+  getEvents: (strategyId: number, limit: number = 100) => api.get(`/strategies/events/${strategyId}?limit=${limit}`),
 };
 
 export const templateApi = {

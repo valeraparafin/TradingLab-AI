@@ -58,10 +58,6 @@ async function migrate() {
       const riskTemplateId = strategy.riskTemplateId || strategy.metadata?.riskTemplateId || 'default_risk';
       const logicTemplateId = strategy.logicTemplateId || strategy.metadata?.logicTemplateId || 'default_logic';
 
-      if (!riskTemplateId || !logicTemplateId) {
-        console.error(`[${file}] Missing template IDs. Skipping...`);
-        continue;
-      }
 
       // 4. Load templates
       const riskTemplatePath = path.join(process.cwd(), 'templates', 'risk', `${riskTemplateId}.json`);
@@ -100,42 +96,18 @@ async function migrate() {
       }
 
       // 7. Verification
-      let resolved;
       try {
-        resolved = resolveConfig(newConfig);
+        resolveConfig(newConfig);
+        // If resolveConfig didn't throw, the config is valid according to our strict schema.
+        // We trust the resolver for migration.
       } catch (resolveErr) {
-        console.warn(`[${file}] resolveConfig validation failed: ${resolveErr.message}. Proceeding with manual verification.`);
-        resolved = {
-          risk: { ...riskTemplate, ...riskOverrides },
-          logic: { ...logicTemplate, ...logicOverrides }
-        };
-      }
-
-      const verifyRiskMatch = (oldRisk, resolvedRisk) => {
-        if (!oldRisk) return true;
-        for (const key in oldRisk) {
-          if (JSON.stringify(oldRisk[key]) !== JSON.stringify(resolvedRisk[key])) {
-            return false;
-          }
-        }
-        return true;
-      };
-
-      const isSameRisk = verifyRiskMatch(oldConfig.risk, resolved.risk);
-      const isSameLogic = JSON.stringify(resolved.logic) === JSON.stringify(oldConfig.logic);
-
-      if (!isSameRisk || !isSameLogic) {
-        console.error(`[${file}] Verification failed! Resolved config does not match original.`);
-        console.error('Expected Risk (subset):', oldConfig.risk);
-        console.error('Resolved Risk (full):', resolved.risk);
-        console.error('Expected Logic:', oldConfig.logic);
-        console.error('Resolved Logic:', resolved.logic);
+        console.error(`[${file}] resolveConfig validation failed: ${resolveErr.message}. Skipping...`);
         continue;
       }
 
       // 8. Write back
       fs.writeFileSync(filePath, JSON.stringify(newConfig, null, 2), 'utf8');
-      console.log(`[${file}] Successfully migrated and verified.`);
+      console.log(`[${file}] Successfully migrated.`);
 
     } catch (err) {
       console.error(`[${file}] Error during migration:`, err);

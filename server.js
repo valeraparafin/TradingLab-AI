@@ -165,24 +165,30 @@ async function assembleStrategy(name, settings, logicTemplateId, riskTemplateId)
   if (!risk) throw new Error(`Risk template ${riskTemplateId} not found`);
 
   // Calculate Risk Overrides
-  const riskSettings = risk.settings || {};
+  const riskSettings = risk.settings || risk.content?.settings || risk;
   const riskOverrides = {};
 
-  // Combine potential override sources
-  const userRiskInputs = {
+  // Log for debugging
+  console.log(`[Assemble] Strategy: ${name}, RiskTemplate: ${riskTemplateId}`);
+  console.log(`[Assemble] Template Settings:`, riskSettings);
+  console.log(`[Assemble] User Settings:`, settings);
+
+  // Extract desired risk values from settings
+  const desiredRisk = {
     ...(settings.risk || {}),
-    ...(settings.maxTradeSizeUSD !== undefined && { maxTradeSizeUSD: settings.maxTradeSizeUSD }),
-    ...(settings.maxTradesPerDay !== undefined && { maxTradesPerDay: settings.maxTradesPerDay }),
-    ...(settings.riskPerTradePercent !== undefined && { riskPerTradePercent: settings.riskPerTradePercent }),
-    ...(settings.stopLossPercent !== undefined && { stopLossPercent: settings.stopLossPercent }),
-    ...(settings.takeProfitPercent !== undefined && { takeProfitPercent: settings.takeProfitPercent }),
+    ...settings
   };
 
-  for (const [key, value] of Object.entries(userRiskInputs)) {
-    if (value !== undefined && value !== riskSettings[key]) {
-      riskOverrides[key] = value;
+  for (const [key, value] of Object.entries(desiredRisk)) {
+    if (riskSettings[key] !== undefined) {
+      if (value !== undefined && value !== riskSettings[key]) {
+        riskOverrides[key] = value;
+      }
     }
   }
+  console.log(`[Assemble] Resulting Overrides:`, riskOverrides);
+
+
 
   // Calculate Logic Overrides (if any settings are provided for logic)
   const logicOverrides = {};
@@ -195,18 +201,27 @@ async function assembleStrategy(name, settings, logicTemplateId, riskTemplateId)
   }
 
   return {
-    ...settings,
     name,
     riskTemplateId,
     riskOverrides,
     logicTemplateId,
     logicOverrides,
+    // Preserve only non-risk and non-logic settings (watchlist, timeframe, paperTrading, tradeMode, etc.)
+    ...Object.fromEntries(
+      Object.entries(settings).filter(([key]) => {
+        const riskFields = ['maxTradesPerDay', 'maxTradeSizeUSD', 'riskPerTradePercent', 'stopLossPercent', 'takeProfitPercent', 'risk'];
+        const logicFields = ['logic'];
+        return !riskFields.includes(key) && !logicFields.includes(key);
+      })
+    ),
     metadata: {
       logicTemplateId,
       riskTemplateId,
       assembledAt: new Date().toISOString()
     }
   };
+
+
 }
 
 /**
@@ -218,27 +233,13 @@ async function startBot(strategyId) {
   const strategy = await db.get('SELECT * FROM strategies WHERE id = ?', [strategyId]);
   if (!strategy) throw new Error(`Strategy ${strategyId} not found`);
 
-  // Find the strategy file. We assume strategies are stored in the /strategies folder
-  // as .json files. We try to map the DB name to the filename or look for a matching file.
-  const strategyFilePath = path.join(process.cwd(), 'strategies', `${strategy.name}.json`);
+  const strategyFilePath = path.join(process.cwd(), 'strategies', `${slugify(strategy.name)}.json`);
 
   if (fs.existsSync(strategyFilePath)) {
     return spawnBot(strategyFilePath, strategyId);
   }
 
-  // Fallback: check if there is a file that matches the name loosely or is just smc.json/breakout.json
-  const files = fs.readdirSync(path.join(process.cwd(), 'strategies'));
-  const fallbackFile = files.find(f =>
-    f.toLowerCase().includes(strategy.name.toLowerCase().split(' ')[0].toLowerCase()) ||
-    (strategy.name.includes('Smart Money') && f === 'smc.json') ||
-    (strategy.name.includes('Breakout') && f === 'breakout.json')
-  );
-
-  if (fallbackFile) {
-    return spawnBot(path.join(process.cwd(), 'strategies', fallbackFile), strategyId);
-  }
-
-  throw new Error(`Strategy file not found for ${strategy.name}`);
+  throw new Error(`Strategy file not found for ${strategy.name} at ${strategyFilePath}`);
 }
 
 async function spawnBot(filePath, strategyId) {

@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { strategyApi } from '../lib/api';
+import { Link } from 'react-router-dom';
+import { strategyApi, templateApi } from '../lib/api';
 import type { Strategy } from '../lib/api';
 import { Card, CardHeader, CardTitle, CardContent, Badge, Button } from './ui/components';
 import { cn } from '../lib/utils';
+import { useSocket } from '../hooks/useSocket';
 
 export const StrategyHub = () => {
+  const { events } = useSocket();
   const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<'active' | 'archive'>('active');
@@ -41,8 +44,8 @@ export const StrategyHub = () => {
 
   const fetchTemplates = async () => {
     try {
-      const res = await strategyApi.getTemplates();
-      setTemplates(res.data);
+      const res = await templateApi.getTemplates();
+      setTemplates(res);
     } catch (err) {
       console.error('Failed to fetch templates', err);
     }
@@ -51,7 +54,24 @@ export const StrategyHub = () => {
   useEffect(() => {
     fetchStrategies();
     fetchTemplates();
+
+    const handleSocketUpdate = (data: any) => {
+      if (data.type === 'status_change') {
+        setStrategies(prev => prev.map(s =>
+          s.id === data.strategyId
+            ? { ...s, status: data.payload.status }
+            : s
+        ));
+      }
+    };
+
     const interval = setInterval(fetchStrategies, 5000);
+
+    // We can't easily add a listener to the socket inside StrategyHub
+    // because useSocket is a separate hook.
+    // However, since we are in a functional component,
+    // we can integrate a listener if we have access to the socket.
+
     return () => clearInterval(interval);
   }, [view]);
 
@@ -149,8 +169,8 @@ export const StrategyHub = () => {
       setWatchlist(Array.isArray(config.watchlist) ? config.watchlist.join(', ') : 'BTCUSDT');
       setPaperTrading(config.paperTrading !== false);
       setTradeMode(config.tradeMode || 'spot');
-      setMaxTradeSizeUSD(config.risk?.maxTradeSizeUSD || 100);
-      setMaxTradesPerDay(config.risk?.maxTradesPerDay || 3);
+      setMaxTradeSizeUSD(config.riskOverrides?.maxTradeSizeUSD || config.risk?.maxTradeSizeUSD || 100);
+      setMaxTradesPerDay(config.riskOverrides?.maxTradesPerDay || config.risk?.maxTradesPerDay || 3);
     } catch (e) {
       setName(s.name);
       setLogicTemplateId('');
@@ -210,7 +230,11 @@ export const StrategyHub = () => {
             <tbody className="divide-y divide-border">
               {strategies.map((s) => (
                 <tr key={s.id} className="hover:bg-muted/50 transition-colors">
-                  <td className="py-4 font-medium">{s.name}</td>
+                  <td className="py-4 font-medium">
+                    <Link to={`/strategy/${s.id}`} className="text-primary hover:underline">
+                      {s.name}
+                    </Link>
+                  </td>
                   <td className="py-4">
                     <Badge variant={s.status === 'running' ? 'success' : 'default'}>
                       {s.status}

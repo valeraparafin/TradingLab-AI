@@ -1,25 +1,22 @@
 {
+  "name": "Breakout Agressive Updated",
+  "riskTemplateId": "aggressive",
+  "riskOverrides": {
+    "maxTradeSizeUSD": 100,
+    "maxTradesPerDay": 1000
+  },
+  "logicTemplateId": "smc",
+  "logicOverrides": {},
   "timeframe": "5m",
   "watchlist": [
-    "BTCUSDT",
     "ETHUSDT",
     "LTCUSDT"
   ],
   "paperTrading": true,
   "tradeMode": "spot",
-  "maxTradeSizeUSD": 100,
-  "maxTradesPerDay": 1000,
-  "name": "Breakout Agressive Updated",
   "metadata": {
-    "logicTemplateId": "breakout",
+    "logicTemplateId": "smc",
     "riskTemplateId": "aggressive",
-    "assembledAt": "2026-05-17T20:35:25.098Z"
-  },
-  "riskTemplateId": "aggressive",
-  "logicTemplateId": "breakout",
-  "riskOverrides": {
-    "maxTradeSizeUSD": 100,
-    "maxTradesPerDay": 1000
-  },
-  "logicOverrides": {}
+    "assembledAt": "2026-05-17T22:08:11.392Z"
+  }
 }

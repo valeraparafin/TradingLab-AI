@@ -1,5 +1,5 @@
 {
-  "name": "Smart Money Concepts [LuxAlgo]",
+  "name": "Breakout Agressive Updated2",
   "riskTemplateId": "aggressive",
   "riskOverrides": {
     "maxTradeSizeUSD": 100,
@@ -7,15 +7,16 @@
   },
   "logicTemplateId": "smc",
   "logicOverrides": {},
-  "timeframe": "1m",
+  "timeframe": "5m",
   "watchlist": [
-    "BTCUSDT"
+    "ETHUSDT",
+    "LTCUSDT"
   ],
   "paperTrading": true,
   "tradeMode": "spot",
   "metadata": {
     "logicTemplateId": "smc",
     "riskTemplateId": "aggressive",
-    "assembledAt": "2026-05-17T22:08:19.118Z"
+    "assembledAt": "2026-05-17T22:08:24.129Z"
   }
 }

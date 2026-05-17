@@ -796,6 +796,8 @@ async function run(strategyPath) {
   };
 
   const strategyConfig = resolveConfig(normalizedConfig);
+  console.log(`[Engine] Loaded strategy file: ${strategyPath}`);
+  console.log(`[Engine] Resolved Risk Limit: ${strategyConfig.risk.maxTradesPerDay}`);
   const strategyName = rawStrategyConfig.strategy?.name || rawStrategyConfig.name;
 
   // Ensure strategy exists in DB to get strategyId
