@@ -318,6 +318,40 @@ app.post('/api/strategies/restore', async (req, res) => {
   }
 });
 
+/**
+ * DELETE /api/strategies/:id
+ * Permanently deletes an archived strategy and its config file.
+ */
+app.delete('/api/strategies/:id', async (req, res) => {
+  const strategyId = req.params.id;
+  try {
+    const db = getDB();
+    const strategy = await db.get('SELECT name, is_archived FROM strategies WHERE id = ?', [strategyId]);
+
+    if (!strategy) {
+      return res.status(404).json({ error: 'Strategy not found' });
+    }
+
+    if (strategy.is_archived === 0) {
+      return res.status(400).json({ error: 'Strategy must be archived before permanent deletion' });
+    }
+
+    // 1. Delete from DB (CASCADE handles trades, events, positions)
+    await db.run('DELETE FROM strategies WHERE id = ?', [strategyId]);
+
+    // 2. Delete the config file
+    const fileName = `${slugify(strategy.name)}.json`;
+    const filePath = path.join(process.cwd(), 'strategies', fileName);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+
+    res.json({ status: 'permanently_deleted', strategyId: Number(strategyId) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 /**
  * POST /api/strategies/config
