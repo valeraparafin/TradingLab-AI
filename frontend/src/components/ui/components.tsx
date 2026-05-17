@@ -145,16 +145,12 @@ export const Sheet = ({ children, open, onOpenChange }: { children: React.ReactN
 };
 
 export const SheetTrigger = ({ children, className, ...props }: { children: React.ReactNode; className?: string }) => {
-  const trigger = React.useContext<any>(null); // In a real impl, we'd use a proper context. For this primitive, we'll use a simple trigger.
   return (
     <div
       onClick={(e) => {
         const sheet = (e.target as HTMLElement).closest('[data-sheet-open]');
         if (sheet) {
-          const currentOpen = sheet.getAttribute('data-sheet-open') === 'true';
-          // This is a simplification for the primitive. In full shadcn it's context based.
-          // Since we are adding to components.tsx without a provider, we'll simulate via DOM or suggest a Context.
-          // For the purpose of this task, I will implement these as structural components.
+          // Triggered via parent state in StrategyDetails, but kept for API compatibility
         }
       }}
       className={cn("cursor-pointer", className)}
@@ -165,7 +161,8 @@ export const SheetTrigger = ({ children, className, ...props }: { children: Reac
   );
 };
 
-export const SheetContent = ({ children, className, side = "right" }: { children: React.ReactNode; className?: string; side?: "top" | "bottom" | "left" | "right" }) => {
+export const SheetContent = ({ children, className, side = "right", open }: { children: React.ReactNode; className?: string; side?: "top" | "bottom" | "left" | "right"; open?: boolean }) => {
+  if (!open) return null;
   const sideStyles = {
     top: "inset-x-0 top-0 border-b",
     bottom: "inset-x-0 bottom-0 border-t",
@@ -303,3 +300,73 @@ export const ResizableHandle = React.forwardRef<HTMLDivElement, React.HTMLAttrib
   />
 ));
 ResizableHandle.displayName = "ResizableHandle";
+
+export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(({ className, ...props }, ref) => (
+  <input
+    ref={ref}
+    className={cn(
+      "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+      className
+    )}
+    {...props}
+  />
+));
+Input.displayName = "Input";
+
+export const Select = ({ children, value, onValueChange }: { children: React.ReactNode; value: string; onValueChange: (value: string) => void }) => {
+  const [isOpen, setIsOpen] = React.useState(false);
+  return (
+    <div className="relative w-full" onBlur={() => setTimeout(() => setIsOpen(false), 200)}>
+      {React.Children.map(children, child => {
+        if (React.isValidElement(child)) {
+          return React.cloneElement(child as any, {
+            value,
+            onValueChange,
+            setIsOpen,
+            isOpen,
+            onClick: (e: any) => {
+              if ((child.props as any).type === 'SelectTrigger') {
+                setIsOpen(!isOpen);
+              }
+            }
+          });
+        }
+        return child;
+      })}
+    </div>
+  );
+};
+
+export const SelectTrigger = ({ children, value, className, onClick }: { children: React.ReactNode; value: string; className?: string; onClick?: (e: any) => void }) => (
+  <button
+    onClick={onClick}
+    className={cn("flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring", className)}
+  >
+    {children}
+  </button>
+);
+
+export const SelectValue = ({ value }: { value: string }) => (
+  <span className="text-sm">{value || "Select a value..."}</span>
+);
+
+export const SelectContent = ({ children, value, onValueChange, isOpen }: { children: React.ReactNode; value: string; onValueChange: (val: string) => void; isOpen?: boolean }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="absolute z-50 w-full mt-1 rounded-md border bg-popover text-popover-foreground shadow-md max-h-60 overflow-auto">
+      {children}
+    </div>
+  );
+};
+
+export const SelectItem = ({ value, children, isSelected, onClick }: { value: string; children: React.ReactNode; isSelected?: boolean; onClick?: () => void }) => (
+  <div
+    onClick={onClick}
+    className={cn(
+      "relative flex w-full cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground",
+      isSelected && "bg-accent text-accent-foreground"
+    )}
+  >
+    {children}
+  </div>
+);
