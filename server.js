@@ -23,7 +23,58 @@ app.use(express.json());
 const activeBots = new Map();
 
 /**
+ * Helper to slugify strategy names for filenames
+ */
+function slugify(text) {
+  return text.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+}
+
+/**
+ * Helper to load templates from disk
+ */
+function loadTemplate(type, id) {
+  const filePath = path.join(process.cwd(), 'templates', type, `${id}.json`);
+  if (!fs.existsSync(filePath)) return null;
+  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+}
+
+/**
+ * Assembler: Merges logic, risk, and user settings into a final strategy config
+ */
+function assembleStrategy(name, settings, logicTemplateId, riskTemplateId) {
+  const logic = loadTemplate('logic', logicTemplateId);
+  const risk = loadTemplate('risk', riskTemplateId);
+
+  if (!logic) throw new Error(`Logic template ${logicTemplateId} not found`);
+  if (!risk) throw new Error(`Risk template ${riskTemplateId} not found`);
+
+  // Extract risk-related settings from the root of settings if they exist
+  // This ensures that UI fields like maxTradeSizeUSD actually override the template
+  const riskOverrides = {
+    ...(settings.risk || {}),
+    ...(settings.maxTradeSizeUSD !== undefined && { maxTradeSizeUSD: settings.maxTradeSizeUSD }),
+    ...(settings.maxTradesPerDay !== undefined && { maxTradesPerDay: settings.maxTradesPerDay }),
+  };
+
+  return {
+    ...settings, // Spread all user settings (watchlist, timeframe, etc.)
+    name,
+    logic: logic,
+    risk: {
+      ...risk.settings, // Base risk from template
+      ...riskOverrides   // User overrides (both from settings.risk and root settings)
+    },
+    metadata: {
+      logicTemplateId,
+      riskTemplateId,
+      assembledAt: new Date().toISOString()
+    }
+  };
+}
+
+/**
  * Starts a bot engine process for a specific strategy.
+
  */
 async function startBot(strategyId) {
   const db = getDB();
@@ -61,11 +112,27 @@ async function spawnBot(filePath, strategyId) {
 
   botProcess.on('exit', (code) => {
     console.log(`Bot for strategy ${strategyId} exited with code ${code}`);
-    activeBots.delete(strategyId);
+    activeBots.delete(Number(strategyId));
     getDB().run('UPDATE strategies SET status = ? WHERE id = ?', ['stopped', strategyId]).catch(console.error);
+
+    // Notify frontend via WebSocket that the bot has stopped
+    io.emit('event:update', {
+      strategyId,
+      type: 'status_change',
+      payload: { status: 'stopped' }
+    });
   });
 
-  activeBots.set(strategyId, botProcess);
+  activeBots.set(Number(strategyId), botProcess);
+  await getDB().run('UPDATE strategies SET status = ? WHERE id = ?', ['running', strategyId]);
+
+  // Notify frontend via WebSocket that the bot has started
+  io.emit('event:update', {
+    strategyId,
+    type: 'status_change',
+    payload: { status: 'running' }
+  });
+
   return botProcess;
 }
 
@@ -73,16 +140,91 @@ async function spawnBot(filePath, strategyId) {
  * Stops a running bot process.
  */
 async function stopBot(strategyId) {
-  const botProcess = activeBots.get(strategyId);
+  const botProcess = activeBots.get(Number(strategyId));
   if (botProcess) {
     botProcess.kill('SIGTERM');
-    activeBots.delete(strategyId);
+    activeBots.delete(Number(strategyId));
   }
   const db = getDB();
   await db.run('UPDATE strategies SET status = ? WHERE id = ?', ['stopped', strategyId]);
+
+  // Notify frontend via WebSocket that the bot has stopped
+  io.emit('event:update', {
+    strategyId,
+    type: 'status_change',
+    payload: { status: 'stopped' }
+  });
 }
 
 // ─── API Endpoints ────────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/templates
+ * Returns available logic and risk templates
+ */
+app.get('/api/templates', (req, res) => {
+  try {
+    const logicDir = path.join(process.cwd(), 'templates', 'logic');
+    const riskDir = path.join(process.cwd(), 'templates', 'risk');
+
+    const logicTemplates = fs.existsSync(logicDir)
+      ? fs.readdirSync(logicDir).filter(f => f.endsWith('.json')).map(f => ({ id: f.replace('.json', ''), name: JSON.parse(fs.readFileSync(path.join(logicDir, f), 'utf8')).name }))
+      : [];
+
+    const riskTemplates = fs.existsSync(riskDir)
+      ? fs.readdirSync(riskDir).filter(f => f.endsWith('.json')).map(f => ({ id: f.replace('.json', ''), name: JSON.parse(fs.readFileSync(path.join(riskDir, f), 'utf8')).name }))
+      : [];
+
+    res.json({ logic: logicTemplates, risk: riskTemplates });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/strategies
+ * Creates a new strategy by assembling templates
+ */
+app.post('/api/strategies', async (req, res) => {
+  const { name, logicTemplateId, riskTemplateId, settings } = req.body;
+  if (!name || !logicTemplateId || !riskTemplateId) {
+    return res.status(400).json({ error: 'Name, logicTemplateId, and riskTemplateId are required' });
+  }
+
+  try {
+    const db = getDB();
+
+    // Assemble the full strategy config
+    const finalConfig = assembleStrategy(name, settings || {}, logicTemplateId, riskTemplateId);
+    const configString = JSON.stringify(finalConfig);
+
+    // Insert into database
+    const result = await db.run(
+      'INSERT INTO strategies (name, config) VALUES (?, ?)',
+      [name, configString]
+    );
+
+    const strategyId = result.lastID;
+
+    // Create strategy file for bot_engine
+    const strategiesDir = path.join(process.cwd(), 'strategies');
+    if (!fs.existsSync(strategiesDir)) {
+      fs.mkdirSync(strategiesDir);
+    }
+
+    const fileName = `${slugify(name)}.json`;
+    const filePath = path.join(strategiesDir, fileName);
+    fs.writeFileSync(filePath, JSON.stringify(finalConfig, null, 2));
+
+    res.json({ id: strategyId, name, status: 'stopped' });
+  } catch (err) {
+    if (err.message.includes('UNIQUE constraint failed')) {
+      res.status(400).json({ error: 'Strategy with this name already exists' });
+    } else {
+      res.status(500).json({ error: err.message });
+    }
+  }
+});
 
 /**
  * GET /api/strategies
@@ -91,7 +233,8 @@ async function stopBot(strategyId) {
 app.get('/api/strategies', async (req, res) => {
   try {
     const db = getDB();
-    const strategies = await db.all('SELECT * FROM strategies');
+    const archived = req.query.archived === 'true';
+    const strategies = await db.all('SELECT * FROM strategies WHERE is_archived = ?', [archived ? 1 : 0]);
 
     const strategiesWithStats = await Promise.all(strategies.map(async (s) => {
       const stats = await db.get(`
@@ -141,23 +284,91 @@ app.post('/api/strategies/toggle', async (req, res) => {
 });
 
 /**
+ * POST /api/strategies/archive
+ * Archives a strategy and stops it if it's running.
+ */
+app.post('/api/strategies/archive', async (req, res) => {
+  const { strategyId } = req.body;
+  if (!strategyId) return res.status(400).json({ error: 'strategyId is required' });
+
+  try {
+    await stopBot(strategyId);
+    const db = getDB();
+    await db.run('UPDATE strategies SET is_archived = 1 WHERE id = ?', [strategyId]);
+    res.json({ status: 'archived', strategyId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/strategies/restore
+ * Restores an archived strategy.
+ */
+app.post('/api/strategies/restore', async (req, res) => {
+  const { strategyId } = req.body;
+  if (!strategyId) return res.status(400).json({ error: 'strategyId is required' });
+
+  try {
+    const db = getDB();
+    await db.run('UPDATE strategies SET is_archived = 0 WHERE id = ?', [strategyId]);
+    res.json({ status: 'restored', strategyId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+/**
  * POST /api/strategies/config
  * Updates strategy configuration and restarts the bot if running.
  */
 app.post('/api/strategies/config', async (req, res) => {
-  const { strategyId, config } = req.body;
-  if (!strategyId || !config) return res.status(400).json({ error: 'strategyId and config are required' });
+  const { strategyId, name, logicTemplateId, riskTemplateId, settings } = req.body;
+  if (!strategyId || !logicTemplateId || !riskTemplateId) {
+    return res.status(400).json({ error: 'strategyId, logicTemplateId, and riskTemplateId are required' });
+  }
 
   try {
     const db = getDB();
-    await db.run('UPDATE strategies SET config = ? WHERE id = ?', [JSON.stringify(config), strategyId]);
+    const oldStrategy = await db.get('SELECT name FROM strategies WHERE id = ?', [strategyId]);
+    if (!oldStrategy) throw new Error(`Strategy ${strategyId} not found`);
+
+    // Re-assemble the strategy using templates
+    const finalName = name || oldStrategy.name;
+    const finalConfig = assembleStrategy(finalName, settings || {}, logicTemplateId, riskTemplateId);
+
+    await db.run(
+      'UPDATE strategies SET name = ?, config = ? WHERE id = ?',
+      [finalName, JSON.stringify(finalConfig), strategyId]
+    );
+
+    // Fetch the updated strategy to return it in the response
+    const updatedStrategy = await db.get('SELECT * FROM strategies WHERE id = ?', [strategyId]);
+
+    // Handle file renaming and content update
+    const strategiesDir = path.join(process.cwd(), 'strategies');
+    const oldFileName = `${slugify(oldStrategy.name)}.json`;
+    const newFileName = `${slugify(finalName)}.json`;
+    const oldPath = path.join(strategiesDir, oldFileName);
+    const newPath = path.join(strategiesDir, newFileName);
+
+    if (fs.existsSync(oldPath)) {
+      if (oldPath !== newPath) {
+        fs.renameSync(oldPath, newPath);
+      }
+    } else {
+      console.log(`Warning: Old strategy file not found at ${oldPath}. Creating new one.`);
+    }
+
+    fs.writeFileSync(newPath, JSON.stringify(finalConfig, null, 2));
 
     if (activeBots.has(strategyId)) {
       await stopBot(strategyId);
       await startBot(strategyId);
     }
 
-    res.json({ status: 'updated', strategyId });
+    res.json({ status: 'updated', strategy: updatedStrategy });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -182,6 +393,49 @@ app.get('/api/analytics/leaderboard', async (req, res) => {
       ORDER BY total_profit DESC
     `);
     res.json(leaderboard);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/analytics/summary
+ * Aggregated metrics for the main dashboard.
+ */
+app.get('/api/analytics/summary', async (req, res) => {
+  try {
+    const db = getDB();
+    const summary = await db.get(`
+      SELECT
+        SUM(result) as total_profit,
+        COUNT(*) as total_trades,
+        SUM(CASE WHEN status = 'LIVE' OR status = 'PAPER' THEN 1 ELSE 0 END) as successful_trades
+      FROM trades
+    `);
+
+    const totalProfit = summary.total_profit || 0;
+    const totalTrades = summary.total_trades || 0;
+    const winRate = totalTrades ? ((summary.successful_trades / totalTrades) * 100).toFixed(2) : '0.00';
+
+    // Count active bots from both DB status and active process map
+    const strategies = await db.all('SELECT id, status FROM strategies');
+    const activeBotsCount = strategies.filter(s => {
+      const isProcessActive = activeBots.has(s.id);
+      const isDbRunning = s.status === 'running';
+      return isProcessActive || isDbRunning;
+    }).length;
+
+    console.log(`[Analytics Summary] Total strategies: ${strategies.length}, Active count: ${activeBotsCount}`);
+    console.log(`[Analytics Summary] ActiveBot Map size: ${activeBots.size}`);
+    strategies.forEach(s => {
+      console.log(`[Analytics Summary] Strategy ID ${s.id}: status=${s.status}, inMap=${activeBots.has(s.id)}`);
+    });
+
+    res.json({
+      totalProfit,
+      winRate: winRate + '%',
+      activeBots: `${activeBotsCount} / ${strategies.length}`
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -228,6 +482,33 @@ app.post('/event', (req, res) => {
   res.sendStatus(200);
 });
 
+async function syncStrategies() {
+  try {
+    const db = getDB();
+    const strategiesDir = path.join(process.cwd(), 'strategies');
+
+    if (!fs.existsSync(strategiesDir)) {
+      console.log(`Strategies directory not found: ${strategiesDir}`);
+      return;
+    }
+
+    const files = fs.readdirSync(strategiesDir).filter(f => f.endsWith('.json'));
+
+    for (const file of files) {
+      try {
+        const content = JSON.parse(fs.readFileSync(path.join(strategiesDir, file), 'utf8'));
+        const name = content.strategy?.name || content.name || file.replace('.json', '');
+        await db.run('INSERT OR IGNORE INTO strategies (name) VALUES (?)', [name]);
+      } catch (err) {
+        console.error(`Error syncing strategy file ${file}:`, err.message);
+      }
+    }
+    console.log(`Synced ${files.length} strategies from /strategies folder`);
+  } catch (err) {
+    console.error('Failed to sync strategies:', err.message);
+  }
+}
+
 // ─── Initialization ──────────────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 3000;
@@ -235,6 +516,7 @@ const PORT = process.env.PORT || 3000;
 async function startServer() {
   try {
     await initDB();
+    await syncStrategies();
     httpServer.listen(PORT, () => {
       console.log(`🚀 Orchestrator Server running on http://localhost:${PORT}`);
       console.log(`🔌 WebSocket server enabled`);
