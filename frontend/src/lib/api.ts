@@ -20,6 +20,7 @@ export interface Strategy {
 export interface Template {
   id: string;
   name: string;
+  config: any;
 }
 
 export interface TemplatesResponse {
@@ -27,16 +28,26 @@ export interface TemplatesResponse {
   risk: Template[];
 }
 
+export type TemplateType = 'logic' | 'risk';
+
 export const strategyApi = {
-  getTemplates: () => api.get<TemplatesResponse>('/templates'),
   getStrategies: (archived = false) => api.get<Strategy[]>(`/strategies?archived=${archived}`),
   createStrategy: (data: { name: string; logicTemplateId: string; riskTemplateId: string; settings?: any }) => api.post('/strategies', data),
   toggleStrategy: (strategyId: number) => api.post('/strategies/toggle', { strategyId }),
   updateConfig: (strategyId: number, data: { name?: string; logicTemplateId: string; riskTemplateId: string; settings?: any }) => api.post('/strategies/config', { strategyId, ...data }),
-  archiveStrategy: (id: number) => api.post('/strategies/archive', { id }),
-  restoreStrategy: (id: number) => api.post('/strategies/restore', { id }),
+  archiveStrategy: (id: number) => api.post('/strategies/archive', { strategyId: id }),
+  restoreStrategy: (id: number) => api.post('/strategies/restore', { strategyId: id }),
   deleteStrategyPermanently: (id: number) => api.delete(`/strategies/${id}`),
   getLeaderboard: () => api.get('/analytics/leaderboard'),
   getSummary: () => api.get('/analytics/summary'),
   exportTrades: (strategyId: number) => api.get(`/export/${strategyId}`, { responseType: 'blob' }),
+};
+
+export const templateApi = {
+  getTemplates: () => api.get<TemplatesResponse>('/templates'),
+  getTemplate: (type: TemplateType, id: string) => api.get<Template>(`/templates/${type}/${id}`),
+  createTemplate: (type: TemplateType, data: Partial<Template>) => api.post(`/templates/${type}`, data),
+  updateTemplate: (type: TemplateType, id: string, data: Partial<Template>) => api.put(`/templates/${type}/${id}`, data),
+  deleteTemplate: (type: TemplateType, id: string) => api.delete(`/templates/${type}/${id}`),
+  duplicateTemplate: (type: TemplateType, id: string, newName: string) => api.post(`/templates/${type}/${id}/duplicate`, { newName }),
 };
