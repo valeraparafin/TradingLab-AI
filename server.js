@@ -230,6 +230,92 @@ app.get('/api/templates', async (req, res) => {
 });
 
 /**
+ * GET /api/templates/:type/:id
+ * Returns the content of a specific template
+ */
+app.get('/api/templates/:type/:id', (req, res) => {
+  const { type, id } = req.params;
+  try {
+    const template = loadTemplate(type, id);
+    if (!template) {
+      return res.status(404).json({ error: `Template ${id} of type ${type} not found` });
+    }
+    res.json(template);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/templates/:type
+ * Creates a new template
+ */
+app.post('/api/templates/:type', (req, res) => {
+  const { type } = req.params;
+  const { name, ...content } = req.body;
+
+  if (!name) {
+    return res.status(400).json({ error: 'Template name is required' });
+  }
+
+  try {
+    const id = slugify(name);
+    const dir = path.join(process.cwd(), 'templates', type);
+
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    const filePath = path.join(dir, `${id}.json`);
+    if (fs.existsSync(filePath)) {
+      return res.status(400).json({ error: `Template with id ${id} already exists` });
+    }
+
+    const templateData = { name, ...content };
+    fs.writeFileSync(filePath, JSON.stringify(templateData, null, 2));
+
+    res.json({ id, name, type });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/templates/:type/:id/duplicate
+ * Duplicates an existing template
+ */
+app.post('/api/templates/:type/:id/duplicate', (req, res) => {
+  const { type, id } = req.params;
+  const { name } = req.body;
+
+  if (!name) {
+    return res.status(400).json({ error: 'New template name is required' });
+  }
+
+  try {
+    const original = loadTemplate(type, id);
+    if (!original) {
+      return res.status(404).json({ error: `Original template ${id} not found` });
+    }
+
+    const newId = slugify(name);
+    const dir = path.join(process.cwd(), 'templates', type);
+    const newFilePath = path.join(dir, `${newId}.json`);
+
+    if (fs.existsSync(newFilePath)) {
+      return res.status(400).json({ error: `Template with id ${newId} already exists` });
+    }
+
+    const newTemplateData = { ...original, name };
+    fs.writeFileSync(newFilePath, JSON.stringify(newTemplateData, null, 2));
+
+    res.json({ id: newId, name, type });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
  * POST /api/strategies
  * Creates a new strategy by assembling templates
  */
@@ -491,16 +577,17 @@ app.get('/api/analytics/summary', async (req, res) => {
       SELECT
         SUM(result) as total_profit,
         COUNT(*) as total_trades,
-        SUM(CASE WHEN status = 'LIVE' OR status = 'PAPER' THEN 1 ELSE 0 END) as successful_trades
+        SUM(CASE WHEN result > 0 THEN 1 ELSE 0 END) as successful_trades
       FROM trades
+      WHERE status != 'BLOCKED'
     `);
 
     const totalProfit = summary.total_profit || 0;
     const totalTrades = summary.total_trades || 0;
     const winRate = totalTrades ? ((summary.successful_trades / totalTrades) * 100).toFixed(2) : '0.00';
 
-    // Count active bots from both DB status and active process map
-    const strategies = await db.all('SELECT id, status FROM strategies');
+    // Count active bots from both DB status and active process map (only non-archived)
+    const strategies = await db.all('SELECT id, status FROM strategies WHERE is_archived = 0');
     const activeBotsCount = strategies.filter(s => {
       const isProcessActive = activeBots.has(s.id);
       const isDbRunning = s.status === 'running';
