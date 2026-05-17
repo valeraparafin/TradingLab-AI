@@ -30,6 +30,40 @@ function slugify(text) {
 }
 
 /**
+ * Helper to check if a template is locked (used by a running strategy)
+ */
+async function checkTemplateLock(type, id) {
+  const db = getDB();
+  // We need to find strategies that use this template.
+  // Since templates are stored in the 'config' JSON, we have to search the JSON.
+  // However, in assembleStrategy, we store them in metadata.
+  // We'll search for strategies where config contains the template ID in metadata.
+
+  const strategies = await db.all(
+    `SELECT id, name, status, config FROM strategies WHERE config LIKE ?`,
+    [`%${id}%`]
+  );
+
+  const usedBy = [];
+  let isLocked = false;
+
+  for (const s of strategies) {
+    const config = JSON.parse(s.config);
+    const templateId = type === 'logic' ? config.metadata?.logicTemplateId : config.metadata?.riskTemplateId;
+
+    if (templateId === id) {
+      const isRunning = activeBots.has(s.id) || s.status === 'running';
+      if (isRunning) {
+        isLocked = true;
+        usedBy.push({ id: s.id, name: s.name });
+      }
+    }
+  }
+
+  return { isLocked, usedBy };
+}
+
+/**
  * Helper to load templates from disk
  */
 function loadTemplate(type, id) {
@@ -162,18 +196,32 @@ async function stopBot(strategyId) {
  * GET /api/templates
  * Returns available logic and risk templates
  */
-app.get('/api/templates', (req, res) => {
+app.get('/api/templates', async (req, res) => {
   try {
     const logicDir = path.join(process.cwd(), 'templates', 'logic');
     const riskDir = path.join(process.cwd(), 'templates', 'risk');
 
-    const logicTemplates = fs.existsSync(logicDir)
-      ? fs.readdirSync(logicDir).filter(f => f.endsWith('.json')).map(f => ({ id: f.replace('.json', ''), name: JSON.parse(fs.readFileSync(path.join(logicDir, f), 'utf8')).name }))
+    const logicFiles = fs.existsSync(logicDir)
+      ? fs.readdirSync(logicDir).filter(f => f.endsWith('.json'))
       : [];
 
-    const riskTemplates = fs.existsSync(riskDir)
-      ? fs.readdirSync(riskDir).filter(f => f.endsWith('.json')).map(f => ({ id: f.replace('.json', ''), name: JSON.parse(fs.readFileSync(path.join(riskDir, f), 'utf8')).name }))
+    const riskFiles = fs.existsSync(riskDir)
+      ? fs.readdirSync(riskDir).filter(f => f.endsWith('.json'))
       : [];
+
+    const logicTemplates = await Promise.all(logicFiles.map(async (f) => {
+      const id = f.replace('.json', '');
+      const content = JSON.parse(fs.readFileSync(path.join(logicDir, f), 'utf8'));
+      const lock = await checkTemplateLock('logic', id);
+      return { id, name: content.name, ...lock };
+    }));
+
+    const riskTemplates = await Promise.all(riskFiles.map(async (f) => {
+      const id = f.replace('.json', '');
+      const content = JSON.parse(fs.readFileSync(path.join(riskDir, f), 'utf8'));
+      const lock = await checkTemplateLock('risk', id);
+      return { id, name: content.name, ...lock };
+    }));
 
     res.json({ logic: logicTemplates, risk: riskTemplates });
   } catch (err) {
