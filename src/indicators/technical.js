@@ -1,4 +1,4 @@
-const Technicals = {
+export const Technicals = {
   calcStdDev(values, period) {
     if (values.length < period) return null;
     const slice = values.slice(-period);
@@ -46,4 +46,3 @@ const Technicals = {
   },
 };
 
-module.exports = Technicals;
