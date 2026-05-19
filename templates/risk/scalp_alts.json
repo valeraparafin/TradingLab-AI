@@ -1,0 +1,11 @@
+{
+  "id": "scalp_alts",
+  "name": "Scalping Alts",
+  "settings": {
+    "riskPerTradePercent": 0.25,
+    "maxTradeSizeUSD": 200,
+    "stopLossPercent": 1.0,
+    "takeProfitPercent": 2.5,
+    "maxTradesPerDay": 100
+  }
+}
