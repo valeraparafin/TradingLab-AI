@@ -25,7 +25,6 @@ function checkOnboarding() {
         "BITGET_PASSPHRASE=",
         "",
         "# Trading config",
-        "PORTFOLIO_VALUE_USD=1000",
         "MAX_TRADE_SIZE_USD=100",
         "MAX_TRADES_PER_DAY=3",
         "PAPER_TRADING=true",
@@ -52,7 +51,6 @@ function checkOnboarding() {
 const CONFIG = {
   symbol: process.env.SYMBOL || "BTCUSDT",
   timeframe: process.env.TIMEFRAME || "4H",
-  portfolioValue: parseFloat(process.env.PORTFOLIO_VALUE_USD || "1000"),
   maxTradeSizeUSD: parseFloat(process.env.MAX_TRADE_SIZE_USD || "100"),
   maxTradesPerDay: parseInt(process.env.MAX_TRADES_PER_DAY || "3"),
   paperTrading: process.env.PAPER_TRADING !== "false",
@@ -191,8 +189,6 @@ function checkTradeLimits(log) {
     return false;
   }
   console.log(`✅ Trades today: ${todayCount}/${CONFIG.maxTradesPerDay} — within limit`);
-  const tradeSize = Math.min(CONFIG.portfolioValue * 0.01, CONFIG.maxTradeSizeUSD);
-  console.log(`✅ Trade size: $${tradeSize.toFixed(2)} — within max $${CONFIG.maxTradeSizeUSD}`);
   return true;
 }
 
@@ -302,7 +298,8 @@ async function run() {
   }
 
   const { results, allPass } = runSafetyCheck(price, open, channel, rules);
-  const tradeSize = Math.min(CONFIG.portfolioValue * 0.01, CONFIG.maxTradeSizeUSD);
+  // Trade size is now handled by bot_engine.js via strategy configuration
+  const tradeSize = 0; // Placeholder for logEntry, bot_engine handles actual size
 
   console.log("\n── Decision ─────────────────────────────────────────────\n");
   const logEntry = {
