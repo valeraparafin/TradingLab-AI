@@ -8,6 +8,7 @@ import "dotenv/config";
   import { IndicatorManager } from "./src/indicators/index.js";
   import { SafetyValidator } from "./src/validators/index.js";
   import { BitGetService } from "./src/services/exchange/bitget.js";
+  import { PrecisionManager } from "./src/utils/precision.js";
 
   // ─── Config ────────────────────────────────────────────────────────────────
 
@@ -42,6 +43,8 @@ import "dotenv/config";
     "Notes",
   ].join(",");
 
+  const precisionManager = new PrecisionManager();
+
   // ─── Logging & Utils ──────────────────────────────────────────────────────────
 
   async function logEvent(strategyId, type, payload) {
@@ -70,7 +73,7 @@ import "dotenv/config";
   async function recordTrade(strategyId, tradeData) {
     const db = getDB();
     await db.run(
-      "INSERT INTO trades (strategy_id, symbol, side, price, size_usd, status, notes) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO trades (strategy_id, symbol, side, price, size_usd, status, result, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
       [
         strategyId,
         tradeData.symbol,
@@ -78,6 +81,7 @@ import "dotenv/config";
         tradeData.price,
         tradeData.tradeSize,
         tradeData.status,
+        tradeData.result || 0,
         tradeData.notes,
       ],
     );
@@ -224,9 +228,9 @@ import "dotenv/config";
 
             const activePosition = await checkActivePosition(strategyId, symbol);
             if (activePosition) {
-              const msg = `ℹ️  Active position found: ${activePosition.side} at $${activePosition.entry_price.toFixed(2)}`;
+              const msg = `ℹ️  Active position found: ${activePosition.side} at $${await precisionManager.format(activePosition.entry_price, symbol)}`;
               console.log(`\n${msg}`);
-              console.log(`   Monitoring for exit (SL: $${activePosition.stop_loss || "N/A"}, TP: $${activePosition.take_profit || "N/A"})...`);
+              console.log(`   Monitoring for exit (SL: $${activePosition.stop_loss ? await precisionManager.format(activePosition.stop_loss, symbol) : "N/A"}, TP: $${activePosition.take_profit ? await precisionManager.format(activePosition.take_profit, symbol) : "N/A"})...`);
 
               let exitTriggered = false;
               let exitType = "";
@@ -251,7 +255,7 @@ import "dotenv/config";
               }
 
               if (exitTriggered) {
-                console.log(`\n🚨 EXIT TRIGGERED: ${exitType} hit at $${price.toFixed(2)}`);
+                console.log(`\n🚨 EXIT TRIGGERED: ${exitType} hit at $${await precisionManager.format(price, symbol)}`);
 
                 // 1. Update position status to CLOSED
                 await updateActivePosition(strategyId, {
@@ -272,11 +276,13 @@ import "dotenv/config";
                   tradeSize: activePosition.size_usd,
                   side: exitSide,
                   status: "CLOSED",
-                  notes: `Closed via ${exitType}. PnL: $${pnl.toFixed(2)}`,
+                  result: pnl,
+                  notes: `Closed via ${exitType}. PnL: $${await precisionManager.format(pnl, "USDT")}`,
                 });
 
-                await logEventSimple(strategyId, "TRADE", `Position closed via ${exitType} at $${price.toFixed(2)}. PnL: $${pnl.toFixed(2)}`);
-                console.log(`✅ Position closed. PnL: $${pnl.toFixed(2)}`);
+
+                await logEventSimple(strategyId, "TRADE", `Position closed via ${exitType} at $${await precisionManager.format(price, symbol)}. PnL: $${await precisionManager.format(pnl, "USDT")}`);
+                console.log(`✅ Position closed. PnL: $${await precisionManager.format(pnl, "USDT")}`);
               } else {
                 await logEvent(strategyId, "position_active", {
                   symbol,
@@ -293,7 +299,7 @@ import "dotenv/config";
                 });
               }
             } else {
-              console.log(`\n── Market Data: Current price: $${price.toFixed(2)} ───────────────────\n`);
+              console.log(`\n── Market Data: Current price: $${await precisionManager.format(price, symbol)} ───────────────────\n`);
 
               // 1. Calculate Indicators using Modular Manager
               const logicType = strategyConfig.logic?.type ||
