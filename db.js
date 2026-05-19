@@ -93,13 +93,13 @@ export async function createStatsView() {
         SELECT
             strategy_id,
             SUM(result) as netPnL,
-            (COUNT(CASE WHEN result > 0 THEN 1 END) * 100.0 / NULLIF(COUNT(CASE WHEN status != 'BLOCKED' THEN 1 END), 0)) as winRate,
-            SUM(CASE WHEN result > 0 THEN result ELSE 0 END) / ABS(NULLIF(SUM(CASE WHEN result < 0 THEN result ELSE 0 END), 0)) as profitFactor,
-            COUNT(CASE WHEN status != 'BLOCKED' THEN 1 END) as totalTrades,
+            (COUNT(CASE WHEN status = 'CLOSED' AND result > 0 THEN 1 END) * 100.0 / NULLIF(COUNT(CASE WHEN status = 'CLOSED' THEN 1 END), 0)) as winRate,
+            SUM(CASE WHEN status = 'CLOSED' AND result > 0 THEN result ELSE 0 END) / ABS(NULLIF(SUM(CASE WHEN status = 'CLOSED' AND result < 0 THEN result ELSE 0 END), 0)) as profitFactor,
+            COUNT(CASE WHEN status = 'CLOSED' THEN 1 END) as totalTrades,
             COUNT(*) as totalOrders,
-            COUNT(CASE WHEN result > 0 THEN 1 END) as successfulTrades,
-            COUNT(CASE WHEN result < 0 THEN 1 END) as failedTrades,
-            AVG(CASE WHEN status != 'BLOCKED' THEN result END) as avgTradeProfit
+            COUNT(CASE WHEN status = 'CLOSED' AND result > 0 THEN 1 END) as successfulTrades,
+            COUNT(CASE WHEN status = 'CLOSED' AND result < 0 THEN 1 END) as failedTrades,
+            AVG(CASE WHEN status = 'CLOSED' THEN result END) as avgTradeProfit
         FROM trades
         GROUP BY strategy_id
     `);
