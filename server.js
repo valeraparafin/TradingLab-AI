@@ -113,13 +113,6 @@ class TemplateService {
 const templateService = new TemplateService();
 
 /**
- * Helper to slugify strategy names for filenames
- */
-function slugify(text) {
-  return text.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-}
-
-/**
  * Helper to check if a template is locked (used by a running strategy)
  */
 async function checkTemplateLock(type, id) {
@@ -166,14 +159,11 @@ async function assembleStrategy(name, settings, logicTemplateId, riskTemplateId)
 
   // Calculate Risk Overrides
   const riskSettings = risk.settings || risk.content?.settings || risk;
-  const riskOverrides = {};
 
-  // Log for debugging
-  console.log(`[Assemble] Strategy: ${name}, RiskTemplate: ${riskTemplateId}`);
-  console.log(`[Assemble] Template Settings:`, riskSettings);
-  console.log(`[Assemble] User Settings:`, settings);
+  // Start with existing overrides if they exist in settings
+  const riskOverrides = { ...(settings.riskOverrides || {}) };
 
-  // Extract desired risk values from settings
+  // Extract desired risk values from settings (top-level or inside .risk)
   const desiredRisk = {
     ...(settings.risk || {}),
     ...settings
@@ -181,8 +171,13 @@ async function assembleStrategy(name, settings, logicTemplateId, riskTemplateId)
 
   for (const [key, value] of Object.entries(desiredRisk)) {
     if (riskSettings[key] !== undefined) {
-      if (value !== undefined && value !== riskSettings[key]) {
-        riskOverrides[key] = value;
+      if (value !== undefined) {
+        if (value !== riskSettings[key]) {
+          riskOverrides[key] = value;
+        } else {
+          // If it now matches the template, remove the override
+          delete riskOverrides[key];
+        }
       }
     }
   }
@@ -233,17 +228,11 @@ async function startBot(strategyId) {
   const strategy = await db.get('SELECT * FROM strategies WHERE id = ?', [strategyId]);
   if (!strategy) throw new Error(`Strategy ${strategyId} not found`);
 
-  const strategyFilePath = path.join(process.cwd(), 'strategies', `${slugify(strategy.name)}.json`);
-
-  if (fs.existsSync(strategyFilePath)) {
-    return spawnBot(strategyFilePath, strategyId);
-  }
-
-  throw new Error(`Strategy file not found for ${strategy.name} at ${strategyFilePath}`);
+  return spawnBot(strategyId);
 }
 
-async function spawnBot(filePath, strategyId) {
-  const botProcess = spawn('node', ['bot_engine.js', filePath], {
+async function spawnBot(strategyId) {
+  const botProcess = spawn('node', ['bot_engine.js'], {
     stdio: 'inherit',
     env: { ...process.env, STRATEGY_ID: strategyId }
   });
@@ -494,16 +483,6 @@ app.post('/api/strategies', async (req, res) => {
 
     const strategyId = result.lastID;
 
-    // Create strategy file for bot_engine
-    const strategiesDir = path.join(process.cwd(), 'strategies');
-    if (!fs.existsSync(strategiesDir)) {
-      fs.mkdirSync(strategiesDir);
-    }
-
-    const fileName = `${slugify(name)}.json`;
-    const filePath = path.join(strategiesDir, fileName);
-    fs.writeFileSync(filePath, JSON.stringify(finalConfig, null, 2));
-
     res.json({ id: strategyId, name, status: 'stopped' });
   } catch (err) {
     if (err.message.includes('UNIQUE constraint failed')) {
@@ -525,21 +504,15 @@ app.get('/api/strategies', async (req, res) => {
     const strategies = await db.all('SELECT * FROM strategies WHERE is_archived = ?', [archived ? 1 : 0]);
 
     const strategiesWithStats = await Promise.all(strategies.map(async (s) => {
-      const stats = await db.get(`
-        SELECT
-          COUNT(*) as total_trades,
-          SUM(CASE WHEN status = 'LIVE' OR status = 'PAPER' THEN 1 ELSE 0 END) as successful_trades,
-          SUM(result) as total_profit
-        FROM trades
-        WHERE strategy_id = ?`, [s.id]);
+      const stats = await db.get('SELECT * FROM strategy_stats WHERE strategy_id = ?', [s.id]);
 
       return {
         ...s,
         running: activeBots.has(s.id) || s.status === 'running',
         stats: {
-          totalTrades: stats.total_trades || 0,
-          winRate: stats.total_trades ? ((stats.successful_trades / stats.total_trades) * 100).toFixed(2) + '%' : '0%',
-          totalProfit: stats.total_profit || 0
+          totalTrades: stats?.totalTrades || 0,
+          winRate: stats?.winRate ? `${stats.winRate.toFixed(2)}%` : '0%',
+          totalProfit: stats?.netPnL || 0
         }
       };
     }));
@@ -627,19 +600,43 @@ app.delete('/api/strategies/:id', async (req, res) => {
     // 1. Delete from DB (CASCADE handles trades, events, positions)
     await db.run('DELETE FROM strategies WHERE id = ?', [strategyId]);
 
-    // 2. Delete the config file
-    const fileName = `${slugify(strategy.name)}.json`;
-    const filePath = path.join(process.cwd(), 'strategies', fileName);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
-
     res.json({ status: 'permanently_deleted', strategyId: Number(strategyId) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
+
+/**
+ * GET /api/strategies/config/:id
+ * Returns the combined configuration for a strategy (assembled from templates and overrides).
+ */
+app.get('/api/strategies/config/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const db = getDB();
+    const strategy = await db.get('SELECT * FROM strategies WHERE id = ?', [id]);
+
+    if (!strategy) {
+      return res.status(404).json({ error: `Strategy ${id} not found` });
+    }
+
+    const config = JSON.parse(strategy.config);
+
+    // Use assembleStrategy to regenerate the combined config.
+    // This ensures the response is consistent with what the bot_engine actually sees.
+    const assembled = await assembleStrategy(
+      strategy.name,
+      config, // passing the existing config as the settings object
+      config.metadata?.logicTemplateId || config.logicTemplateId,
+      config.metadata?.riskTemplateId || config.riskTemplateId
+    );
+
+    res.json(assembled);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 /**
  * POST /api/strategies/config
@@ -677,6 +674,13 @@ app.post('/api/strategies/config', async (req, res) => {
       ...settings
     };
 
+    // CRITICAL: Remove existing metadata and assembled overrides to prevent them from being treated as settings
+    // during re-assembly, and prevent duplicate metadata entries.
+    delete mergedSettings.metadata;
+    delete mergedSettings.riskOverrides;
+    delete mergedSettings.logicOverrides;
+
+
     // Re-assemble the strategy using templates and merged settings
     const finalName = name || oldStrategy.name;
     const finalConfig = await assembleStrategy(finalName, mergedSettings, finalLogicTemplateId, finalRiskTemplateId);
@@ -688,23 +692,6 @@ app.post('/api/strategies/config', async (req, res) => {
 
     // Fetch the updated strategy to return it in the response
     const updatedStrategy = await db.get('SELECT * FROM strategies WHERE id = ?', [strategyId]);
-
-    // Handle file renaming and content update
-    const strategiesDir = path.join(process.cwd(), 'strategies');
-    const oldFileName = `${slugify(oldStrategy.name)}.json`;
-    const newFileName = `${slugify(finalName)}.json`;
-    const oldPath = path.join(strategiesDir, oldFileName);
-    const newPath = path.join(strategiesDir, newFileName);
-
-    if (fs.existsSync(oldPath)) {
-      if (oldPath !== newPath) {
-        fs.renameSync(oldPath, newPath);
-      }
-    } else {
-      console.log(`Warning: Old strategy file not found at ${oldPath}. Creating new one.`);
-    }
-
-    fs.writeFileSync(newPath, JSON.stringify(finalConfig, null, 2));
 
     if (activeBots.has(Number(strategyId))) {
       await stopBot(strategyId);
@@ -824,8 +811,8 @@ app.get('/api/analytics/leaderboard', async (req, res) => {
     const leaderboard = await db.all(`
       SELECT
         s.name,
-        COUNT(t.id) as total_trades,
-        AVG(CASE WHEN t.status IN ('LIVE', 'PAPER') THEN 1 ELSE 0 END) * 100 as win_rate,
+        COUNT(CASE WHEN t.status = 'CLOSED' THEN 1 END) as total_trades,
+        (COUNT(CASE WHEN t.status = 'CLOSED' AND t.result > 0 THEN 1 END) * 100.0 / NULLIF(COUNT(CASE WHEN t.status = 'CLOSED' THEN 1 END), 0)) as win_rate,
         SUM(t.result) as total_profit
       FROM strategies s
       LEFT JOIN trades t ON s.id = t.strategy_id
@@ -848,10 +835,9 @@ app.get('/api/analytics/summary', async (req, res) => {
     const summary = await db.get(`
       SELECT
         SUM(result) as total_profit,
-        COUNT(*) as total_trades,
-        SUM(CASE WHEN result > 0 THEN 1 ELSE 0 END) as successful_trades
+        COUNT(CASE WHEN status = 'CLOSED' THEN 1 END) as total_trades,
+        COUNT(CASE WHEN status = 'CLOSED' AND result > 0 THEN 1 END) as successful_trades
       FROM trades
-      WHERE status != 'BLOCKED'
     `);
 
     const totalProfit = summary.total_profit || 0;
@@ -931,30 +917,9 @@ app.post('/event', async (req, res) => {
 });
 
 async function syncStrategies() {
-  try {
-    const db = getDB();
-    const strategiesDir = path.join(process.cwd(), 'strategies');
-
-    if (!fs.existsSync(strategiesDir)) {
-      console.log(`Strategies directory not found: ${strategiesDir}`);
-      return;
-    }
-
-    const files = fs.readdirSync(strategiesDir).filter(f => f.endsWith('.json'));
-
-    for (const file of files) {
-      try {
-        const content = JSON.parse(fs.readFileSync(path.join(strategiesDir, file), 'utf8'));
-        const name = content.strategy?.name || content.name || file.replace('.json', '');
-        await db.run('INSERT OR IGNORE INTO strategies (name) VALUES (?)', [name]);
-      } catch (err) {
-        console.error(`Error syncing strategy file ${file}:`, err.message);
-      }
-    }
-    console.log(`Synced ${files.length} strategies from /strategies folder`);
-  } catch (err) {
-    console.error('Failed to sync strategies:', err.message);
-  }
+  // This function is now a legacy stub.
+  // Strategies are managed via API and DB, not via the /strategies folder.
+  console.log(`[Sync] Strategy synchronization from filesystem is disabled (SSOT mode).`);
 }
 
 // ─── Initialization ──────────────────────────────────────────────────────────────

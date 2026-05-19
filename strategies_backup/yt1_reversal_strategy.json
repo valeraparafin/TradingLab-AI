@@ -1,0 +1,23 @@
+{
+  "timeframe": "15m",
+  "watchlist": [
+    "BTCUSDT"
+  ],
+  "paperTrading": true,
+  "tradeMode": "spot",
+  "maxTradeSizeUSD": 100,
+  "maxTradesPerDay": 1000,
+  "name": "YT1 Reversal Strategy",
+  "metadata": {
+    "logicTemplateId": "yt1_reversal",
+    "riskTemplateId": "yt1_reversal",
+    "assembledAt": "2026-05-17T20:19:02.410Z"
+  },
+  "riskTemplateId": "yt1_reversal",
+  "logicTemplateId": "yt1_reversal",
+  "riskOverrides": {
+    "maxTradeSizeUSD": 100,
+    "maxTradesPerDay": 1000
+  },
+  "logicOverrides": {}
+}

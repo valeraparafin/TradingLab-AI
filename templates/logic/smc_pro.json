@@ -1,0 +1,11 @@
+{
+  "name": "SMC Professional Scalping",
+  "type": "SMC",
+  "indicators": {
+    "pivot_length": 20
+  },
+  "safety_checks": [
+    { "id": "trend_filter", "description": "Price must follow the Market Structure (BOS)" },
+    { "id": "ob_entry", "description": "Price must be inside a valid Order Block" }
+  ]
+}

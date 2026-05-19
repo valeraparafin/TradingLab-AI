@@ -1,0 +1,11 @@
+{
+  "name": "VMC Cipher B (Internet Momentum)",
+  "type": "VMC_CipherB",
+  "indicators": {
+    "channel_length": 20,
+    "average_length": 9
+  },
+  "safety_checks": [
+    { "id": "momentum_shift", "description": "WaveTrend crossover in extreme zones" }
+  ]
+}

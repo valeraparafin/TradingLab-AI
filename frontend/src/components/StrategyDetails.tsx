@@ -1,12 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { strategyApi, type Strategy } from '../lib/api';
-import { Card, CardHeader, CardTitle, CardContent, Badge, Button, Separator, Tabs, TabsList, TabsTrigger, TabsContent, ToggleGroup, ToggleGroupItem, ResizablePanelGroup, ResizablePanel, ResizableHandle, Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, Slider } from './ui/components';
+import { Card, CardHeader, CardTitle, CardContent, Badge, Button, Separator, Tabs, TabsList, TabsTrigger, TabsContent, ToggleGroup, ToggleGroupItem, ResizablePanelGroup, ResizablePanel, ResizableHandle, Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, Slider, Popover, PopoverTrigger, PopoverContent, Checkbox } from './ui/components';
+import { StrategyTerminal } from './StrategyTerminal';
 import { templateApi } from '../lib/api';
 import { Input, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/components';
+import { StrategyConfigForm } from './StrategyConfigForm';
 import { cn } from '../lib/utils';
-import { ArrowLeft, Play, Square, Settings, ArrowUp, ArrowDown } from 'lucide-react';
+import { ArrowLeft, Play, Square, Settings, ArrowUp, ArrowDown, Clock } from 'lucide-react';
 import { toast } from 'sonner';
+import { io } from 'socket.io-client';
 
 interface StrategyStats {
   netPnL: number;
@@ -46,9 +49,6 @@ export const StrategyDetails = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // Settings state
-  const [configName, setConfigName] = useState('');
-  const [logicTemplateId, setLogicTemplateId] = useState('');
-  const [riskTemplateId, setRiskTemplateId] = useState('');
   const [templates, setTemplates] = useState<{ logic: any[]; risk: any[] }>({ logic: [], risk: [] });
   const [settingsTriggerMode, setSettingsTriggerMode] = useState<'Adaptive' | 'Manual'>('Adaptive');
   const [settingsInterval, setSettingsInterval] = useState(60);
@@ -80,11 +80,8 @@ export const StrategyDetails = () => {
           setIntervalValue(config.interval || 60);
 
           // Initialize settings state
-          setConfigName(s.name);
           setSettingsTriggerMode(config.triggerMode || 'Adaptive');
           setSettingsInterval(config.interval || 60);
-          setLogicTemplateId(config.metadata?.logicTemplateId || '');
-          setRiskTemplateId(config.metadata?.riskTemplateId || '');
         } catch (e) {
           console.error('Error parsing strategy config', e);
         }
@@ -106,12 +103,10 @@ export const StrategyDetails = () => {
   }, [strategyId]);
 
   useEffect(() => {
-    // Subscribe to real-time updates via WebSocket
-    const socket = new WebSocket(`ws://${window.location.hostname}:3000`);
+    // Subscribe to real-time updates via Socket.io
+    const socket = io('http://localhost:3000');
 
-    socket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-
+    socket.on('event:update', (data) => {
       // Only process updates for the current strategy
       if (data.strategyId !== strategyId) return;
 
@@ -140,9 +135,11 @@ export const StrategyDetails = () => {
           }
         });
       }
-    };
+    });
 
-    return () => socket.close();
+    return () => {
+      socket.disconnect();
+    };
   }, [strategyId]);
 
   const handleToggle = async () => {
@@ -176,25 +173,17 @@ export const StrategyDetails = () => {
     }
   };
 
-  const handleSaveSettings = async () => {
+  const handleSaveSettings = async (data: any) => {
     if (!strategy) return;
     if (!window.confirm('Are you sure you want to save these changes and restart the strategy?')) return;
 
     try {
-      await strategyApi.updateConfig(strategyId, {
-        name: configName,
-        logicTemplateId,
-        riskTemplateId,
-        settings: {
-          triggerMode: settingsTriggerMode,
-          interval: settingsInterval
-        }
-      });
+      await strategyApi.updateConfig(strategyId, data);
 
       // Update local state
-      setStrategy(prev => prev ? { ...prev, name: configName } : null);
-      setTriggerMode(settingsTriggerMode);
-      setIntervalValue(settingsInterval);
+      setStrategy(prev => prev ? { ...prev, name: data.name } : null);
+      setTriggerMode(data.settings.triggerMode);
+      setIntervalValue(data.settings.interval);
 
       setIsSettingsOpen(false);
       toast.success('Settings saved and strategy restarted successfully.');
@@ -241,16 +230,48 @@ export const StrategyDetails = () => {
         </div>
 
         <div className="flex items-center gap-3">
-          <ToggleGroup
-            value={triggerMode}
-            onValueChange={(val) => {
-              setTriggerMode(val as 'Adaptive' | 'Manual');
-              handleUpdateConfig({ settings: { triggerMode: val } });
-            }}
-          >
-            <ToggleGroupItem value="Adaptive">Adaptive</ToggleGroupItem>
-            <ToggleGroupItem value="Manual">Manual</ToggleGroupItem>
-          </ToggleGroup>
+          <Popover>
+            <PopoverTrigger className="h-8 px-3 flex items-center gap-2 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors">
+              <Clock className="h-3 w-3 text-muted-foreground" />
+              <span>{triggerMode} {triggerMode === 'Manual' ? `(${interval}s)` : ''}</span>
+            </PopoverTrigger>
+            <PopoverContent className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-muted-foreground">Trigger Mode</label>
+                <ToggleGroup
+                  value={triggerMode}
+                  onValueChange={(val) => {
+                    const mode = val as 'Adaptive' | 'Manual';
+                    setTriggerMode(mode);
+                    handleUpdateConfig({ settings: { triggerMode: mode } });
+                  }}
+                >
+                  <ToggleGroupItem value="Adaptive">Adaptive</ToggleGroupItem>
+                  <ToggleGroupItem value="Manual">Manual</ToggleGroupItem>
+                </ToggleGroup>
+              </div>
+
+              {triggerMode === 'Manual' && (
+                <div className="space-y-2">
+                  <div className="flex justify-between text-xs font-medium text-muted-foreground">
+                    <label>Check Interval</label>
+                    <span>{interval}s</span>
+                  </div>
+                  <Slider
+                    min={10}
+                    max={3600}
+                    step={10}
+                    value={interval}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value);
+                      setIntervalValue(val);
+                      handleUpdateConfig({ settings: { interval: val } });
+                    }}
+                  />
+                </div>
+              )}
+            </PopoverContent>
+          </Popover>
 
           <Button
             onClick={handleToggle}
@@ -287,98 +308,12 @@ export const StrategyDetails = () => {
             <SheetDescription>Configure runtime behavior and logic templates.</SheetDescription>
           </SheetHeader>
 
-          <Tabs defaultValue="runtime">
-            <TabsList className="mb-4">
-              <TabsTrigger value="runtime">Runtime</TabsTrigger>
-              <TabsTrigger value="configuration">Configuration</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="runtime" className="space-y-6">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Trigger Mode</label>
-                <ToggleGroup
-                  value={settingsTriggerMode}
-                  onValueChange={(val) => setSettingsTriggerMode(val as 'Adaptive' | 'Manual')}
-                >
-                  <ToggleGroupItem value="Adaptive">Adaptive</ToggleGroupItem>
-                  <ToggleGroupItem value="Manual">Manual</ToggleGroupItem>
-                </ToggleGroup>
-              </div>
-
-              {settingsTriggerMode === 'Manual' && (
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm font-medium">
-                    <label>Check Interval</label>
-                    <span>{settingsInterval}s</span>
-                  </div>
-                  <Slider
-                    min={10}
-                    max={3600}
-                    step={10}
-                    value={settingsInterval}
-                    onChange={(e) => setSettingsInterval(parseInt(e.target.value))}
-                  />
-                </div>
-              )}
-
-              <Button onClick={handleUpdateRuntime} className="w-full">
-                Update Runtime
-              </Button>
-            </TabsContent>
-
-            <TabsContent value="configuration" className="space-y-6">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Strategy Name</label>
-                <Input
-                  value={configName}
-                  onChange={(e) => setConfigName(e.target.value)}
-                  placeholder="Enter strategy name"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Logic Template</label>
-                <Select
-                  value={logicTemplateId}
-                  onValueChange={setLogicTemplateId}
-                >
-                  <SelectTrigger>
-                    <SelectValue value={templates.logic.find(t => t.id === logicTemplateId)?.name || 'Select Logic Template'} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {templates.logic.map(t => (
-                      <SelectItem key={t.id} value={t.id} onClick={() => setLogicTemplateId(t.id)}>
-                        {t.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Risk Template</label>
-                <Select
-                  value={riskTemplateId}
-                  onValueChange={setRiskTemplateId}
-                >
-                  <SelectTrigger>
-                    <SelectValue value={templates.risk.find(t => t.id === riskTemplateId)?.name || 'Select Risk Template'} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {templates.risk.map(t => (
-                      <SelectItem key={t.id} value={t.id} onClick={() => setRiskTemplateId(t.id)}>
-                        {t.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <Button variant="primary" onClick={handleSaveSettings} className="w-full">
-                Save & Restart
-              </Button>
-            </TabsContent>
-          </Tabs>
+          <StrategyConfigForm
+            strategy={strategy}
+            templates={templates}
+            onSave={handleSaveSettings}
+            saveButtonText="Save & Restart"
+          />
         </SheetContent>
       </Sheet>
 
@@ -471,7 +406,7 @@ const StatCard = ({ label, value, trend, className }: { label: string; value: st
   <Card className="overflow-hidden border-none bg-muted/30">
     <CardContent className="p-3 flex flex-col justify-center">
       <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-1">{label}</p>
-      <div className="flex items-center gap-2">
+      <div className="flex items-end gap-2">
         <span className={cn("text-lg font-bold leading-none", className)}>{value}</span>
         {trend && (
           <div className={cn("flex items-center", trend === 'up' ? "text-emerald-500" : "text-rose-500")}>

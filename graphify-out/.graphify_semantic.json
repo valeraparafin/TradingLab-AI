@@ -1,0 +1,500 @@
+{
+  "nodes": [
+    {
+      "author": null,
+      "captured_at": null,
+      "contributor": null,
+      "file_type": "document",
+      "id": "2026-05-16-trading-lab-dashboard-design",
+      "label": "Trading Lab Dashboard Design Spec",
+      "source_file": "docs/superpowers/specs/2026-05-16-trading-lab-dashboard-design.md",
+      "source_location": null,
+      "source_url": null
+    },
+    {
+      "author": null,
+      "captured_at": null,
+      "contributor": null,
+      "file_type": "rationale",
+      "id": "trading_lab_dashboard_ui",
+      "label": "Trading Lab Dashboard UI",
+      "source_file": "docs/superpowers/specs/2026-05-16-trading-lab-dashboard-design.md",
+      "source_location": null,
+      "source_url": null
+    },
+    {
+      "author": null,
+      "captured_at": null,
+      "contributor": null,
+      "file_type": "rationale",
+      "id": "strategy_performance_metrics",
+      "label": "Strategy Performance Metrics",
+      "source_file": "docs/superpowers/specs/2026-05-16-trading-lab-dashboard-design.md",
+      "source_location": null,
+      "source_url": null
+    },
+    {
+      "author": null,
+      "captured_at": null,
+      "contributor": null,
+      "file_type": "rationale",
+      "id": "real_time_position_monitoring",
+      "label": "Real-time Position Monitoring",
+      "source_file": "docs/superpowers/specs/2026-05-16-trading-lab-dashboard-design.md",
+      "source_location": null,
+      "source_url": null
+    },
+    {
+      "author": null,
+      "captured_at": null,
+      "contributor": null,
+      "file_type": "code",
+      "id": "frontend_app",
+      "label": "Trading Lab Frontend",
+      "source_file": "frontend/README.md",
+      "source_location": null,
+      "source_url": null
+    },
+    {
+      "author": null,
+      "captured_at": null,
+      "contributor": null,
+      "file_type": "document",
+      "id": "smart_money_breakout_channels",
+      "label": "Smart Money Breakout Channels Strategy",
+      "source_file": "strategy/Smart money Breakout Channels.txt",
+      "source_location": null,
+      "source_url": null
+    },
+    {
+      "author": null,
+      "captured_at": null,
+      "contributor": null,
+      "file_type": "document",
+      "id": "smart_money_concepts",
+      "label": "Smart Money Concepts Strategy",
+      "source_file": "strategy/Smart money Concepts pinechart.txt",
+      "source_location": null,
+      "source_url": null
+    },
+    {
+      "author": null,
+      "captured_at": null,
+      "contributor": null,
+      "file_type": "document",
+      "id": "extract_strategy_prompt",
+      "label": "Extract Strategy Prompt",
+      "source_file": "prompts/01-extract-strategy.md",
+      "source_location": null,
+      "source_url": null
+    },
+    {
+      "author": null,
+      "captured_at": null,
+      "contributor": null,
+      "file_type": "document",
+      "id": "one_shot_trade_prompt",
+      "label": "One-Shot Trade Prompt",
+      "source_file": "prompts/02-one-shot-trade.md",
+      "source_location": null,
+      "source_url": null
+    },
+    {
+      "file_type": "document",
+      "id": "claudemd_project",
+      "label": "Claude TradingView MCP Trading",
+      "source_file": "CLAUDE.md"
+    },
+    {
+      "file_type": "code",
+      "id": "code_bot_js",
+      "label": "bot.js",
+      "source_file": "bot.js"
+    },
+    {
+      "file_type": "code",
+      "id": "code_bot_engine_js",
+      "label": "bot_engine.js",
+      "source_file": "bot_engine.js"
+    },
+    {
+      "file_type": "code",
+      "id": "code_server_js",
+      "label": "server.js",
+      "source_file": "server.js"
+    },
+    {
+      "file_type": "code",
+      "id": "code_db_js",
+      "label": "db.js",
+      "source_file": "db.js"
+    },
+    {
+      "file_type": "code",
+      "id": "config_rules_json",
+      "label": "rules.json",
+      "source_file": "rules.json"
+    },
+    {
+      "file_type": "code",
+      "id": "data_trades_csv",
+      "label": "trades.csv",
+      "source_file": "trades.csv"
+    },
+    {
+      "file_type": "code",
+      "id": "data_trading_lab_db",
+      "label": "trading_lab.db",
+      "source_file": "trading_lab.db"
+    },
+    {
+      "file_type": "code",
+      "id": "frontend_dashboard",
+      "label": "Trading Lab Dashboard",
+      "source_file": "frontend/"
+    },
+    {
+      "file_type": "rationale",
+      "id": "rationale_safety_check",
+      "label": "Safety Check Mechanism",
+      "rationale": "Every condition in the strategy must pass before a trade is executed to prevent erroneous trades and manage risk.",
+      "source_file": "README.md"
+    },
+    {
+      "file_type": "rationale",
+      "id": "rationale_cloud_execution",
+      "label": "Cloud Execution Strategy",
+      "rationale": "Deploying to a VPS allows 24/7 monitoring and execution using cron schedules, bypassing the need for a local machine to be open.",
+      "source_file": "README.md"
+    },
+    {
+      "file_type": "rationale",
+      "id": "concept_mcp_connection",
+      "label": "TradingView MCP Connection",
+      "source_file": "docs/setup-windows.md"
+    },
+    {
+      "file_type": "document",
+      "id": "exchange_bitget",
+      "label": "BitGet",
+      "source_file": "docs/exchanges/bitget.md"
+    },
+    {
+      "file_type": "document",
+      "id": "exchange_binance",
+      "label": "Binance",
+      "source_file": "docs/exchanges/binance.md"
+    },
+    {
+      "file_type": "document",
+      "id": "exchange_bybit",
+      "label": "Bybit",
+      "source_file": "docs/exchanges/bybit.md"
+    },
+    {
+      "file_type": "document",
+      "id": "exchange_okx",
+      "label": "OKX",
+      "source_file": "docs/exchanges/okx.md"
+    },
+    {
+      "file_type": "document",
+      "id": "exchange_coinbase",
+      "label": "Coinbase Advanced",
+      "source_file": "docs/exchanges/coinbase.md"
+    },
+    {
+      "file_type": "document",
+      "id": "exchange_kraken",
+      "label": "Kraken",
+      "source_file": "docs/exchanges/kraken.md"
+    },
+    {
+      "file_type": "document",
+      "id": "exchange_kucoin",
+      "label": "KuCoin",
+      "source_file": "docs/exchanges/kucoin.md"
+    },
+    {
+      "file_type": "document",
+      "id": "exchange_gateio",
+      "label": "Gate.io",
+      "source_file": "docs/exchanges/gateio.md"
+    },
+    {
+      "file_type": "document",
+      "id": "exchange_mexc",
+      "label": "MEXC",
+      "source_file": "docs/exchanges/mexc.md"
+    },
+    {
+      "file_type": "document",
+      "id": "exchange_bitfinex",
+      "label": "Bitfinex",
+      "source_file": "docs/exchanges/bitfinex.md"
+    }
+  ],
+  "edges": [
+    {
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "relation": "rationale_for",
+      "source": "2026-05-16-trading-lab-dashboard-design",
+      "target": "trading_lab_dashboard_ui",
+      "source_file": "docs/superpowers/specs/2026-05-16-trading-lab-dashboard-design.md"
+    },
+    {
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "relation": "rationale_for",
+      "source": "2026-05-16-trading-lab-dashboard-design",
+      "target": "strategy_performance_metrics",
+      "source_file": "docs/superpowers/specs/2026-05-16-trading-lab-dashboard-design.md"
+    },
+    {
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "relation": "rationale_for",
+      "source": "2026-05-16-trading-lab-dashboard-design",
+      "target": "real_time_position_monitoring",
+      "source_file": "docs/superpowers/specs/2026-05-16-trading-lab-dashboard-design.md"
+    },
+    {
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "relation": "implements",
+      "source": "frontend_app",
+      "target": "trading_lab_dashboard_ui",
+      "source_file": "frontend/README.md"
+    },
+    {
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "relation": "semantically_similar_to",
+      "source": "smart_money_breakout_channels",
+      "target": "smart_money_concepts",
+      "source_file": "strategy/Smart money Breakout Channels.txt"
+    },
+    {
+      "confidence": "INFERRED",
+      "confidence_score": 0.75,
+      "relation": "conceptually_related_to",
+      "source": "extract_strategy_prompt",
+      "target": "smart_money_breakout_channels",
+      "source_file": "prompts/01-extract-strategy.md"
+    },
+    {
+      "confidence": "INFERRED",
+      "confidence_score": 0.75,
+      "relation": "conceptually_related_to",
+      "source": "extract_strategy_prompt",
+      "target": "smart_money_concepts",
+      "source_file": "prompts/01-extract-strategy.md"
+    },
+    {
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "relation": "calls",
+      "source": "code_bot_js",
+      "target": "code_bot_engine_js",
+      "source_file": "CLAUDE.md"
+    },
+    {
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "relation": "references",
+      "source": "code_bot_engine_js",
+      "target": "config_rules_json",
+      "source_file": "CLAUDE.md"
+    },
+    {
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "relation": "shares_data_with",
+      "source": "code_bot_engine_js",
+      "target": "data_trades_csv",
+      "source_file": "CLAUDE.md"
+    },
+    {
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "relation": "shares_data_with",
+      "source": "code_bot_engine_js",
+      "target": "data_trading_lab_db",
+      "source_file": "CLAUDE.md"
+    },
+    {
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "relation": "calls",
+      "source": "code_server_js",
+      "target": "code_bot_engine_js",
+      "source_file": "CLAUDE.md"
+    },
+    {
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "relation": "shares_data_with",
+      "source": "code_server_js",
+      "target": "frontend_dashboard",
+      "source_file": "CLAUDE.md"
+    },
+    {
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "relation": "calls",
+      "source": "code_server_js",
+      "target": "code_db_js",
+      "source_file": "docs/superpowers/plans/2026-05-16-trading-lab-dashboard.md"
+    },
+    {
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "relation": "implements",
+      "source": "code_bot_engine_js",
+      "target": "rationale_safety_check",
+      "source_file": "README.md"
+    },
+    {
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "relation": "conceptually_related_to",
+      "source": "code_bot_js",
+      "target": "rationale_cloud_execution",
+      "source_file": "README.md"
+    },
+    {
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "relation": "references",
+      "source": "code_bot_engine_js",
+      "target": "concept_mcp_connection",
+      "source_file": "README.md"
+    },
+    {
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "relation": "references",
+      "source": "code_bot_engine_js",
+      "target": "exchange_bitget",
+      "source_file": "CLAUDE.md"
+    },
+    {
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "relation": "conceptually_related_to",
+      "source": "claudemd_project",
+      "target": "exchange_binance",
+      "source_file": "README.md"
+    },
+    {
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "relation": "conceptually_related_to",
+      "source": "claudemd_project",
+      "target": "exchange_bybit",
+      "source_file": "README.md"
+    },
+    {
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "relation": "conceptually_related_to",
+      "source": "claudemd_project",
+      "target": "exchange_okx",
+      "source_file": "README.md"
+    },
+    {
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "relation": "conceptually_related_to",
+      "source": "claudemd_project",
+      "target": "exchange_coinbase",
+      "source_file": "README.md"
+    },
+    {
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "relation": "conceptually_related_to",
+      "source": "claudemd_project",
+      "target": "exchange_kraken",
+      "source_file": "README.md"
+    },
+    {
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "relation": "conceptually_related_to",
+      "source": "claudemd_project",
+      "target": "exchange_kucoin",
+      "source_file": "README.md"
+    },
+    {
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "relation": "conceptually_related_to",
+      "source": "claudemd_project",
+      "target": "exchange_gateio",
+      "source_file": "README.md"
+    },
+    {
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "relation": "conceptually_related_to",
+      "source": "claudemd_project",
+      "target": "exchange_mexc",
+      "source_file": "README.md"
+    },
+    {
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "relation": "conceptually_related_to",
+      "source": "claudemd_project",
+      "target": "exchange_bitfinex",
+      "source_file": "README.md"
+    }
+  ],
+  "hyperedges": [
+    {
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "id": "dashboard_design_core",
+      "label": "Dashboard Design Core",
+      "nodes": [
+        "trading_lab_dashboard_ui",
+        "strategy_performance_metrics",
+        "real_time_position_monitoring"
+      ],
+      "relation": "form",
+      "source_file": "docs/superpowers/specs/2026-05-16-trading-lab-dashboard-design.md"
+    },
+    {
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "id": "trading_pipeline",
+      "label": "Core Trading Pipeline",
+      "nodes": [
+        "config_rules_json",
+        "code_bot_engine_js",
+        "exchange_bitget",
+        "data_trades_csv"
+      ],
+      "relation": "form",
+      "source_file": "CLAUDE.md"
+    },
+    {
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "id": "monitoring_stack",
+      "label": "Dashboard Monitoring Stack",
+      "nodes": [
+        "code_server_js",
+        "code_db_js",
+        "frontend_dashboard",
+        "data_trading_lab_db"
+      ],
+      "relation": "form",
+      "source_file": "docs/superpowers/plans/2026-05-16-trading-lab-dashboard.md"
+    }
+  ],
+  "input_tokens": 0,
+  "output_tokens": 0
+}

@@ -89,7 +89,12 @@ export const Tabs = ({ children, defaultValue, onValueChange }: { children: Reac
     <div className="w-full" data-tabs-value={value}>
       {React.Children.map(children, child => {
         if (React.isValidElement(child)) {
-          return React.cloneElement(child as any, { value, onValueChange: handleValueChange });
+          return React.cloneElement(child as any, {
+            value,
+            isActive: value === (child.props as any).value,
+            onClick: () => handleValueChange((child.props as any).value),
+            onValueChange: handleValueChange
+          });
         }
         return child;
       })}
@@ -132,6 +137,16 @@ export const Sheet = ({ children, open, onOpenChange }: { children: React.ReactN
     onOpenChange?.(val);
   };
 
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        handleOpenChange(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, handleOpenChange]);
+
   return (
     <div className="relative" data-sheet-open={isOpen}>
       {React.Children.map(children, child => {
@@ -161,7 +176,9 @@ export const SheetTrigger = ({ children, className, ...props }: { children: Reac
   );
 };
 
-export const SheetContent = ({ children, className, side = "right", open }: { children: React.ReactNode; className?: string; side?: "top" | "bottom" | "left" | "right"; open?: boolean }) => {
+import { X } from 'lucide-react';
+
+export const SheetContent = ({ children, className, side = "right", open, onOpenChange }: { children: React.ReactNode; className?: string; side?: "top" | "bottom" | "left" | "right"; open?: boolean; onOpenChange?: (open: boolean) => void }) => {
   if (!open) return null;
   const sideStyles = {
     top: "inset-x-0 top-0 border-b",
@@ -171,13 +188,31 @@ export const SheetContent = ({ children, className, side = "right", open }: { ch
   };
 
   return (
-    <div className={cn(
-      "fixed z-50 bg-background p-6 shadow-lg transition-all duration-300 ease-in-out",
-      sideStyles[side],
-      className
-    )}>
-      {children}
-    </div>
+    <>
+      <div
+        className="fixed inset-0 z-50 bg-black/20 backdrop-blur-sm"
+        onClick={() => onOpenChange?.(false)}
+      />
+      <div className={cn(
+        "fixed z-50 bg-background p-6 shadow-2xl transition-all duration-300 ease-in-out flex flex-col border-l",
+        sideStyles[side],
+        className
+      )}>
+        <div className="flex items-center justify-between mb-4">
+          <div />
+          <Button
+            variant="ghost"
+            className="h-8 w-8 p-0"
+            onClick={() => onOpenChange?.(false)}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          {children}
+        </div>
+      </div>
+    </>
   );
 };
 
@@ -224,19 +259,20 @@ export const ToggleGroup = ({ children, value, onValueChange, type = "single" }:
     <div className="inline-flex items-center justify-start rounded-md bg-muted p-1" role="group">
       {React.Children.map(children, child => {
         if (React.isValidElement(child)) {
+          const itemValue = (child.props as any).value;
           const isSelected = type === "single"
-            ? value === (child.props as any).value
-            : (value as string[]).includes((child.props as any).value);
+            ? value === itemValue
+            : (value as string[]).includes(itemValue);
 
           return React.cloneElement(child as any, {
             isSelected,
-            onClick: () => {
+            onClick: (e: any) => {
+              e.stopPropagation();
               if (type === "single") {
-                onValueChange((child.props as any).value);
+                onValueChange(itemValue);
               } else {
                 const current = value as string[];
-                const val = (child.props as any).value;
-                onValueChange(current.includes(val) ? current.filter(v => v !== val) : [...current, val]);
+                onValueChange(current.includes(itemValue) ? current.filter(v => v !== itemValue) : [...current, itemValue]);
               }
             }
           });
@@ -353,20 +389,106 @@ export const SelectValue = ({ value }: { value: string }) => (
 export const SelectContent = ({ children, value, onValueChange, isOpen }: { children: React.ReactNode; value: string; onValueChange: (val: string) => void; isOpen?: boolean }) => {
   if (!isOpen) return null;
   return (
-    <div className="absolute z-50 w-full mt-1 rounded-md border bg-popover text-popover-foreground shadow-md max-h-60 overflow-auto">
-      {children}
+    <div className="absolute z-50 w-full mt-1 rounded-md border bg-popover text-popover-foreground shadow-md max-h-60 overflow-auto p-1">
+      {React.Children.map(children, child => {
+        if (React.isValidElement(child)) {
+          return React.cloneElement(child as any, {
+            isSelected: value === (child.props as any).value,
+            onClick: (e: any) => {
+              e.stopPropagation();
+              onValueChange((child.props as any).value);
+            }
+          });
+        }
+        return child;
+      })}
     </div>
   );
 };
 
-export const SelectItem = ({ value, children, isSelected, onClick }: { value: string; children: React.ReactNode; isSelected?: boolean; onClick?: () => void }) => (
+export const SelectItem = ({ value, children }: { value: string; children: React.ReactNode; isSelected?: boolean; onClick?: (e: any) => void }) => (
   <div
     onClick={onClick}
     className={cn(
-      "relative flex w-full cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground",
-      isSelected && "bg-accent text-accent-foreground"
+      "relative flex w-full cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground transition-colors",
+      // isSelected is now passed as a prop via cloneElement in SelectContent
     )}
   >
     {children}
   </div>
 );
+
+interface CheckboxProps extends React.InputHTMLAttributes<HTMLInputElement> {
+  onCheckedChange?: (checked: boolean) => void;
+}
+
+export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(({ className, onCheckedChange, ...props }, ref) => (
+  <input
+    type="checkbox"
+    ref={ref}
+    onChange={(e) => {
+      onCheckedChange?.(e.target.checked);
+      props.onChange?.(e);
+    }}
+    className={cn(
+      "h-4 w-4 rounded border border-input bg-background text-primary focus:ring-offset-background focus-visible:outline-none focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+      className
+    )}
+    {...props}
+  />
+));
+Checkbox.displayName = "Checkbox";
+
+/**
+ * Popover Components
+ */
+export const Popover = ({ children, open, onOpenChange }: { children: React.ReactNode; open?: boolean; onOpenChange?: (open: boolean) => void }) => {
+  const [internalOpen, setInternalOpen] = React.useState(false);
+  const isOpen = open !== undefined ? open : internalOpen;
+  const handleOpenChange = (val: boolean) => {
+    setInternalOpen(val);
+    onOpenChange?.(val);
+  };
+
+  React.useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (isOpen && !(e.target as HTMLElement).closest('[data-popover-open]')) {
+        handleOpenChange(false);
+      }
+    };
+    window.addEventListener('mousedown', handleOutsideClick);
+    return () => window.removeEventListener('mousedown', handleOutsideClick);
+  }, [isOpen, handleOpenChange]);
+
+  return (
+    <div className="relative inline-block" data-popover-open={isOpen}>
+      {React.Children.map(children, child => {
+        if (React.isValidElement(child)) {
+          return React.cloneElement(child as any, { isOpen, onOpenChange: handleOpenChange });
+        }
+        return child;
+      })}
+    </div>
+  );
+};
+
+export const PopoverTrigger = ({ children, className, onClick, isOpen, onOpenChange }: { children: React.ReactNode; className?: string; onClick?: (e: any) => void; isOpen?: boolean; onOpenChange?: (open: boolean) => void }) => (
+  <div
+    onClick={(e) => {
+      onClick?.(e);
+      onOpenChange?.(!isOpen);
+    }}
+    className={cn("cursor-pointer", className)}
+  >
+    {children}
+  </div>
+);
+
+export const PopoverContent = ({ children, isOpen, className }: { children: React.ReactNode; isOpen?: boolean; className?: string }) => {
+  if (!isOpen) return null;
+  return (
+    <div className={cn("absolute right-0 z-50 mt-2 w-64 rounded-md border bg-popover p-4 text-popover-foreground shadow-md", className)}>
+      {children}
+    </div>
+  );
+};

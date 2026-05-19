@@ -1,0 +1,11 @@
+{
+  "name": "Trend Follower (Web Strategy)",
+  "type": "Breakout",
+  "indicators": {
+    "channel_period": 20,
+    "sensitivity": 1.5
+  },
+  "safety_checks": [
+    { "id": "breakout_confirmed", "description": "Price must close outside the volatility channel" }
+  ]
+}
