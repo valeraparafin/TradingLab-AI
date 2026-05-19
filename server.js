@@ -559,7 +559,7 @@ app.post('/api/strategies/toggle', async (req, res) => {
   if (!strategyId) return res.status(400).json({ error: 'strategyId is required' });
 
   try {
-    if (activeBots.has(strategyId)) {
+    if (activeBots.has(Number(strategyId))) {
       await stopBot(strategyId);
       res.json({ status: 'stopped', strategyId });
     } else {
@@ -657,6 +657,7 @@ app.post('/api/strategies/config', async (req, res) => {
     // Use provided template IDs or fallback to existing ones from config
     let finalLogicTemplateId = logicTemplateId;
     let finalRiskTemplateId = riskTemplateId;
+    let finalSettings = { ...oldStrategy.config }; // Start with existing config
 
     if (!finalLogicTemplateId || !finalRiskTemplateId) {
       const existingConfig = JSON.parse(oldStrategy.config);
@@ -668,9 +669,17 @@ app.post('/api/strategies/config', async (req, res) => {
       return res.status(400).json({ error: 'logicTemplateId and riskTemplateId are required' });
     }
 
-    // Re-assemble the strategy using templates
+    // Merge new settings updates into existing settings
+    // We expect 'settings' to be the object containing overrides (triggerMode, interval, etc.)
+    const currentConfig = JSON.parse(oldStrategy.config);
+    const mergedSettings = {
+      ...currentConfig,
+      ...settings
+    };
+
+    // Re-assemble the strategy using templates and merged settings
     const finalName = name || oldStrategy.name;
-    const finalConfig = await assembleStrategy(finalName, settings || {}, finalLogicTemplateId, finalRiskTemplateId);
+    const finalConfig = await assembleStrategy(finalName, mergedSettings, finalLogicTemplateId, finalRiskTemplateId);
 
     await db.run(
       'UPDATE strategies SET name = ?, config = ? WHERE id = ?',
@@ -697,7 +706,7 @@ app.post('/api/strategies/config', async (req, res) => {
 
     fs.writeFileSync(newPath, JSON.stringify(finalConfig, null, 2));
 
-    if (activeBots.has(strategyId)) {
+    if (activeBots.has(Number(strategyId))) {
       await stopBot(strategyId);
       await startBot(strategyId);
     }
@@ -745,8 +754,43 @@ app.get('/api/strategies/positions/:id', async (req, res) => {
   const { id } = req.params;
   try {
     const db = getDB();
-    const positions = await db.all('SELECT * FROM active_positions WHERE strategy_id = ?', [id]);
-    res.json(positions);
+    const positions = await db.all('SELECT * FROM active_positions WHERE strategy_id = ? AND status = \'OPEN\'', [id]);
+
+    const mappedPositions = await Promise.all(positions.map(async (pos) => {
+      let currentPrice = 0;
+      let pnl = 0;
+
+      try {
+        // Fetch current price from Binance public API
+        const response = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${pos.symbol}`);
+        if (response.ok) {
+          const data = await response.json();
+          currentPrice = parseFloat(data.price);
+
+          // Calculate initial PnL
+          // Long: size * (current / entry - 1)
+          // Short: size * (1 - current / entry)
+          const isBuy = pos.side === 'BUY';
+          pnl = isBuy
+            ? pos.size_usd * (currentPrice / pos.entry_price - 1)
+            : pos.size_usd * (1 - currentPrice / pos.entry_price);
+        }
+      } catch (err) {
+        console.error(`[PositionFetch] Failed to get price for ${pos.symbol}: ${err.message}`);
+      }
+
+      return {
+        symbol: pos.symbol,
+        side: pos.side === 'BUY' ? 'LONG' : (pos.side === 'SELL' ? 'SHORT' : pos.side),
+        entryPrice: pos.entry_price,
+        currentPrice: currentPrice,
+        pnl: pnl,
+        sl: pos.stop_loss,
+        tp: pos.take_profit
+      };
+    }));
+
+    res.json(mappedPositions);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -869,13 +913,20 @@ app.get('/api/export/:strategyId', async (req, res) => {
  * POST /event
  * Endpoint for bot_engine.js to report real-time events.
  */
-app.post('/event', (req, res) => {
+app.post('/event', async (req, res) => {
   const eventData = req.body;
-  console.log(`[Event Received] Strategy ${eventData.strategyId}: ${eventData.type}`);
+  const strategyId = eventData.strategyId;
+  console.log(`[Event Received] Strategy ${strategyId}: ${eventData.type}`);
+
+  // Automatically mark strategy as running in DB since it's sending events
+  try {
+    await getDB().run('UPDATE strategies SET status = ? WHERE id = ?', ['running', strategyId]);
+  } catch (err) {
+    console.error(`[Event Error] Failed to update status for strategy ${strategyId}: ${err.message}`);
+  }
 
   // Emit to all connected WebSocket clients
   io.emit('event:update', eventData);
-
   res.sendStatus(200);
 });
 
@@ -915,6 +966,8 @@ async function startServer() {
     await initDB();
     await createStatsView();
     await syncStrategies();
+    // Reset all strategy statuses to 'stopped' on startup since child processes are gone
+    await getDB().run('UPDATE strategies SET status = ? WHERE status = ?', ['stopped', 'running']);
     httpServer.listen(PORT, () => {
       console.log(`🚀 Orchestrator Server running on http://localhost:${PORT}`);
       console.log(`🔌 WebSocket server enabled`);

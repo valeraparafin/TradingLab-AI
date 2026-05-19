@@ -70,6 +70,15 @@ export async function initDB() {
         // Column already exists, ignore error
     }
 
+    try {
+        await db.exec('ALTER TABLE active_positions ADD COLUMN status TEXT DEFAULT \'OPEN\'');
+        await db.exec('ALTER TABLE active_positions ADD COLUMN exit_price REAL');
+        await db.exec('ALTER TABLE active_positions ADD COLUMN exit_timestamp DATETIME');
+        await db.exec('UPDATE active_positions SET status = \'OPEN\' WHERE status IS NULL');
+    } catch (e) {
+        // Columns already exist, ignore error
+    }
+
     return db;
 }
 
