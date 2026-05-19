@@ -377,7 +377,7 @@ import "dotenv/config";
                       price,
                       tradeSize,
                       status: "LIVE",
-                      notes: "All conditions met",
+                      notes: "Lived order placed",
                     });
                     await updateActivePosition(strategyId, {
                       action: "open",
@@ -418,6 +418,7 @@ import "dotenv/config";
       } else {
         const timeframeMap = {
           "1m": 1, "3m": 3, "5m": 5, "15m": 15, "30m": 30, "1H": 60, "4H": 240, "1D": 1440, "1W": 10080,
+          "1D": "1d",
         };
         const minutes = timeframeMap[timeframe] || 60;
         sleepMs = (minutes * 60 * 1000) / 10;
