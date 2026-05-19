@@ -3,6 +3,7 @@
   "name": "Conservative",
   "settings": {
     "riskPerTradePercent": 0.01,
+    "portfolioValue": 1000,
     "maxTradeSizeUSD": 100,
     "stopLossPercent": 0.02,
     "takeProfitPercent": 0.05,

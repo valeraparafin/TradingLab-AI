@@ -5,6 +5,7 @@
     "name": "Aggressive",
     "settings": {
       "riskPerTradePercent": 0.05,
+      "portfolioValue": 1000,
       "maxTradeSizeUSD": 500,
       "stopLossPercent": 0.05,
       "takeProfitPercent": 0.15,

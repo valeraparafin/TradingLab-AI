@@ -1,0 +1,11 @@
+{
+  "name": "VMC Impulse Risk",
+  "settings": {
+    "riskPerTradePercent": 0.75,
+    "portfolioValue": 1000,
+    "maxTradeSizeUSD": 75,
+    "stopLossPercent": 0.4,
+    "takeProfitPercent": 0.8,
+    "maxTradesPerDay": 10
+  }
+}

@@ -3,6 +3,7 @@
   "name": "Scalping Majors (BTC/ETH)",
   "settings": {
     "riskPerTradePercent": 0.25,
+    "portfolioValue": 1000,
     "maxTradeSizeUSD": 500,
     "stopLossPercent": 0.3,
     "takeProfitPercent": 0.8,

@@ -3,6 +3,7 @@
   "name": "Scalping Alts",
   "settings": {
     "riskPerTradePercent": 0.25,
+    "portfolioValue": 1000,
     "maxTradeSizeUSD": 200,
     "stopLossPercent": 1.0,
     "takeProfitPercent": 2.5,

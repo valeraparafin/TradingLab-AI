@@ -1,0 +1,11 @@
+{
+  "name": "Conservative Growth",
+  "settings": {
+    "riskPerTradePercent": 1.0,
+    "portfolioValue": 1000,
+    "maxTradeSizeUSD": 100,
+    "stopLossPercent": 0.5,
+    "takeProfitPercent": 1.5,
+    "maxTradesPerDay": 5
+  }
+}

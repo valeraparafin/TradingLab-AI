@@ -1,0 +1,11 @@
+{
+  "name": "Fast Scalping Risk",
+  "settings": {
+    "riskPerTradePercent": 0.5,
+    "portfolioValue": 1000,
+    "maxTradeSizeUSD": 50,
+    "stopLossPercent": 0.3,
+    "takeProfitPercent": 0.6,
+    "maxTradesPerDay": 15
+  }
+}

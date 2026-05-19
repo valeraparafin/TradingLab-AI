@@ -1,1 +1,1 @@
-{"settings": {"maxTradesPerDay": 5, "maxTradeSizeUSD": 100, "riskPerTradePercent": 1, "stopLossPercent": 2, "takeProfitPercent": 4}}
+{"settings": {"maxTradesPerDay": 5, "maxTradeSizeUSD": 100, "riskPerTradePercent": 1, "portfolioValue": 1000, "stopLossPercent": 2, "takeProfitPercent": 4}}
