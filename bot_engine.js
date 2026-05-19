@@ -1,19 +1,18 @@
 import "dotenv/config";
-  import { readFileSync } from "fs";
-  import crypto from "crypto";
-  import { execSync } from "child_process";
-  import path from "path";
-  import { initDB, getDB } from "./db.js";
-  import { resolveConfig } from "./src/config_resolver.js";
-  import { IndicatorManager } from "./src/indicators/index.js";
-  import { SafetyValidator } from "./src/validators/index.js";
-  import { BitGetService } from "./src/services/exchange/bitget.js";
-  import { PrecisionManager } from "./src/utils/precision.js";
+import crypto from "crypto";
+import { execSync } from "child_process";
+import path from "path";
+import { initDB, getDB } from "./db.js";
+import { resolveConfig } from "./src/config_resolver.js";
+import { IndicatorManager } from "./src/indicators/index.js";
+import { SafetyValidator } from "./src/validators/index.js";
+import { BitGetService } from "./src/services/exchange/bitget.js";
+import { PrecisionManager } from "./src/utils/precision.js";
 
   // ─── Config ────────────────────────────────────────────────────────────────
 
   const CONFIG = {
-    portfolioValue: parseFloat(process.env.PORTFOLIO_VALUE_USD || "1000"),
+    portfolioValue: undefined,
     maxTradeSizeUSD: parseFloat(process.env.MAX_TRADE_SIZE_USD || "100"),
     paperTrading: process.env.PAPER_TRADING === "true",
     tradeMode: process.env.TRADE_MODE || "spot",
@@ -159,10 +158,19 @@ import "dotenv/config";
 
   // ─── Main Engine ────────────────────────────────────────────────────────────
 
-  async function run(strategyPath) {
+  async function run(inputStrategyId) {
     await initDB();
 
-    const rawStrategyConfig = JSON.parse(readFileSync(strategyPath, "utf8"));
+    const strategyIdStr = inputStrategyId || process.env.STRATEGY_ID;
+    if (!strategyIdStr) {
+      throw new Error("Strategy ID is required. Provide it as an argument or set STRATEGY_ID environment variable.");
+    }
+
+    const response = await fetch(`http://localhost:3000/api/strategies/config/${strategyIdStr}`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch strategy config: ${response.status} ${response.statusText}`);
+    }
+    const rawStrategyConfig = await response.json();
 
     const normalizedConfig = {
       ...rawStrategyConfig,
@@ -177,7 +185,12 @@ import "dotenv/config";
     };
 
     const strategyConfig = resolveConfig(normalizedConfig);
-    console.log(`[Engine] Loaded strategy file: ${strategyPath}`);
+
+    if (!strategyConfig.portfolioValue || strategyConfig.portfolioValue <= 0) {
+      throw new Error("CRITICAL ERROR: portfolioValue is missing or invalid. Please configure the deposit size in the Strategy Risk settings.");
+    }
+
+    console.log(`[Engine] Loaded strategy config for ID: ${strategyIdStr}`);
     console.log(`[Engine] Resolved Risk Limit: ${strategyConfig.risk.maxTradesPerDay}`);
 
     const strategyName = rawStrategyConfig.strategy?.name || rawStrategyConfig.name;
@@ -188,9 +201,8 @@ import "dotenv/config";
     const bitgetService = new BitGetService(CONFIG.bitget);
 
     const db = getDB();
-    await db.run("INSERT OR IGNORE INTO strategies (name) VALUES (?)", [strategyName]);
-    const strategy = await db.get("SELECT id FROM strategies WHERE name = ?", [strategyName]);
-    const strategyId = strategy.id;
+    // Use the provided strategyId instead of looking it up by name
+    const strategyId = parseInt(strategyIdStr);
 
     const watchlist = rawStrategyConfig.watchlist;
     if (!watchlist || !Array.isArray(watchlist) || watchlist.length === 0) {
@@ -211,6 +223,7 @@ import "dotenv/config";
         console.log("═══════════════════════════════════════════════════════════");
 
         for (const symbol of watchlist) {
+          try {
           console.log(`  Symbol: ${symbol} | Timeframe: ${timeframe}`);
 
           const todayCount = await countTodaysTrades(strategyId);
@@ -331,7 +344,7 @@ import "dotenv/config";
               await logEvent(strategyId, "safety_check", { symbol, price, allPass, results });
 
               const risk = strategyConfig.risk;
-              const portfolioValue = rawStrategyConfig.portfolioValue || CONFIG.portfolioValue;
+              const portfolioValue = strategyConfig.portfolioValue;
               const tradeSize = Math.min(portfolioValue * (risk.riskPerTradePercent / 100), risk.maxTradeSizeUSD);
 
               console.log("\n── Decision ─────────────────────────────────────────────\n");
@@ -411,6 +424,14 @@ import "dotenv/config";
               }
               console.log("═══════════════════════════════════════════════════════════\n");
             }
+          } catch (err) {
+            const isBinanceError = err.message.includes('Binance API error');
+            const errMsg = isBinanceError
+              ? `⚠️  Skipping ${symbol}: ${err.message} (Token might not exist on Binance)`
+              : `❌ Error processing ${symbol}: ${err.message}`;
+
+            console.log(errMsg);
+            await logEventSimple(strategyId, "ERROR", errMsg);
           }
         }
       } catch (err) {
@@ -440,6 +461,14 @@ import "dotenv/config";
       console.error("Bot error:", err);
       process.exit(1);
     });
+  } else if (process.env.STRATEGY_ID) {
+    run(process.env.STRATEGY_ID).catch((err) => {
+      console.error("Bot error:", err);
+      process.exit(1);
+    });
+  } else {
+    console.error("Error: No strategy ID provided. Use 'node bot_engine.js <id>' or set STRATEGY_ID env var.");
+    process.exit(1);
   }
 
   export { run, CONFIG };
