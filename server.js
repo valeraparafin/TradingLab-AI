@@ -8,6 +8,7 @@ import fs from 'fs';
 import { promises as fsp } from 'fs';
 import { z } from 'zod';
 import { initDB, getDB, createStatsView } from './db.js';
+import { PrecisionManager } from './src/utils/precision.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -111,6 +112,7 @@ class TemplateService {
 }
 
 const templateService = new TemplateService();
+const precisionManager = new PrecisionManager();
 
 /**
  * Helper to check if a template is locked (used by a running strategy)
@@ -286,7 +288,22 @@ async function stopBot(strategyId) {
   });
 }
 
-// ─── API Endpoints ────────────────────────────────────────────────────────────────
+/**
+ * GET /api/precision
+ * Returns the decimal precision for a given symbol.
+ */
+app.get('/api/precision', async (req, res) => {
+  const { symbol } = req.query;
+  if (!symbol) {
+    return res.status(400).json({ error: 'symbol query parameter is required' });
+  }
+  try {
+    const precision = await precisionManager.getPrecision(symbol);
+    res.json({ symbol, precision });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 /**
  * GET /api/templates
