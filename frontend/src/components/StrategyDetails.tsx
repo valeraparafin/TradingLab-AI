@@ -9,7 +9,7 @@ import { templateApi } from '../lib/api';
 import { Input, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/components';
 import { StrategyConfigForm } from './StrategyConfigForm';
 import { cn } from '../lib/utils';
-import { ArrowLeft, Play, Square, Settings, ArrowUp, ArrowDown, Clock } from 'lucide-react';
+import { ArrowLeft, Play, Square, Settings, ArrowUp, ArrowDown, Clock, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { io } from 'socket.io-client';
 
@@ -434,7 +434,23 @@ export const StrategyDetails = () => {
                     ) : (
                       positions.map((pos, i) => (
                         <tr key={i} className="hover:bg-muted/50">
-                          <td className="py-3 font-medium">{pos.symbol}</td>
+                          <td className="py-3 font-medium">
+                            <div className="flex items-center gap-2">
+                              {pos.symbol}
+                              <button
+                                onClick={() => setSelectedSymbol(pos.symbol)}
+                                className={cn(
+                                  "p-1 rounded-full transition-all hover:bg-blue-50",
+                                  selectedSymbol === pos.symbol
+                                    ? "text-blue-600 bg-blue-50"
+                                    : "text-zinc-300 hover:text-blue-500"
+                                )}
+                                title={`View ${pos.symbol} in XAI Hub`}
+                              >
+                                <Sparkles className={cn("h-3 w-3", selectedSymbol === pos.symbol && "fill-current")} />
+                              </button>
+                            </div>
+                          </td>
                           <td className="py-3">
                             <Badge variant={pos.side === 'LONG' ? 'success' : 'danger'} className="text-[10px]">
                               {pos.side}
