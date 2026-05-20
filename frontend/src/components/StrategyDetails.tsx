@@ -464,13 +464,13 @@ export const StrategyDetails = () => {
                               {pos.side}
                             </Badge>
                           </td>
-                          <td className="py-3">{pos.entryPrice?.toFixed(precision) || '0.00'}</td>
-                          <td className="py-3">{pos.currentPrice?.toFixed(precision) || '0.00'}</td>
+                          <td className="py-3">{parseFloat(pos.entryPrice?.toFixed(precision) || '0').toString()}</td>
+                          <td className="py-3">{parseFloat(pos.currentPrice?.toFixed(precision) || '0').toString()}</td>
                           <td className={cn("py-3 font-medium", pos.pnl >= 0 ? "text-emerald-500" : "text-rose-500")}>
                             {pos.pnl >= 0 ? `+${pos.pnl?.toFixed(2) || '0.00'}` : pos.pnl?.toFixed(2) || '0.00'} USDT ({pos.pnl >= 0 ? `+${pos.pnl_percent?.toFixed(2) || '0.00'}` : pos.pnl_percent?.toFixed(2) || '0.00'}%)
                           </td>
                           <td className="py-3 text-xs text-muted-foreground">
-                            {pos.sl?.toFixed(precision) || '0.00'} / {pos.tp?.toFixed(precision) || '0.00'}
+                            {parseFloat(pos.sl?.toFixed(precision) || '0').toString()} / {parseFloat(pos.tp?.toFixed(precision) || '0').toString()}
                           </td>
                         </tr>
                       ))
