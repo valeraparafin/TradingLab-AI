@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { strategyApi, type Strategy } from '../lib/api';
 import { Card, CardHeader, CardTitle, CardContent, Badge, Button, Separator, Tabs, TabsList, TabsTrigger, TabsContent, ToggleGroup, ToggleGroupItem, ResizablePanelGroup, ResizablePanel, ResizableHandle, Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, Slider, Popover, PopoverTrigger, PopoverContent, Checkbox } from './ui/components';
 import { StrategyTerminal } from './StrategyTerminal';
+import GCIGauge from './XAI/GCIGauge';
 import { templateApi } from '../lib/api';
 import { Input, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/components';
 import { StrategyConfigForm } from './StrategyConfigForm';
@@ -40,6 +41,7 @@ export const StrategyDetails = () => {
   const [strategy, setStrategy] = useState<Strategy | null>(null);
   const [stats, setStats] = useState<StrategyStats | null>(null);
   const [positions, setPositions] = useState<Position[]>([]);
+  const [gci, setGci] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -134,6 +136,10 @@ export const StrategyDetails = () => {
             return [...prev, updatedPos];
           }
         });
+      } else if (data.type === 'safety_check') {
+        if (data.payload?.gci !== undefined) {
+          setGci(data.payload.gci);
+        }
       }
     });
 
@@ -332,6 +338,10 @@ export const StrategyDetails = () => {
         <StatCard label="Wins" value={stats?.successfulTrades?.toString() || '0'} className="text-emerald-600" />
         <StatCard label="Losses" value={stats?.failedTrades?.toString() || '0'} className="text-rose-600" />
         <StatCard label="Avg Profit" value={`$${stats?.avgTradeProfit?.toFixed(2) || '0.00'}`} />
+      </div>
+
+      <div className="flex justify-center py-4">
+        <GCIGauge value={gci} />
       </div>
 
       <div className="h-[calc(100vh-300px)]">
