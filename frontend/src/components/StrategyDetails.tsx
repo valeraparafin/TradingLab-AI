@@ -152,9 +152,6 @@ export const StrategyDetails = () => {
             }
           }));
 
-          if (!selectedSymbol) {
-            setSelectedSymbol(symbol);
-          }
         }
       }
     });
@@ -365,15 +362,16 @@ export const StrategyDetails = () => {
               XAI Intelligence Hub
             </CardTitle>
 
-            {Object.keys(xaiData).length > 0 && (
+            {Object.keys(xaiData).length > 0 || positions.length > 0 ? (
               <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar max-w-md">
-                {Object.entries(xaiData).map(([symbol, data]) => {
+                {Array.from(new Set([...Object.keys(xaiData), ...positions.map(p => p.symbol)])).map((symbol) => {
                   const isActive = selectedSymbol === symbol;
-                  const gci = data.gci;
+                  const data = xaiData[symbol];
+                  const gci = data?.gci;
                   const statusColor =
-                    gci > 0.7 ? 'bg-emerald-500' :
-                    gci >= 0.4 ? 'bg-amber-500' :
-                    'bg-rose-500';
+                    gci !== undefined
+                      ? (gci > 0.7 ? 'bg-emerald-500' : gci >= 0.4 ? 'bg-amber-500' : 'bg-rose-500')
+                      : 'bg-zinc-300'; // Neutral color if no data yet
 
                   return (
                     <button
@@ -392,7 +390,7 @@ export const StrategyDetails = () => {
                   );
                 })}
               </div>
-            )}
+            ) : null}
           </div>
         </CardHeader>
         <CardContent className="p-6">
