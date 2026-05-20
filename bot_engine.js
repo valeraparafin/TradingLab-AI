@@ -359,7 +359,16 @@ import { PrecisionManager } from "./src/utils/precision.js";
 
               const risk = strategyConfig.risk;
               const portfolioValue = strategyConfig.portfolioValue;
-              const tradeSize = Math.min(portfolioValue * (risk.riskPerTradePercent / 100), risk.maxTradeSizeUSD);
+
+              // GCI Confidence Floor and Dynamic Scaling
+              const confidenceFloor = 0.8;
+              const baseRiskUSD = 2.0;
+              let finalTradeSize = 0;
+
+              if (gci >= confidenceFloor) {
+                const scalingFactor = (gci - confidenceFloor) / (1.0 - confidenceFloor);
+                finalTradeSize = baseRiskUSD * (0.5 + 0.5 * scalingFactor);
+              }
 
               console.log("\n── Decision ─────────────────────────────────────────────\n");
 
@@ -373,22 +382,34 @@ import { PrecisionManager } from "./src/utils/precision.js";
                 await recordTrade(strategyId, {
                   symbol,
                   price,
-                  tradeSize,
+                  tradeSize: finalTradeSize || Math.min(portfolioValue * (risk.riskPerTradePercent / 100), risk.maxTradeSizeUSD),
                   status: "BLOCKED",
                   notes: `Failed: ${results.filter((r) => !r.pass).map((r) => r.label).join("; ")} (GCI: ${gci.toFixed(2)})`,
+                });
+              } else if (gci < confidenceFloor) {
+                const blockedMsg = `🚫 TRADE BLOCKED: Below Confidence Floor (GCI: ${gci.toFixed(2)})`;
+                console.log(blockedMsg);
+                await logEventSimple(strategyId, "CHECK", blockedMsg);
+                await recordTrade(strategyId, {
+                  symbol,
+                  price,
+                  tradeSize: 0,
+                  status: "BLOCKED",
+                  notes: blockedMsg,
                 });
               } else {
                 console.log(`✅ ALL CONDITIONS MET`);
                 console.log(`   Confidence: ${gci.toFixed(2)}`);
-                await logEventSimple(strategyId, "TRADE", `All safety conditions met. GCI: ${gci.toFixed(2)}. Preparing trade.`);
+                console.log(`   Dynamic Trade Size: $${finalTradeSize.toFixed(2)}`);
+                await logEventSimple(strategyId, "TRADE", `All safety conditions met. GCI: ${gci.toFixed(2)}. Final Trade Size: $${finalTradeSize.toFixed(2)}. Preparing trade.`);
 
                 const isPaperBot = rawStrategyConfig.paperTrading !== false;
                 if (isPaperBot) {
-                  console.log(`\n📋 PAPER TRADE — would buy ${symbol} ~$${tradeSize.toFixed(2)} at market`);
+                  console.log(`\n📋 PAPER TRADE — would buy ${symbol} ~$${finalTradeSize.toFixed(2)} at market`);
                   await recordTrade(strategyId, {
                     symbol,
                     price,
-                    tradeSize,
+                    tradeSize: finalTradeSize,
                     status: "PAPER",
                     notes: "All conditions met",
                   });
@@ -397,20 +418,20 @@ import { PrecisionManager } from "./src/utils/precision.js";
                     symbol,
                     side: "BUY",
                     price,
-                    sizeUSD: tradeSize,
+                    sizeUSD: finalTradeSize,
                     stopLoss: price * (1 - risk.stopLossPercent / 100),
                     takeProfit: price * (1 + risk.takeProfitPercent / 100),
                   });
                 } else {
-                  console.log(`\n🔴 PLACING LIVE ORDER — $${tradeSize.toFixed(2)} BUY ${symbol}`);
+                  console.log(`\n🔴 PLACING LIVE ORDER — $${finalTradeSize.toFixed(2)} BUY ${symbol}`);
                   try {
                     const tradeMode = strategyConfig.tradeMode || CONFIG.tradeMode;
-                    const order = await bitgetService.placeOrder(symbol, "buy", tradeSize, price, tradeMode);
+                    const order = await bitgetService.placeOrder(symbol, "buy", finalTradeSize, price, tradeMode);
 
                     await recordTrade(strategyId, {
                       symbol,
                       price,
-                      tradeSize,
+                      tradeSize: finalTradeSize,
                       status: "LIVE",
                       notes: "Lived order placed",
                     });
@@ -419,7 +440,7 @@ import { PrecisionManager } from "./src/utils/precision.js";
                       symbol,
                       side: "BUY",
                       price,
-                      sizeUSD: tradeSize,
+                      sizeUSD: finalTradeSize,
                       stopLoss: price * (1 - risk.stopLossPercent),
                       takeProfit: price * (1 + risk.takeProfitPercent),
                     });
@@ -431,13 +452,12 @@ import { PrecisionManager } from "./src/utils/precision.js";
                     await recordTrade(strategyId, {
                       symbol,
                       price,
-                      tradeSize,
+                      tradeSize: finalTradeSize,
                       status: "FAILED",
                       notes: err.message,
                     });
                   }
                 }
-              }
               console.log("═══════════════════════════════════════════════════════════\n");
             }
           }
