@@ -382,7 +382,7 @@ import { PrecisionManager } from "./src/utils/precision.js";
                 await recordTrade(strategyId, {
                   symbol,
                   price,
-                  tradeSize: finalTradeSize || Math.min(portfolioValue * (risk.riskPerTradePercent / 100), risk.maxTradeSizeUSD),
+                  tradeSize: finalTradeSize,
                   status: "BLOCKED",
                   notes: `Failed: ${results.filter((r) => !r.pass).map((r) => r.label).join("; ")} (GCI: ${gci.toFixed(2)})`,
                 });
