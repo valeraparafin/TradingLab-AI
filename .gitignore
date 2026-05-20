@@ -2,10 +2,8 @@
 node_modules/
 jspm_packages/
 
-# TypeScript
+# TypeScript / Build
 *.tsbuildinfo
-
-# Build outputs
 dist/
 build/
 out/
@@ -18,25 +16,24 @@ yarn-debug.log*
 yarn-error.log*
 safety-check-log.json
 
-# OS files
+# OS / IDEs
 .DS_Store
 Thumbs.db
+.vscode/
+.idea/
 
 # Environment variables
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# IDEs
-.vscode/
-.idea/
+.env.*
+!.env.example
 
 # Claude Code
 .claude/
 
-# Database
+# Database & Data
 *.db
 *.db-journal
 trades.csv
+
+# Graphify
+graphify-out/

@@ -13,9 +13,7 @@ import { PrecisionManager } from "./src/utils/precision.js";
 
   const CONFIG = {
     portfolioValue: undefined,
-    maxTradeSizeUSD: parseFloat(process.env.MAX_TRADE_SIZE_USD || "100"),
-    paperTrading: process.env.PAPER_TRADING === "true",
-    tradeMode: process.env.TRADE_MODE || "spot",
+    tradeMode: "spot", // Default fallback
     bitget: {
       apiKey: process.env.BITGET_API_KEY,
       secretKey: process.env.BITGET_SECRET_KEY,
