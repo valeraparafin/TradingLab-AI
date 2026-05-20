@@ -50,6 +50,16 @@ export async function initDB() {
             FOREIGN KEY (strategy_id) REFERENCES strategies (id) ON DELETE CASCADE
         );
 
+        CREATE TABLE IF NOT EXISTS event_scores (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id INTEGER NOT NULL,
+            rule_id TEXT NOT NULL,
+            score REAL NOT NULL,
+            actual_value TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (event_id) REFERENCES events (id) ON DELETE CASCADE
+        );
+
         CREATE TABLE IF NOT EXISTS active_positions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             strategy_id INTEGER NOT NULL,
