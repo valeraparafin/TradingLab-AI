@@ -306,6 +306,9 @@ import { PrecisionManager } from "./src/utils/precision.js";
                   pnl: activePosition.side === "BUY"
                       ? activePosition.size_usd * (price / activePosition.entry_price - 1)
                       : activePosition.size_usd * (1 - price / activePosition.entry_price),
+                  pnl_percent: activePosition.side === "BUY"
+                      ? (price / activePosition.entry_price - 1) * 100
+                      : (1 - price / activePosition.entry_price) * 100,
                   message: "Active position found, monitoring for exit.",
                 });
               }

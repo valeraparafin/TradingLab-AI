@@ -30,6 +30,7 @@ interface Position {
   entryPrice: number;
   currentPrice: number;
   pnl: number;
+  pnl_percent: number;
   sl: number;
   tp: number;
 }
@@ -42,6 +43,7 @@ export const StrategyDetails = () => {
   const [strategy, setStrategy] = useState<Strategy | null>(null);
   const [stats, setStats] = useState<StrategyStats | null>(null);
   const [positions, setPositions] = useState<Position[]>([]);
+  const [precision, setPrecision] = useState(2);
   const [xaiData, setXaiData] = useState<Record<string, { gci: number, results: any[] }>>({});
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -108,14 +110,21 @@ export const StrategyDetails = () => {
 
   useEffect(() => {
     // Subscribe to real-time updates via Socket.io
-    const socket = io('http://localhost:3000');
+    const socket = io(import.meta.env.VITE_SOCKET_URL || 'http://localhost:3000');
 
-    socket.on('event:update', (data) => {
+    socket.on('event:update', async (data) => {
       // Only process updates for the current strategy
       if (data.strategyId !== strategyId) return;
 
       if (data.type === 'position_active') {
         const payload = data.payload;
+
+        try {
+          const precisionRes = await strategyApi.getPrecision(payload.symbol);
+          setPrecision(precisionRes.data.precision);
+        } catch (e) {
+          console.error('Error fetching precision', e);
+        }
 
         setPositions(prev => {
           const existingIndex = prev.findIndex(p => p.symbol === payload.symbol);
@@ -126,6 +135,7 @@ export const StrategyDetails = () => {
             entryPrice: payload.entry_price,
             currentPrice: payload.current_price,
             pnl: payload.pnl,
+            pnl_percent: payload.pnl_percent,
             sl: payload.stop_loss,
             tp: payload.take_profit,
           };
@@ -454,13 +464,13 @@ export const StrategyDetails = () => {
                               {pos.side}
                             </Badge>
                           </td>
-                          <td className="py-3">{pos.entryPrice?.toFixed(2) || '0.00'}</td>
-                          <td className="py-3">{pos.currentPrice?.toFixed(2) || '0.00'}</td>
+                          <td className="py-3">{parseFloat(pos.entryPrice?.toFixed(precision) || '0').toString()}</td>
+                          <td className="py-3">{parseFloat(pos.currentPrice?.toFixed(precision) || '0').toString()}</td>
                           <td className={cn("py-3 font-medium", pos.pnl >= 0 ? "text-emerald-500" : "text-rose-500")}>
-                            {pos.pnl >= 0 ? `+${pos.pnl?.toFixed(2) || '0.00'}` : pos.pnl?.toFixed(2) || '0.00'}
+                            {pos.pnl >= 0 ? `+${pos.pnl?.toFixed(2) || '0.00'}` : pos.pnl?.toFixed(2) || '0.00'} USDT ({pos.pnl >= 0 ? `+${pos.pnl_percent?.toFixed(2) || '0.00'}` : pos.pnl_percent?.toFixed(2) || '0.00'}%)
                           </td>
                           <td className="py-3 text-xs text-muted-foreground">
-                            {pos.sl?.toFixed(2) || '0.00'} / {pos.tp?.toFixed(2) || '0.00'}
+                            {parseFloat(pos.sl?.toFixed(precision) || '0').toString()} / {parseFloat(pos.tp?.toFixed(precision) || '0').toString()}
                           </td>
                         </tr>
                       ))
