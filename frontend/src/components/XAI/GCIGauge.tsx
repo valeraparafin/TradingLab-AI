@@ -1,67 +1,96 @@
 import React from 'react';
+import {
+  Label,
+  PolarGrid,
+  PolarRadiusAxis,
+  RadialBar,
+  RadialBarChart,
+} from "recharts";
 
 interface GCIGaugeProps {
   value: number; // 0.0 to 1.0
 }
 
 const GCIGauge: React.FC<GCIGaugeProps> = ({ value }) => {
-  // Clamp value between 0 and 1
   const clampedValue = Math.min(Math.max(value, 0), 1);
 
-  // Calculate color based on value
   const getColor = (val: number) => {
-    if (val < 0.4) return 'text-red-500 fill-red-500 stroke-red-500';
-    if (val < 0.7) return 'text-yellow-500 fill-yellow-500 stroke-yellow-500';
-    return 'text-green-500 fill-green-500 stroke-green-500';
+    if (val < 0.4) return { color: '#fca5a5', label: 'text-rose-500' }; // Pastel rose-300 for bar, accent rose-500 for text
+    if (val < 0.7) return { color: '#fcd34d', label: 'text-amber-500' }; // Pastel amber-300 for bar, accent amber-500 for text
+    return { color: '#6ee7b7', label: 'text-emerald-500' }; // Pastel emerald-300 for bar, accent emerald-500 for text
   };
 
-  const colorClass = getColor(clampedValue);
+  const theme = getColor(clampedValue);
 
-  // SVG Constants
-  const radius = 40;
-  const circumference = Math.PI * radius; // Semi-circle
-  const strokeWidth = 10;
-  const offset = circumference - clampedValue * circumference;
+  // Fix: Recharts RadialBar expects values that correlate to the data scale.
+  // To get exactly X% of the circle, we need to ensure the data and the chart scale match.
+  const chartData = [
+    {
+      name: "GCI",
+      value: clampedValue * 100,
+      fill: theme.color,
+    },
+  ];
 
   return (
-    <div className="flex flex-col items-center justify-center p-4 bg-slate-900/50 rounded-xl border border-slate-800 w-full max-w-[200px]">
-      <div className="relative w-32 h-16 overflow-hidden">
-        <svg
-          viewBox="0 0 100 50"
-          className="w-full h-full transform rotate-0"
+    <div className="flex flex-col items-center justify-center relative w-40 h-40">
+      <div className="relative w-full h-full flex items-center justify-center">
+        <RadialBarChart
+          width={160}
+          height={160}
+          innerRadius={55}
+          outerRadius={75}
+          barSize={10}
+          data={chartData}
+          startAngle={90}
+          endAngle={-270}
+          cx="50%"
+          cy="50%"
         >
-          {/* Background Track */}
-          <path
-            d="M 10 50 A 40 40 0 0 1 90 50"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={strokeWidth}
-            strokeLinecap="round"
-            className="text-slate-700"
+          {/*
+            Fix: Remove PolarGrid as it was creating the full circle fill.
+            We use the RadialBar's own background prop for the track.
+          */}
+          <RadialBar
+            dataKey="value"
+            background={{ fill: '#f4f4f5' }} // Light zinc background
+            cornerRadius={5}
           />
-          {/* Value Track */}
-          <path
-            d="M 10 50 A 40 40 0 0 1 90 50"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={strokeWidth}
-            strokeLinecap="round"
-            strokeDasharray={`${circumference} ${circumference}`}
-            strokeDashoffset={offset}
-            className={`${colorClass} transition-all duration-500 ease-out`}
-          />
-        </svg>
 
-        {/* Percentage Label */}
-        <div className="absolute bottom-0 left-0 right-0 text-center pb-1">
-          <span className={`text-2xl font-bold ${colorClass}`}>
-            {Math.round(clampedValue * 100)}%
-          </span>
-        </div>
+          <PolarRadiusAxis tick={false} tickLine={false} axisLine={false} domain={[0, 100]}>
+            <Label
+              content={({ viewBox }) => {
+                if (viewBox && "cx" in viewBox && "cy" in viewBox) {
+                  return (
+                    <text
+                      x={viewBox.cx}
+                      y={viewBox.cy}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                    >
+                      <tspan
+                        x={viewBox.cx}
+                        y={viewBox.cy}
+                        className={`text-3xl font-bold font-mono fill-zinc-900 ${theme.label}`}
+                      >
+                        {Math.round(clampedValue * 100)}%
+                      </tspan>
+                      <tspan
+                        x={viewBox.cx}
+                        y={(viewBox.cy || 0) + 20}
+                        className="fill-zinc-400 text-[10px] font-medium uppercase tracking-widest"
+                      >
+                        Confidence
+                      </tspan>
+                    </text>
+                  );
+                }
+                return null;
+              }}
+            />
+          </PolarRadiusAxis>
+        </RadialBarChart>
       </div>
-      <span className="mt-2 text-xs font-medium text-slate-400 uppercase tracking-wider">
-        Confidence Index
-      </span>
     </div>
   );
 };

@@ -43,17 +43,31 @@ const RuleItem: React.FC<{ rule: RuleResult; index: number }> = ({ rule, index }
 
   if (isOscillator) {
     // Oscillators (WaveTrend, MFI)
-    // If actual is e.g. -60, symmetricValue = -0.6
-    const rawValue = typeof rule.actual === 'number' ? rule.actual : rule.score;
-    symmetricValue = rawValue > 1 || rawValue < -1 ? rawValue / 100 : rawValue;
+    // Try to parse actual as a number first, otherwise fallback to score
+    const parsedActual = typeof rule.actual === 'string' ? parseFloat(rule.actual) : rule.actual;
+    const rawValue = typeof parsedActual === 'number' && !isNaN(parsedActual) ? parsedActual : rule.score;
 
-    const sign = symmetricValue < 0 ? '-' : '';
-    scoreLabel = `${sign}${Math.abs(symmetricValue * 100).toFixed(1)}%`;
+    if (labelLower.includes('mfi')) {
+      // MFI Logic: Linear 0-100 scale centered at 50
+      // 0 -> -1 (Left), 50 -> 0 (Center), 100 -> 1 (Right)
+      symmetricValue = (rawValue - 50) / 50;
+      scoreLabel = `${rawValue.toFixed(1)}%`;
+    } else {
+      // WaveTrend/Others: Centered -100 to 100 -> -1 to 1
+      symmetricValue = rawValue > 1 || rawValue < -1 ? rawValue / 100 : rawValue;
+      const sign = symmetricValue < 0 ? '-' : '';
+      scoreLabel = `${sign}${Math.abs(symmetricValue * 100).toFixed(1)}%`;
+    }
 
     const absVal = Math.abs(symmetricValue * 100);
+    // Threshold: WT uses 53, MFI uses 60 (20 or 80 on 0-100 scale)
+    const threshold = labelLower.includes('mfi') ? 60 : 53;
+
+    // Unified Color Logic for all Oscillators:
+    // Right (Positive/High) = Green, Left (Negative/Low) = Red
     barColor = symmetricValue >= 0
-      ? (absVal >= 53 ? 'bg-emerald-500' : 'bg-emerald-300')
-      : (absVal >= 53 ? 'bg-rose-500' : 'bg-rose-300');
+      ? (absVal >= threshold ? 'bg-emerald-500' : 'bg-emerald-300')
+      : (absVal >= threshold ? 'bg-rose-500' : 'bg-rose-300');
 
   } else if (isTrend) {
     // Trend/States
@@ -108,6 +122,12 @@ const RuleItem: React.FC<{ rule: RuleResult; index: number }> = ({ rule, index }
         color={barColor}
         isBinary={shouldTreatAsBinary || isTrend}
       />
+      {isOscillator && (
+        <div className="flex justify-between mt-1.5 px-0.5">
+          <span className="text-[8px] font-bold uppercase text-zinc-400 tracking-tighter">{labelLower.includes('mfi') ? 'Bearish' : 'Oversold'}</span>
+          <span className="text-[8px] font-bold uppercase text-zinc-400 tracking-tighter">{labelLower.includes('mfi') ? 'Bullish' : 'Overbought'}</span>
+        </div>
+      )}
 
       <div className="absolute inset-0 bg-white/90 backdrop-blur-sm rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col items-center justify-center p-2 text-center pointer-events-none border border-zinc-200 shadow-inner">
         <span className="text-[10px] uppercase text-zinc-400 font-bold mb-1">Actual Value</span>
