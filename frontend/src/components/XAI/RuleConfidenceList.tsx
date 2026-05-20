@@ -137,9 +137,35 @@ const RuleItem: React.FC<{ rule: RuleResult; index: number }> = ({ rule, index }
   );
 };
 
+const RuleSkeleton = () => (
+  <div className="group relative flex flex-col p-3 rounded-xl bg-white border border-zinc-200 shadow-sm">
+    <div className="flex justify-between items-center mb-2">
+      <div className="flex items-center gap-2 overflow-hidden">
+        <div className="w-1.5 h-1.5 rounded-full bg-zinc-200 animate-pulse" />
+        <div className="h-3 w-24 bg-zinc-200 rounded animate-pulse" />
+      </div>
+      <div className="h-3 w-10 bg-zinc-200 rounded animate-pulse" />
+    </div>
+    <div className="relative h-2 w-full bg-zinc-100 rounded-full overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-zinc-200 to-transparent animate-[shimmer_2s_infinite] bg-[length:200%_100%]"
+           style={{ backgroundPosition: '0% 0%' }} />
+    </div>
+    <div className="flex justify-between mt-1.5 px-0.5">
+      <div className="h-2 w-12 bg-zinc-100 rounded animate-pulse" />
+      <div className="h-2 w-12 bg-zinc-100 rounded animate-pulse" />
+    </div>
+  </div>
+);
+
 const RuleConfidenceList: React.FC<RuleConfidenceListProps> = ({ results }) => {
   if (!results || results.length === 0) {
-    return null;
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-full">
+        {[1, 2, 3, 4, 5, 6].map((i) => (
+          <RuleSkeleton key={i} />
+        ))}
+      </div>
+    );
   }
 
   return (

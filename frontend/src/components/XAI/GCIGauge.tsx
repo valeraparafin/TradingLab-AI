@@ -6,6 +6,7 @@ interface GCIGaugeProps {
 }
 
 const GCIGauge: React.FC<GCIGaugeProps> = ({ value }) => {
+  const isLoading = value === 0;
   const clampedValue = Math.min(Math.max(value, 0), 1);
 
   const getColor = (val: number) => {
@@ -30,31 +31,45 @@ const GCIGauge: React.FC<GCIGaugeProps> = ({ value }) => {
             startAngle={90}
             endAngle={-270}
             stroke="none"
-            fill="#f4f4f5"
+            fill={isLoading ? '#f4f4f5' : '#f4f4f5'}
+            className={isLoading ? 'animate-pulse' : ''}
           />
           {/* Active Value Arc - Partial Circle */}
-          <Pie
-            data={[{ value: clampedValue * 100 }]}
-            cx="50%"
-            cy="50%"
-            innerRadius={55}
-            outerRadius={75}
-            startAngle={90}
-            endAngle={90 - (clampedValue * 360)}
-            stroke="none"
-            fill={theme.color}
-            cornerRadius={5}
-          />
+          {!isLoading && (
+            <Pie
+              data={[{ value: clampedValue * 100 }]}
+              cx="50%"
+              cy="50%"
+              innerRadius={55}
+              outerRadius={75}
+              startAngle={90}
+              endAngle={90 - (clampedValue * 360)}
+              stroke="none"
+              fill={theme.color}
+              cornerRadius={5}
+            />
+          )}
         </PieChart>
 
         {/* Centered Text Overlay */}
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-          <span className={`text-3xl font-bold font-mono ${theme.label}`}>
-            {Math.round(clampedValue * 100)}%
-          </span>
-          <span className="text-[10px] font-medium uppercase tracking-widest text-zinc-400">
-            Confidence
-          </span>
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center">
+              <div className="h-8 w-16 bg-zinc-200 rounded animate-pulse mb-2" />
+              <span className="text-[10px] font-medium uppercase tracking-widest text-zinc-300 animate-pulse">
+                Calculating...
+              </span>
+            </div>
+          ) : (
+            <>
+              <span className={`text-3xl font-bold font-mono ${theme.label}`}>
+                {Math.round(clampedValue * 100)}%
+              </span>
+              <span className="text-[10px] font-medium uppercase tracking-widest text-zinc-400">
+                Confidence
+              </span>
+            </>
+          )}
         </div>
       </div>
     </div>
