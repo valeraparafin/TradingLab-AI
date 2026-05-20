@@ -4,6 +4,7 @@ import { strategyApi, type Strategy } from '../lib/api';
 import { Card, CardHeader, CardTitle, CardContent, Badge, Button, Separator, Tabs, TabsList, TabsTrigger, TabsContent, ToggleGroup, ToggleGroupItem, ResizablePanelGroup, ResizablePanel, ResizableHandle, Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, Slider, Popover, PopoverTrigger, PopoverContent, Checkbox } from './ui/components';
 import { StrategyTerminal } from './StrategyTerminal';
 import GCIGauge from './XAI/GCIGauge';
+import RuleConfidenceList from './XAI/RuleConfidenceList';
 import { templateApi } from '../lib/api';
 import { Input, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/components';
 import { StrategyConfigForm } from './StrategyConfigForm';
@@ -42,6 +43,7 @@ export const StrategyDetails = () => {
   const [stats, setStats] = useState<StrategyStats | null>(null);
   const [positions, setPositions] = useState<Position[]>([]);
   const [gci, setGci] = useState<number>(0);
+  const [ruleResults, setRuleResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -139,6 +141,9 @@ export const StrategyDetails = () => {
       } else if (data.type === 'safety_check') {
         if (data.payload?.gci !== undefined) {
           setGci(data.payload.gci);
+        }
+        if (data.payload?.results) {
+          setRuleResults(data.payload.results);
         }
       }
     });
@@ -340,8 +345,11 @@ export const StrategyDetails = () => {
         <StatCard label="Avg Profit" value={`$${stats?.avgTradeProfit?.toFixed(2) || '0.00'}`} />
       </div>
 
-      <div className="flex justify-center py-4">
+      <div className="flex flex-col items-center py-4">
         <GCIGauge value={gci} />
+        <div className="w-full max-w-2xl">
+          <RuleConfidenceList results={ruleResults} />
+        </div>
       </div>
 
       <div className="h-[calc(100vh-300px)]">
