@@ -42,8 +42,8 @@ export const StrategyDetails = () => {
   const [strategy, setStrategy] = useState<Strategy | null>(null);
   const [stats, setStats] = useState<StrategyStats | null>(null);
   const [positions, setPositions] = useState<Position[]>([]);
-  const [gci, setGci] = useState<number>(0);
-  const [ruleResults, setRuleResults] = useState<any[]>([]);
+  const [xaiData, setXaiData] = useState<Record<string, { gci: number, results: any[] }>>({});
+  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -139,11 +139,22 @@ export const StrategyDetails = () => {
           }
         });
       } else if (data.type === 'safety_check') {
-        if (data.payload?.gci !== undefined) {
-          setGci(data.payload.gci);
-        }
-        if (data.payload?.results) {
-          setRuleResults(data.payload.results);
+        const symbol = data.payload?.symbol || 'DEFAULT';
+        const gci = data.payload?.gci;
+        const results = data.payload?.results;
+
+        if (gci !== undefined || results !== undefined) {
+          setXaiData(prev => ({
+            ...prev,
+            [symbol]: {
+              gci: gci !== undefined ? gci : (prev[symbol]?.gci || 0),
+              results: results !== undefined ? results : (prev[symbol]?.results || []),
+            }
+          }));
+
+          if (!selectedSymbol) {
+            setSelectedSymbol(symbol);
+          }
         }
       }
     });
@@ -345,12 +356,25 @@ export const StrategyDetails = () => {
         <StatCard label="Avg Profit" value={`$${stats?.avgTradeProfit?.toFixed(2) || '0.00'}`} />
       </div>
 
-      <div className="flex flex-col items-center py-4">
-        <GCIGauge value={gci} />
-        <div className="w-full max-w-2xl">
-          <RuleConfidenceList results={ruleResults} />
-        </div>
-      </div>
+      {/* XAI Intelligence Hub */}
+      <Card className="border-zinc-200 bg-white overflow-hidden shadow-sm">
+        <CardHeader className="py-3 bg-zinc-50/50 border-b border-zinc-100">
+          <CardTitle className="text-xs font-bold uppercase tracking-widest text-zinc-400 flex items-center gap-2">
+            <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+            XAI Intelligence Hub
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-6">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+            <div className="lg:col-span-4 flex justify-center border-r border-zinc-100 pr-8">
+              <GCIGauge value={xaiData[selectedSymbol || '']?.gci || 0} />
+            </div>
+            <div className="lg:col-span-8">
+              <RuleConfidenceList results={xaiData[selectedSymbol || '']?.results || []} />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="h-[calc(100vh-300px)]">
         <ResizablePanelGroup direction="horizontal" className="h-full gap-6">
