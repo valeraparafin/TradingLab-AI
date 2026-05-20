@@ -359,10 +359,41 @@ export const StrategyDetails = () => {
       {/* XAI Intelligence Hub */}
       <Card className="border-zinc-200 bg-white overflow-hidden shadow-sm">
         <CardHeader className="py-3 bg-zinc-50/50 border-b border-zinc-100">
-          <CardTitle className="text-xs font-bold uppercase tracking-widest text-zinc-400 flex items-center gap-2">
-            <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-            XAI Intelligence Hub
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-xs font-bold uppercase tracking-widest text-zinc-400 flex items-center gap-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+              XAI Intelligence Hub
+            </CardTitle>
+
+            {Object.keys(xaiData).length > 0 && (
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar max-w-md">
+                {Object.entries(xaiData).map(([symbol, data]) => {
+                  const isActive = selectedSymbol === symbol;
+                  const gci = data.gci;
+                  const statusColor =
+                    gci > 0.7 ? 'bg-emerald-500' :
+                    gci >= 0.4 ? 'bg-amber-500' :
+                    'bg-rose-500';
+
+                  return (
+                    <button
+                      key={symbol}
+                      onClick={() => setSelectedSymbol(symbol)}
+                      className={cn(
+                        "flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium transition-all whitespace-nowrap border",
+                        isActive
+                          ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+                          : "bg-zinc-100 text-zinc-600 border-zinc-200 hover:bg-zinc-200"
+                      )}
+                    >
+                      <div className={cn("w-1.5 h-1.5 rounded-full shrink-0", statusColor)} />
+                      {symbol}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="p-6">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
