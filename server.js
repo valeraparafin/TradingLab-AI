@@ -904,11 +904,31 @@ app.post('/event', async (req, res) => {
   const strategyId = eventData.strategyId;
   console.log(`[Event Received] Strategy ${strategyId}: ${eventData.type}`);
 
-  // Automatically mark strategy as running in DB since it's sending events
   try {
-    await getDB().run('UPDATE strategies SET status = ? WHERE id = ?', ['running', strategyId]);
+    const db = getDB();
+    // Automatically mark strategy as running in DB since it's sending events
+    await db.run('UPDATE strategies SET status = ? WHERE id = ?', ['running', strategyId]);
+
+    // Insert main event to get eventId
+    const result = await db.run(
+      'INSERT INTO events (strategy_id, type, payload, timestamp) VALUES (?, ?, ?, CURRENT_TIMESTAMP)',
+      [strategyId, eventData.type, JSON.stringify(eventData.payload || {})]
+    );
+    const eventId = result.lastID;
+
+    // If safety_check event with results, store rule scores
+    if (eventData.type === 'safety_check' && Array.isArray(eventData.payload?.results)) {
+      await Promise.all(
+        eventData.payload.results.map(result =>
+          db.run(
+            'INSERT INTO event_scores (event_id, rule_id, score, actual_value) VALUES (?, ?, ?, ?)',
+            [eventId, result.label, result.score, result.actual]
+          )
+        )
+      );
+    }
   } catch (err) {
-    console.error(`[Event Error] Failed to update status for strategy ${strategyId}: ${err.message}`);
+    console.error(`[Event Error] Failed to process event for strategy ${strategyId}: ${err.message}`);
   }
 
   // Emit to all connected WebSocket clients

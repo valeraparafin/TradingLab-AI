@@ -50,6 +50,16 @@ export async function initDB() {
             FOREIGN KEY (strategy_id) REFERENCES strategies (id) ON DELETE CASCADE
         );
 
+        CREATE TABLE IF NOT EXISTS event_scores (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id INTEGER NOT NULL,
+            rule_id TEXT NOT NULL,
+            score REAL NOT NULL,
+            actual_value TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (event_id) REFERENCES events (id) ON DELETE CASCADE
+        );
+
         CREATE TABLE IF NOT EXISTS active_positions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             strategy_id INTEGER NOT NULL,
@@ -95,7 +105,7 @@ export async function createStatsView() {
             SUM(result) as netPnL,
             (COUNT(CASE WHEN status = 'CLOSED' AND result > 0 THEN 1 END) * 100.0 / NULLIF(COUNT(CASE WHEN status = 'CLOSED' THEN 1 END), 0)) as winRate,
             SUM(CASE WHEN status = 'CLOSED' AND result > 0 THEN result ELSE 0 END) / ABS(NULLIF(SUM(CASE WHEN status = 'CLOSED' AND result < 0 THEN result ELSE 0 END), 0)) as profitFactor,
-            COUNT(CASE WHEN status = 'CLOSED' THEN 1 END) as totalTrades,
+            COUNT(CASE WHEN status != 'BLOCKED' THEN 1 END) as totalTrades,
             COUNT(*) as totalOrders,
             COUNT(CASE WHEN status = 'CLOSED' AND result > 0 THEN 1 END) as successfulTrades,
             COUNT(CASE WHEN status = 'CLOSED' AND result < 0 THEN 1 END) as failedTrades,

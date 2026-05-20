@@ -330,16 +330,18 @@ import { PrecisionManager } from "./src/utils/precision.js";
               }
 
               // 2. Run Safety Checks using Modular Validator
-              const { results, allPass } = safetyValidator.run(price, open, strategyData, strategyConfig);
+              const { results, allPass, gci } = safetyValidator.run(price, open, strategyData, strategyConfig);
 
               // Log checks to console
               results.forEach(result => {
                 const icon = result.pass ? "✅" : "🚫";
-                console.log(`  ${icon} ${result.label} | Required: ${result.required} | Actual: ${result.actual}`);
+                console.log(`  ${icon} ${result.label} | Required: ${result.required} | Actual: ${result.actual} | Score: ${result.score.toFixed(2)}`);
               });
 
+              console.log(`  Global Confidence Index (GCI): ${gci.toFixed(2)}`);
+
               // Log results to DB
-              await logEvent(strategyId, "safety_check", { symbol, price, allPass, results });
+              await logEvent(strategyId, "safety_check", { symbol, price, allPass, gci, results });
 
               const risk = strategyConfig.risk;
               const portfolioValue = strategyConfig.portfolioValue;
@@ -350,19 +352,21 @@ import { PrecisionManager } from "./src/utils/precision.js";
               if (!allPass) {
                 const blockedMsg = `🚫 TRADE BLOCKED`;
                 console.log(blockedMsg);
+                console.log(`   Confidence: ${gci.toFixed(2)}`);
                 results.filter((r) => !r.pass).forEach((r) => console.log(`   - ${r.label}`));
 
-                await logEventSimple(strategyId, "CHECK", `${blockedMsg}: ${results.filter((r) => !r.pass).map((r) => r.label).join("; ")}`);
+                await logEventSimple(strategyId, "CHECK", `${blockedMsg}: ${results.filter((r) => !r.pass).map((r) => r.label).join("; ")} (GCI: ${gci.toFixed(2)})`);
                 await recordTrade(strategyId, {
                   symbol,
                   price,
                   tradeSize,
                   status: "BLOCKED",
-                  notes: `Failed: ${results.filter((r) => !r.pass).map((r) => r.label).join("; ")}`,
+                  notes: `Failed: ${results.filter((r) => !r.pass).map((r) => r.label).join("; ")} (GCI: ${gci.toFixed(2)})`,
                 });
               } else {
                 console.log(`✅ ALL CONDITIONS MET`);
-                await logEventSimple(strategyId, "TRADE", "All safety conditions met. Preparing trade.");
+                console.log(`   Confidence: ${gci.toFixed(2)}`);
+                await logEventSimple(strategyId, "TRADE", `All safety conditions met. GCI: ${gci.toFixed(2)}. Preparing trade.`);
 
                 const isPaperBot = rawStrategyConfig.paperTrading !== false;
                 if (isPaperBot) {
@@ -422,6 +426,7 @@ import { PrecisionManager } from "./src/utils/precision.js";
               }
               console.log("═══════════════════════════════════════════════════════════\n");
             }
+          }
           } catch (err) {
             const isBinanceError = err.message.includes('Binance API error');
             const errMsg = isBinanceError

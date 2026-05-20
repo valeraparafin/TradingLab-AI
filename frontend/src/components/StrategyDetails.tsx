@@ -3,11 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { strategyApi, type Strategy } from '../lib/api';
 import { Card, CardHeader, CardTitle, CardContent, Badge, Button, Separator, Tabs, TabsList, TabsTrigger, TabsContent, ToggleGroup, ToggleGroupItem, ResizablePanelGroup, ResizablePanel, ResizableHandle, Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, Slider, Popover, PopoverTrigger, PopoverContent, Checkbox } from './ui/components';
 import { StrategyTerminal } from './StrategyTerminal';
+import GCIGauge from './XAI/GCIGauge';
+import RuleConfidenceList from './XAI/RuleConfidenceList';
 import { templateApi } from '../lib/api';
 import { Input, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/components';
 import { StrategyConfigForm } from './StrategyConfigForm';
 import { cn } from '../lib/utils';
-import { ArrowLeft, Play, Square, Settings, ArrowUp, ArrowDown, Clock } from 'lucide-react';
+import { ArrowLeft, Play, Square, Settings, ArrowUp, ArrowDown, Clock, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { io } from 'socket.io-client';
 
@@ -40,6 +42,8 @@ export const StrategyDetails = () => {
   const [strategy, setStrategy] = useState<Strategy | null>(null);
   const [stats, setStats] = useState<StrategyStats | null>(null);
   const [positions, setPositions] = useState<Position[]>([]);
+  const [xaiData, setXaiData] = useState<Record<string, { gci: number, results: any[] }>>({});
+  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -134,6 +138,21 @@ export const StrategyDetails = () => {
             return [...prev, updatedPos];
           }
         });
+      } else if (data.type === 'safety_check') {
+        const symbol = data.payload?.symbol || 'DEFAULT';
+        const gci = data.payload?.gci;
+        const results = data.payload?.results;
+
+        if (gci !== undefined || results !== undefined) {
+          setXaiData(prev => ({
+            ...prev,
+            [symbol]: {
+              gci: gci !== undefined ? gci : (prev[symbol]?.gci || 0),
+              results: results !== undefined ? results : (prev[symbol]?.results || []),
+            }
+          }));
+
+        }
       }
     });
 
@@ -334,6 +353,58 @@ export const StrategyDetails = () => {
         <StatCard label="Avg Profit" value={`$${stats?.avgTradeProfit?.toFixed(2) || '0.00'}`} />
       </div>
 
+      {/* XAI Intelligence Hub */}
+      <Card className="border-zinc-200 bg-white overflow-hidden shadow-sm">
+        <CardHeader className="py-3 bg-zinc-50/50 border-b border-zinc-100">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-xs font-bold uppercase tracking-widest text-zinc-400 flex items-center gap-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+              XAI Intelligence Hub
+            </CardTitle>
+
+            {Object.keys(xaiData).length > 0 || positions.length > 0 ? (
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar max-w-md">
+                {Array.from(new Set([...Object.keys(xaiData), ...positions.map(p => p.symbol)])).map((symbol) => {
+                  const isActive = selectedSymbol === symbol;
+                  const data = xaiData[symbol];
+                  const gci = data?.gci;
+                  const statusColor =
+                    gci !== undefined
+                      ? (gci > 0.7 ? 'bg-emerald-500' : gci >= 0.4 ? 'bg-amber-500' : 'bg-rose-500')
+                      : 'bg-zinc-300'; // Neutral color if no data yet
+
+                  return (
+                    <button
+                      key={symbol}
+                      onClick={() => setSelectedSymbol(symbol)}
+                      className={cn(
+                        "flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium transition-all whitespace-nowrap border",
+                        isActive
+                          ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+                          : "bg-zinc-100 text-zinc-600 border-zinc-200 hover:bg-zinc-200"
+                      )}
+                    >
+                      <div className={cn("w-1.5 h-1.5 rounded-full shrink-0", statusColor)} />
+                      {symbol}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+        </CardHeader>
+        <CardContent className="p-6">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+            <div className="lg:col-span-4 flex justify-center border-r border-zinc-100 pr-8">
+              <GCIGauge value={xaiData[selectedSymbol || '']?.gci || 0} />
+            </div>
+            <div className="lg:col-span-8">
+              <RuleConfidenceList results={xaiData[selectedSymbol || '']?.results || []} />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="h-[calc(100vh-300px)]">
         <ResizablePanelGroup direction="horizontal" className="h-full gap-6">
           <ResizablePanel className="flex-1 overflow-hidden">
@@ -361,7 +432,23 @@ export const StrategyDetails = () => {
                     ) : (
                       positions.map((pos, i) => (
                         <tr key={i} className="hover:bg-muted/50">
-                          <td className="py-3 font-medium">{pos.symbol}</td>
+                          <td className="py-3 font-medium">
+                            <div className="flex items-center gap-2">
+                              {pos.symbol}
+                              <button
+                                onClick={() => setSelectedSymbol(pos.symbol)}
+                                className={cn(
+                                  "p-1 rounded-full transition-all hover:bg-blue-50",
+                                  selectedSymbol === pos.symbol
+                                    ? "text-blue-600 bg-blue-50"
+                                    : "text-zinc-300 hover:text-blue-500"
+                                )}
+                                title={`View ${pos.symbol} in XAI Hub`}
+                              >
+                                <Sparkles className={cn("h-3 w-3", selectedSymbol === pos.symbol && "fill-current")} />
+                              </button>
+                            </div>
+                          </td>
                           <td className="py-3">
                             <Badge variant={pos.side === 'LONG' ? 'success' : 'danger'} className="text-[10px]">
                               {pos.side}
