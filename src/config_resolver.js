@@ -57,6 +57,7 @@ export function resolveConfig(strategyConfig) {
   };
 
   return {
+    ...strategyConfig,
     risk: validationResult.data,
     logic: mergedLogic
   };
