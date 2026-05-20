@@ -125,6 +125,15 @@ import { PrecisionManager } from "./src/utils/precision.js";
     return result.count;
   }
 
+  async function calculateTotalOpenRisk(strategyId) {
+    const db = getDB();
+    const result = await db.get(
+      "SELECT SUM(size_usd) as totalRisk FROM active_positions WHERE strategy_id = ? AND status = 'OPEN'",
+      [strategyId],
+    );
+    return result?.totalRisk || 0;
+  }
+
   // ─── Market Data ───────────────────────────────────────────────────────────────
 
   async function fetchCandles(symbol, interval, limit = 500) {
@@ -214,7 +223,9 @@ import { PrecisionManager } from "./src/utils/precision.js";
     while (true) {
       try {
         console.log("═══════════════════════════════════════════════════════════");
-        await logEventSimple(strategyId, "INFO", `--- Cycle Start: ${new Date().toISOString()} ---`);
+        const totalOpenRisk = await calculateTotalOpenRisk(strategyId);
+        console.log(`  Total Open Risk: $${totalOpenRisk.toFixed(2)}`);
+        await logEventSimple(strategyId, "INFO", `--- Cycle Start: ${new Date().toISOString()} | Total Risk: $${totalOpenRisk.toFixed(2)} ---`);
         console.log(`  Strategy: ${strategyName}`);
         const isPaper = rawStrategyConfig.paperTrading !== false;
         console.log(`  Mode: ${isPaper ? "📋 PAPER TRADING" : "🔴 LIVE TRADING"}`);
