@@ -29,7 +29,8 @@ app.use(cors());
 app.use(express.json());
 
 // Store for active bot processes: strategyId -> ChildProcess
-const activeBots = new Map();
+import { botService } from './src/server/services/bot.service.js';
+// The botService.activeBots map replaces the local activeBots map
 
 /**
  * Zod Schemas for Template and Strategy Validation
@@ -124,7 +125,7 @@ async function checkTemplateLock(type, id) {
   for (const s of strategies) {
     usedBy.push({ id: s.id, name: s.name });
 
-    const isRunning = activeBots.has(s.id) || s.status === 'running';
+    const isRunning = botService.isActive(s.id) || s.status === 'running';
     if (isRunning) {
       isLocked = true;
       activeCount++;
@@ -217,63 +218,10 @@ async function startBot(strategyId) {
   const strategy = await db.get('SELECT * FROM strategies WHERE id = ?', [strategyId]);
   if (!strategy) throw new Error(`Strategy ${strategyId} not found`);
 
-  return spawnBot(strategyId);
+  return botService.spawnBot(strategyId);
 }
 
-async function spawnBot(strategyId) {
-  const botProcess = spawn('node', ['bot_engine.js'], {
-    stdio: 'inherit',
-    env: { ...process.env, STRATEGY_ID: strategyId }
-  });
-
-  botProcess.on('exit', (code) => {
-    console.log(`Bot for strategy ${strategyId} exited with code ${code}`);
-    activeBots.delete(Number(strategyId));
-    getDB().run('UPDATE strategies SET status = ? WHERE id = ?', ['stopped', strategyId]).catch(console.error);
-
-    // Notify frontend via WebSocket that the bot has stopped
-    io.emit('event:update', {
-      strategyId,
-      type: 'status_change',
-      payload: { status: 'stopped' }
-    });
-  });
-
-  activeBots.set(Number(strategyId), botProcess);
-  await getDB().run(
-    'UPDATE strategies SET status = ?, last_run = CURRENT_TIMESTAMP WHERE id = ?',
-    ['running', strategyId]
-  );
-
-  // Notify frontend via WebSocket that the bot has started
-  io.emit('event:update', {
-    strategyId,
-    type: 'status_change',
-    payload: { status: 'running' }
-  });
-
-  return botProcess;
-}
-
-/**
- * Stops a running bot process.
- */
-async function stopBot(strategyId) {
-  const botProcess = activeBots.get(Number(strategyId));
-  if (botProcess) {
-    botProcess.kill('SIGTERM');
-    activeBots.delete(Number(strategyId));
-  }
-  const db = getDB();
-  await db.run('UPDATE strategies SET status = ? WHERE id = ?', ['stopped', strategyId]);
-
-  // Notify frontend via WebSocket that the bot has stopped
-  io.emit('event:update', {
-    strategyId,
-    type: 'status_change',
-    payload: { status: 'stopped' }
-  });
-}
+ 
 
 /**
  * GET /api/precision
@@ -545,7 +493,7 @@ app.get('/api/strategies', async (req, res) => {
 
       return {
         ...s,
-        running: activeBots.has(s.id) || s.status === 'running',
+        running: botService.isActive(s.id) || s.status === 'running',
         stats: {
           totalTrades: stats?.totalTrades || 0,
           winRate: stats?.winRate ? `${stats.winRate.toFixed(2)}%` : '0%',
@@ -569,8 +517,8 @@ app.post('/api/strategies/toggle', async (req, res) => {
   if (!strategyId) return res.status(400).json({ error: 'strategyId is required' });
 
   try {
-    if (activeBots.has(Number(strategyId))) {
-      await stopBot(strategyId);
+    if (botService.isActive(strategyId)) {
+      await botService.stopBot(strategyId);
       res.json({ status: 'stopped', strategyId });
     } else {
       await startBot(strategyId);
@@ -590,7 +538,7 @@ app.post('/api/strategies/archive', async (req, res) => {
   if (!strategyId) return res.status(400).json({ error: 'strategyId is required' });
 
   try {
-    await stopBot(strategyId);
+    await botService.stopBot(strategyId);
     const db = getDB();
     await db.run('UPDATE strategies SET is_archived = 1 WHERE id = ?', [strategyId]);
     res.json({ status: 'archived', strategyId });
@@ -670,8 +618,8 @@ app.patch('/api/strategies/:id/risk', async (req, res) => {
     await db.run(`UPDATE strategy_risk_settings SET ${setClause} WHERE strategy_id = ?`, values);
 
     // Bot Restart Trigger
-    if (activeBots.has(Number(strategyId)) || (await db.get('SELECT status FROM strategies WHERE id = ?', [strategyId]))?.status === 'running') {
-      await stopBot(strategyId);
+    if (botService.isActive(strategyId) || (await db.get('SELECT status FROM strategies WHERE id = ?', [strategyId]))?.status === 'running') {
+      await botService.stopBot(strategyId);
       await startBot(strategyId);
     }
 
@@ -707,8 +655,8 @@ app.patch('/api/strategies/:id/logic', async (req, res) => {
     await db.run('UPDATE strategies SET logic_config = ? WHERE id = ?', [JSON.stringify(mergedLogic), strategyId]);
 
     // Bot Restart Trigger
-    if (activeBots.has(Number(strategyId)) || (await db.get('SELECT status FROM strategies WHERE id = ?', [strategyId]))?.status === 'running') {
-      await stopBot(strategyId);
+    if (botService.isActive(strategyId) || (await db.get('SELECT status FROM strategies WHERE id = ?', [strategyId]))?.status === 'running') {
+      await botService.stopBot(strategyId);
       await startBot(strategyId);
     }
 
@@ -814,8 +762,8 @@ app.post('/api/strategies/config', async (req, res) => {
     // Fetch the updated strategy to return it in the response
     const updatedStrategy = await db.get('SELECT * FROM strategies WHERE id = ?', [strategyId]);
 
-    if (activeBots.has(Number(strategyId))) {
-      await stopBot(strategyId);
+    if (botService.isActive(strategyId)) {
+      await botService.stopBot(strategyId);
       await startBot(strategyId);
     }
 
@@ -968,7 +916,7 @@ app.get('/api/analytics/summary', async (req, res) => {
     // Count active bots from both DB status and active process map (only non-archived)
     const strategies = await db.all('SELECT id, status FROM strategies WHERE is_archived = 0');
     const activeBotsCount = strategies.filter(s => {
-      const isProcessActive = activeBots.has(s.id);
+      const isProcessActive = botService.isActive(s.id);
       const isDbRunning = s.status === 'running';
       return isProcessActive || isDbRunning;
     }).length;
