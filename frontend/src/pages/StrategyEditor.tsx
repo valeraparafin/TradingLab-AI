@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api, strategyApi } from '../lib/api';
 import { RiskForm } from '../components/StrategyEditor/RiskForm';
+import { LogicForm } from '../components/StrategyEditor/LogicForm';
 
 interface FullConfig {
   id: number;
   name: string;
   status: 'running' | 'stopped';
   risk_settings: any;
+  logic_config: any;
 }
 
 export const StrategyEditor: React.FC = () => {
@@ -69,9 +71,28 @@ export const StrategyEditor: React.FC = () => {
   };
 
   const saveRiskSettings = async (riskValues: any) => {
+    if (config?.status === 'running') {
+      if (!window.confirm('Warning: Strategy is currently running. Saving changes will automatically restart the bot to apply new settings. Do you want to proceed?')) {
+        return;
+      }
+    }
     try {
       await api.patch(`/strategies/${id}/risk`, riskValues);
       setConfig(prev => prev ? { ...prev, risk_settings: riskValues } : null);
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  const saveLogicSettings = async (logicValues: any) => {
+    if (config?.status === 'running') {
+      if (!window.confirm('Warning: Strategy is currently running. Saving changes will automatically restart the bot to apply new settings. Do you want to proceed?')) {
+        return;
+      }
+    }
+    try {
+      await api.patch(`/strategies/${id}/logic`, logicValues);
+      setConfig(prev => prev ? { ...prev, logic_config: logicValues } : null);
     } catch (error) {
       throw error;
     }
@@ -165,6 +186,12 @@ export const StrategyEditor: React.FC = () => {
           <RiskForm
             initialValues={config.risk_settings}
             onSave={saveRiskSettings}
+          />
+
+          {/* Strategy Logic Section */}
+          <LogicForm
+            initialValues={config.logic_config}
+            onSave={saveLogicSettings}
           />
         </div>
       </div>
