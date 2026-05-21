@@ -389,27 +389,11 @@ app.put('/api/templates/:type/:id', async (req, res) => {
       return res.status(404).json({ error: `Template ${id} of type ${type} not found` });
     }
 
-    // 3. Handle potential ID change if name changed
-    const newId = name ? slugify(name) : id;
-
-    // If name changed, check if new ID is already taken
-    if (newId !== id) {
-      const exists = await templateService.loadTemplate(type, newId);
-      if (exists) {
-        return res.status(400).json({ error: `Template with id ${newId} already exists` });
-      }
-    }
-
-    // 4. Update content
+    // 3. Update content (ID remains constant to avoid breaking strategy links)
     const templateData = { name: name || original.name, ...content };
-    await templateService.saveTemplate(type, newId, templateData);
+    await templateService.saveTemplate(type, id, templateData);
 
-    // 5. Delete old file if ID changed
-    if (newId !== id) {
-      await templateService.deleteTemplate(type, id);
-    }
-
-    res.json({ id: newId, name: templateData.name, type });
+    res.json({ id, name: templateData.name, type });
   } catch (err) {
     if (err instanceof z.ZodError) {
       res.status(400).json({ error: err.message });
