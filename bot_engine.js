@@ -178,7 +178,7 @@ async function run(inputStrategyId) {
   }
 
   const response = await fetch(
-    `http://localhost:3000/api/strategies/config/${strategyIdStr}`,
+    `http://localhost:3000/api/strategies/full-config/${strategyIdStr}`,
   );
   if (!response.ok) {
     throw new Error(
@@ -186,6 +186,14 @@ async function run(inputStrategyId) {
     );
   }
   const rawStrategyConfig = await response.json();
+  console.log(`[Engine] Loaded raw config from full-config endpoint for ID: ${strategyIdStr}`);
+  console.log(`[Engine] Professional Risk Params:`, {
+    risk_per_trade_percent: rawStrategyConfig.risk_per_trade_percent,
+    stop_loss_percent: rawStrategyConfig.stop_loss_percent,
+    take_profit_percent: rawStrategyConfig.take_profit_percent,
+    max_trades_per_day: rawStrategyConfig.max_trades_per_day,
+    portfolio_value: rawStrategyConfig.portfolio_value,
+  });
 
   const normalizedConfig = {
     ...rawStrategyConfig,
@@ -195,17 +203,29 @@ async function run(inputStrategyId) {
     logicTemplateId:
       rawStrategyConfig.logicTemplateId ||
       rawStrategyConfig.metadata?.logicTemplateId,
-    riskOverrides: rawStrategyConfig.riskOverrides || rawStrategyConfig.risk,
+    riskOverrides: {
+      risk_per_trade_percent: rawStrategyConfig.risk_per_trade_percent,
+      stop_loss_percent: rawStrategyConfig.stop_loss_percent,
+      take_profit_percent: rawStrategyConfig.take_profit_percent,
+      max_trades_per_day: rawStrategyConfig.max_trades_per_day,
+      max_trade_size_usd: rawStrategyConfig.max_trade_size_usd,
+    },
     logicOverrides: rawStrategyConfig.logicOverrides || rawStrategyConfig.logic,
   };
 
   const strategyConfig = resolveConfig(normalizedConfig);
 
   if (!strategyConfig.portfolioValue || strategyConfig.portfolioValue <= 0) {
-    throw new Error(
-      "CRITICAL ERROR: portfolioValue is missing or invalid. Please configure the deposit size in the Strategy Risk settings.",
-    );
+    // Fallback to raw config if resolved config doesn't have it (since resolveConfig might not know about the new flat structure)
+    if (!rawStrategyConfig.portfolio_value || rawStrategyConfig.portfolio_value <= 0) {
+      throw new Error(
+        "CRITICAL ERROR: portfolioValue is missing or invalid. Please configure the deposit size in the Strategy Risk settings.",
+      );
+    }
   }
+
+  // Ensure portfolioValue is available on strategyConfig for later use
+  strategyConfig.portfolioValue = strategyConfig.portfolioValue || rawStrategyConfig.portfolio_value;
 
   console.log(`[Engine] Loaded strategy config for ID: ${strategyIdStr}`);
   console.log(
@@ -449,18 +469,24 @@ async function run(inputStrategyId) {
                 results,
               });
 
-              const risk = strategyConfig.risk;
-              const portfolioValue = strategyConfig.portfolioValue;
+  const risk = strategyConfig.risk;
+  const portfolioValue = strategyConfig.portfolioValue;
 
-              // GCI Confidence Floor and Dynamic Scaling
-              const confidenceFloor = 0.8;
-              const baseRiskUSD = 2.0;
+  // GCI Confidence Floor and Dynamic Scaling
+  const confidenceFloor = 0.8;
+  const riskPercent = risk.riskPerTradePercent;
+  // portfolioValue is already defined above
+
+
+              // Base risk in USD based on the strategy's risk percentage
+              const baseRiskUSD = portfolioValue * (riskPercent / 100);
+
               let finalTradeSize = 0;
-
               if (gci >= confidenceFloor) {
-                const scalingFactor =
-                  (gci - confidenceFloor) / (1.0 - confidenceFloor);
-                finalTradeSize = baseRiskUSD * (0.5 + 0.5 * scalingFactor);
+                // Scaling from 30% at 0.8 GCI to 100% at 1.0 GCI
+                const scalingFactor = (gci - confidenceFloor) / (1.0 - confidenceFloor);
+                const multiplier = 0.3 + (0.7 * scalingFactor);
+                finalTradeSize = baseRiskUSD * multiplier;
               }
 
               console.log(
