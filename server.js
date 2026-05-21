@@ -26,7 +26,7 @@ app.use(express.json());
 const activeBots = new Map();
 
 /**
- * Zod Schemas for Template Validation
+ * Zod Schemas for Template and Strategy Validation
  */
 const LogicTemplateSchema = z.object({
   name: z.string().min(1),
@@ -48,6 +48,20 @@ const RiskTemplateSchema = z.object({
     maxTradesPerDay: z.number().int().positive(),
   }),
 });
+
+const RiskSettingsSchema = z.object({
+  risk_per_trade_percent: z.number().positive().max(100),
+  stop_loss_percent: z.number().positive().max(100),
+  take_profit_percent: z.number().positive().max(100),
+  min_risk_reward_ratio: z.number().positive(),
+  max_portfolio_heat_percent: z.number().positive().max(100),
+  max_open_positions: z.number().int().positive(),
+  max_trades_per_day: z.number().int().positive(),
+  daily_loss_limit_percent: z.number().positive().max(100),
+  daily_profit_target_percent: z.number().positive().max(100),
+});
+
+const LogicConfigSchema = z.record(z.any());
 
 /**
  * TemplateService: Business logic for managing templates
@@ -461,7 +475,7 @@ app.delete('/api/templates/:type/:id', async (req, res) => {
 
 /**
  * POST /api/strategies
- * Creates a new strategy by assembling templates
+ * Creates a new strategy by assembling templates and saving as a snapshot.
  */
 app.post('/api/strategies', async (req, res) => {
   const { name, logicTemplateId, riskTemplateId, settings } = req.body;
@@ -472,22 +486,71 @@ app.post('/api/strategies', async (req, res) => {
   try {
     const db = getDB();
 
-    // Assemble the full strategy config
+    // 1. Assemble the strategy configuration
     const finalConfig = await assembleStrategy(name, settings || {}, logicTemplateId, riskTemplateId);
-    const configString = JSON.stringify(finalConfig);
 
-    // Insert into database
-    const result = await db.run(
-      'INSERT INTO strategies (name, config) VALUES (?, ?)',
-      [name, configString]
-    );
+    // Separate Logic and Risk for the snapshot model
+    const logicConfig = {
+      ...finalConfig,
+      metadata: finalConfig.metadata
+    };
+    delete logicConfig.riskOverrides;
+    delete logicConfig.riskTemplateId;
+    delete logicConfig.name;
 
-    const strategyId = result.lastID;
+    const riskSettings = {
+      risk_per_trade_percent: (settings?.risk?.riskPerTradePercent ?? finalConfig.riskOverrides?.riskPerTradePercent ?? 1.0),
+      stop_loss_percent: (settings?.risk?.stopLossPercent ?? finalConfig.riskOverrides?.stopLossPercent ?? 2.0),
+      take_profit_percent: (settings?.risk?.takeProfitPercent ?? finalConfig.riskOverrides?.takeProfitPercent ?? 4.0),
+      min_risk_reward_ratio: (settings?.risk?.minRiskRewardRatio ?? 2.0),
+      max_portfolio_heat_percent: (settings?.risk?.maxPortfolioHeatPercent ?? 10.0),
+      max_open_positions: (settings?.risk?.maxOpenPositions ?? 5),
+      max_trades_per_day: (settings?.risk?.maxTradesPerDay ?? finalConfig.riskOverrides?.maxTradesPerDay ?? 10),
+      daily_loss_limit_percent: (settings?.risk?.dailyLossLimitPercent ?? 3.0),
+      daily_profit_target_percent: (settings?.risk?.dailyProfitTargetPercent ?? 5.0),
+    };
 
-    res.json({ id: strategyId, name, status: 'stopped' });
+    // Validate risk settings with Zod
+    RiskSettingsSchema.parse(riskSettings);
+
+    // 2. Save in a single transaction
+    await db.run('BEGIN TRANSACTION');
+    try {
+      const result = await db.run(
+        'INSERT INTO strategies (name, logic_config) VALUES (?, ?)',
+        [name, JSON.stringify(logicConfig)]
+      );
+      const strategyId = result.lastID;
+
+      await db.run(
+        `INSERT INTO strategy_risk_settings
+        (strategy_id, risk_per_trade_percent, stop_loss_percent, take_profit_percent, min_risk_reward_ratio, max_portfolio_heat_percent, max_open_positions, max_trades_per_day, daily_loss_limit_percent, daily_profit_target_percent)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          strategyId,
+          riskSettings.risk_per_trade_percent,
+          riskSettings.stop_loss_percent,
+          riskSettings.take_profit_percent,
+          riskSettings.min_risk_reward_ratio,
+          riskSettings.max_portfolio_heat_percent,
+          riskSettings.max_open_positions,
+          riskSettings.max_trades_per_day,
+          riskSettings.daily_loss_limit_percent,
+          riskSettings.daily_profit_target_percent
+        ]
+      );
+      await db.run('COMMIT');
+
+      res.json({ id: result.lastID, name, status: 'stopped' });
+    } catch (transactionError) {
+      await db.run('ROLLBACK');
+      throw transactionError;
+    }
   } catch (err) {
     if (err.message.includes('UNIQUE constraint failed')) {
       res.status(400).json({ error: 'Strategy with this name already exists' });
+    } else if (err instanceof z.ZodError) {
+      res.status(400).json({ error: err.message });
     } else {
       res.status(500).json({ error: err.message });
     }
@@ -609,31 +672,115 @@ app.delete('/api/strategies/:id', async (req, res) => {
 
 
 /**
- * GET /api/strategies/config/:id
- * Returns the combined configuration for a strategy (assembled from templates and overrides).
+ * PATCH /api/strategies/:id/risk
+ * Updates partial risk settings for a strategy and restarts bot if running.
  */
-app.get('/api/strategies/config/:id', async (req, res) => {
-  const { id } = req.params;
+app.patch('/api/strategies/:id/risk', async (req, res) => {
+  const { id: strategyId } = req.params;
+  const updates = req.body;
+
   try {
     const db = getDB();
-    const strategy = await db.get('SELECT * FROM strategies WHERE id = ?', [id]);
 
-    if (!strategy) {
-      return res.status(404).json({ error: `Strategy ${id} not found` });
+    // Validate partial payload
+    RiskSettingsSchema.partial().parse(updates);
+
+    // Build dynamic SQL update
+    const columns = Object.keys(updates);
+    if (columns.length === 0) {
+      return res.status(400).json({ error: 'No risk settings provided for update' });
     }
 
-    const config = JSON.parse(strategy.config);
+    const setClause = columns.map(col => `${col} = ?`).join(', ');
+    const values = [...Object.values(updates), strategyId];
 
-    // Use assembleStrategy to regenerate the combined config.
-    // This ensures the response is consistent with what the bot_engine actually sees.
-    const assembled = await assembleStrategy(
-      strategy.name,
-      config, // passing the existing config as the settings object
-      config.metadata?.logicTemplateId || config.logicTemplateId,
-      config.metadata?.riskTemplateId || config.riskTemplateId
+    await db.run(`UPDATE strategy_risk_settings SET ${setClause} WHERE strategy_id = ?`, values);
+
+    // Bot Restart Trigger
+    if (activeBots.has(Number(strategyId)) || (await db.get('SELECT status FROM strategies WHERE id = ?', [strategyId]))?.status === 'running') {
+      await stopBot(strategyId);
+      await startBot(strategyId);
+    }
+
+    res.json({ status: 'updated', strategyId });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: err.message });
+    } else {
+      res.status(500).json({ error: err.message });
+    }
+  }
+});
+
+/**
+ * PATCH /api/strategies/:id/logic
+ * Updates partial logic configuration for a strategy and restarts bot if running.
+ */
+app.patch('/api/strategies/:id/logic', async (req, res) => {
+  const { id: strategyId } = req.params;
+  const updates = req.body;
+
+  try {
+    const db = getDB();
+    const strategy = await db.get('SELECT logic_config FROM strategies WHERE id = ?', [strategyId]);
+    if (!strategy) return res.status(404).json({ error: 'Strategy not found' });
+
+    const currentLogic = JSON.parse(strategy.logic_config || '{}');
+    const mergedLogic = { ...currentLogic, ...updates };
+
+    // Validate merged config
+    LogicConfigSchema.parse(mergedLogic);
+
+    await db.run('UPDATE strategies SET logic_config = ? WHERE id = ?', [JSON.stringify(mergedLogic), strategyId]);
+
+    // Bot Restart Trigger
+    if (activeBots.has(Number(strategyId)) || (await db.get('SELECT status FROM strategies WHERE id = ?', [strategyId]))?.status === 'running') {
+      await stopBot(strategyId);
+      await startBot(strategyId);
+    }
+
+    res.json({ status: 'updated', strategyId });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: err.message });
+    } else {
+      res.status(500).json({ error: err.message });
+    }
+  }
+});
+
+/**
+ * GET /api/strategies/full-config/:id
+ * Returns a unified flat object containing both logic and risk parameters.
+ */
+app.get('/api/strategies/full-config/:id', async (req, res) => {
+  const { id: strategyId } = req.params;
+  try {
+    const db = getDB();
+    const row = await db.get(`
+      SELECT s.*, r.*
+      FROM strategies s
+      JOIN strategy_risk_settings r ON s.id = r.strategy_id
+      WHERE s.id = ?`,
+      [strategyId]
     );
 
-    res.json(assembled);
+    if (!row) return res.status(404).json({ error: 'Strategy config not found' });
+
+    const logicConfig = JSON.parse(row.logic_config || '{}');
+
+    // Flatten the result: combine strategy metadata, logic_config, and risk settings
+    const fullConfig = {
+      ...row,
+      ...logicConfig,
+      // Remove redundant keys from the JOIN result
+      logic_config: undefined,
+      strategy_id: undefined
+    };
+    delete fullConfig.logic_config;
+    delete fullConfig.strategy_id;
+
+    res.json(fullConfig);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
