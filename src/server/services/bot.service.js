@@ -1,5 +1,5 @@
 import { spawn } from 'child_process';
-import { getDB } from '../../db.js';
+import { getDB } from '../../../db.js';
 
 class BotService {
   constructor(io) {

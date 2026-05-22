@@ -6,5 +6,3 @@ export const UpdateStrategyDTO = z.object({
   riskTemplateId: z.string().optional(),
   settings: z.record(z.any()).optional(),
 });
-
-export type UpdateStrategyDTO = z.infer<typeof UpdateStrategyDTO>;
