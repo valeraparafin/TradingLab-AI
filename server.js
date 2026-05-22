@@ -957,9 +957,9 @@ app.get('/api/analytics/summary', async (req, res) => {
     }).length;
 
     console.log(`[Analytics Summary] Total strategies: ${strategies.length}, Active count: ${activeBotsCount}`);
-    console.log(`[Analytics Summary] ActiveBot Map size: ${activeBots.size}`);
+    console.log(`[Analytics Summary] ActiveBot Map size: ${botService.activeBots.size}`);
     strategies.forEach(s => {
-      console.log(`[Analytics Summary] Strategy ID ${s.id}: status=${s.status}, inMap=${activeBots.has(s.id)}`);
+      console.log(`[Analytics Summary] Strategy ID ${s.id}: status=${s.status}, inMap=${botService.activeBots.has(s.id)}`);
     });
 
     res.json({
