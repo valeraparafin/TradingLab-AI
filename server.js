@@ -7,12 +7,13 @@ import path from 'path';
 import fs from 'fs';
 import { promises as fsp } from 'fs';
 import { z } from 'zod';
-import { 
-  LogicTemplateSchema, 
-  RiskTemplateSchema, 
-  RiskSettingsSchema, 
-  LogicConfigSchema 
+import {
+  LogicTemplateSchema,
+  RiskTemplateSchema,
+  RiskSettingsSchema,
+  LogicConfigSchema
 } from './src/server/schemas/strategy.schema.js';
+import { UpdateStrategyDTO } from './src/server/dtos/strategy.dto.js';
 import { initDB, getDB, createStatsView } from './db.js';
 import { PrecisionManager } from './src/utils/precision.js';
 
