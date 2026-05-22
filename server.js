@@ -15,6 +15,7 @@ import {
 } from './src/server/schemas/strategy.schema.js';
 import { initDB, getDB, createStatsView } from './db.js';
 import { PrecisionManager } from './src/utils/precision.js';
+import { toCamel, toSnake } from './src/utils/casing.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -945,7 +946,6 @@ app.get('/api/export/:strategyId', async (req, res) => {
   const { strategyId } = req.params;
   try {
     const db = getDB();
-    const trades = await db.all('SELECT * FROM trades WHERE strategy_id = ? ORDER BY timestamp DESC', [strategyId]);
 
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename=trades_strategy_${strategyId}.csv`);
@@ -953,14 +953,35 @@ app.get('/api/export/:strategyId', async (req, res) => {
     const header = 'id,timestamp,symbol,side,price,size_usd,status,result,notes\\n';
     res.write(header);
 
-    trades.forEach(t => {
-      const row = [t.id, t.timestamp, t.symbol, t.side, t.price, t.size_usd, t.status, t.result, t.notes].join(',');
-      res.write(row + '\\n');
-    });
-
-    res.end();
+    // Use db.each for streaming records one by one to avoid loading everything into memory
+    await db.each(
+      'SELECT * FROM trades WHERE strategy_id = ? ORDER BY timestamp DESC',
+      [strategyId],
+      (err, row) => {
+        if (err) {
+          console.error(`[CSVExport] Error reading row: ${err.message}`);
+          return;
+        }
+        const csvRow = [
+          row.id,
+          row.timestamp,
+          row.symbol,
+          row.side,
+          row.price,
+          row.size_usd,
+          row.status,
+          row.result,
+          row.notes
+        ].join(',');
+        res.write(csvRow + '\\n');
+      },
+      async () => {
+        res.end();
+      }
+    );
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(`[CSVExport] Stream failed: ${err.message}`);
+    res.status(500).json({ error: 'Export failed' });
   }
 });
 
