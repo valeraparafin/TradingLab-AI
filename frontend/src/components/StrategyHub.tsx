@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { strategyApi, templateApi } from '../lib/api';
 import type { Strategy } from '../lib/api';
-import { Card, CardHeader, CardTitle, CardContent, Badge, Button } from './ui/components';
+import { Card, CardHeader, CardTitle, CardContent, Badge, Button, Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from './ui/components';
 import { cn } from '../lib/utils';
 import { useSocket } from '../hooks/useSocket';
 import { StrategyConfigForm } from './StrategyConfigForm';
@@ -222,27 +222,31 @@ export const StrategyHub = () => {
         </div>
       </CardContent>
 
-      {/* Create Modal */}
-      {isCreateOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <Card className="w-full max-w-md p-6 shadow-2xl overflow-y-auto max-h-[90vh]">
-            <CardTitle className="text-xl mb-4">Create New Strategy</CardTitle>
-            <StrategyConfigForm
-              strategy={null}
-              templates={templates}
-              onSave={handleCreate}
-              onCancel={() => setIsCreateOpen(false)}
-              saveButtonText="Create"
-            />
-          </Card>
-        </div>
-      )}
+      {/* Create Sidebar */}
+      <Sheet open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+        <SheetContent className="w-[500px]">
+          <SheetHeader className="mb-6">
+            <SheetTitle>Create New Strategy</SheetTitle>
+            <SheetDescription>Define a new trading strategy using templates and custom overrides.</SheetDescription>
+          </SheetHeader>
+          <StrategyConfigForm
+            strategy={null}
+            templates={templates}
+            onSave={handleCreate}
+            onCancel={() => setIsCreateOpen(false)}
+            saveButtonText="Create"
+          />
+        </SheetContent>
+      </Sheet>
 
-      {/* Edit Modal */}
+      {/* Edit Sidebar */}
       {isEditOpen && selectedStrategy && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <Card className="w-full max-w-md p-6 shadow-2xl overflow-y-auto max-h-[90vh]">
-            <CardTitle className="text-xl mb-4">Edit {selectedStrategy.name}</CardTitle>
+        <Sheet open={isEditOpen} onOpenChange={setIsEditOpen}>
+          <SheetContent className="w-[500px]">
+            <SheetHeader className="mb-6">
+              <SheetTitle>Edit {selectedStrategy.name}</SheetTitle>
+              <SheetDescription>Update the configuration for this strategy. Changes will restart the bot.</SheetDescription>
+            </SheetHeader>
             <StrategyConfigForm
               strategy={selectedStrategy}
               templates={templates}
@@ -250,8 +254,8 @@ export const StrategyHub = () => {
               onCancel={() => setIsEditOpen(false)}
               saveButtonText="Save Changes"
             />
-          </Card>
-        </div>
+          </SheetContent>
+        </Sheet>
       )}
     </Card>
   );
