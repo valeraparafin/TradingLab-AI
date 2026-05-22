@@ -7,12 +7,13 @@ import path from 'path';
 import fs from 'fs';
 import { promises as fsp } from 'fs';
 import { z } from 'zod';
-import { 
-  LogicTemplateSchema, 
-  RiskTemplateSchema, 
-  RiskSettingsSchema, 
-  LogicConfigSchema 
+import {
+  LogicTemplateSchema,
+  RiskTemplateSchema,
+  RiskSettingsSchema,
+  LogicConfigSchema
 } from './src/server/schemas/strategy.schema.js';
+import { UpdateStrategyDTO } from './src/server/dtos/strategy.dto.js';
 import { initDB, getDB, createStatsView } from './db.js';
 import { PrecisionManager } from './src/utils/precision.js';
 
@@ -712,10 +713,12 @@ app.get('/api/strategies/full-config/:id', async (req, res) => {
  * Updates strategy configuration and restarts the bot if running.
  */
 app.post('/api/strategies/config', async (req, res) => {
-  const { strategyId, name, logicTemplateId, riskTemplateId, settings } = req.body;
+  const { strategyId } = req.body;
   if (!strategyId) return res.status(400).json({ error: 'strategyId is required' });
 
   try {
+    const validatedData = UpdateStrategyDTO.parse(req.body);
+    const { name, logicTemplateId, riskTemplateId, settings } = validatedData;
     const db = getDB();
     const oldStrategy = await db.get('SELECT name, config FROM strategies WHERE id = ?', [strategyId]);
     if (!oldStrategy) throw new Error(`Strategy ${strategyId} not found`);
@@ -769,7 +772,11 @@ app.post('/api/strategies/config', async (req, res) => {
 
     res.json({ status: 'updated', strategy: updatedStrategy });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: err.message });
+    } else {
+      res.status(500).json({ error: err.message });
+    }
   }
 });
 
