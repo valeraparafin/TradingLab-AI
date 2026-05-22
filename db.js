@@ -143,6 +143,47 @@ export function getDB() {
 }
 
 /**
+ * Executes a set of operations within a single database transaction.
+ * @param {function(import('sqlite').Database): Promise<any>} callback The operations to perform.
+ * @returns {Promise<any>} The result of the callback.
+ * @throws {Error} If the transaction fails.
+ */
+export async function transaction(callback) {
+    const db = getDB();
+    await db.run('BEGIN TRANSACTION');
+    try {
+        const result = await callback(db);
+        await db.run('COMMIT');
+        return result;
+    } catch (e) {
+        await db.run('ROLLBACK');
+        throw e;
+    }
+}
+
+/**
+ * Updates a record in the database dynamically.
+ * @param {string} table Table name.
+ * @param {object} data Key-value pairs of columns to update.
+ * @param {object} where Key-value pairs for the WHERE clause.
+ * @returns {Promise<{changes: number}>}
+ */
+export async function updateRecord(table, data, where) {
+    const db = getDB();
+    const keys = Object.keys(data);
+    const values = Object.values(data);
+    const setClause = keys.map(k => `${k} = ?`).join(', ');
+
+    const whereKeys = Object.keys(where);
+    const whereValues = Object.values(where);
+    const whereClause = whereKeys.map(k => `${k} = ?`).join(' AND ');
+
+    const sql = `UPDATE ${table} SET ${setClause} WHERE ${whereClause}`;
+    const result = await db.run(sql, [...values, ...whereValues]);
+    return { changes: result.changes };
+}
+
+/**
  * Migrates existing strategy configurations to the hybrid snapshot model.
  * Extracts risk settings into strategy_risk_settings and renames config to logic_config.
  */

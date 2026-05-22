@@ -54,6 +54,11 @@ class BotService {
     });
   }
 
+  async restartBot(strategyId) {
+    await this.stopBot(strategyId);
+    return this.spawnBot(strategyId);
+  }
+
   isActive(strategyId) {
     return this.activeBots.has(Number(strategyId));
   }

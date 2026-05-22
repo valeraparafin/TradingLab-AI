@@ -619,8 +619,7 @@ app.patch('/api/strategies/:id/risk', async (req, res) => {
 
     // Bot Restart Trigger
     if (botService.isActive(strategyId) || (await db.get('SELECT status FROM strategies WHERE id = ?', [strategyId]))?.status === 'running') {
-      await botService.stopBot(strategyId);
-      await startBot(strategyId);
+      await botService.restartBot(strategyId);
     }
 
     res.json({ status: 'updated', strategyId });
@@ -656,8 +655,7 @@ app.patch('/api/strategies/:id/logic', async (req, res) => {
 
     // Bot Restart Trigger
     if (botService.isActive(strategyId) || (await db.get('SELECT status FROM strategies WHERE id = ?', [strategyId]))?.status === 'running') {
-      await botService.stopBot(strategyId);
-      await startBot(strategyId);
+      await botService.restartBot(strategyId);
     }
 
     res.json({ status: 'updated', strategyId });
