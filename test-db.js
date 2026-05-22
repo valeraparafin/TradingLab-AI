@@ -1,4 +1,4 @@
-import { initDB } from './db.js';
+import { initDB } from './src/db/db.js';
 import { open } from 'sqlite';
 import sqlite3 from 'sqlite3';
 
@@ -9,7 +9,7 @@ async function testDB() {
         console.log('Database initialized successfully.');
 
         const db = await open({
-            filename: './trading_lab.db',
+            filename: './data/trading_lab.db',
             driver: sqlite3.Database
         });
 

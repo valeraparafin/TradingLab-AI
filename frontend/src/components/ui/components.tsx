@@ -1,4 +1,5 @@
 import * as React from "react";
+import { Info } from "lucide-react";
 import { cn } from "../../lib/utils";
 
 export const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ className, ...props }, ref) => (
@@ -178,6 +179,7 @@ export const SheetTrigger = ({ children, className, ...props }: { children: Reac
 
 import { X } from 'lucide-react';
 
+
 export const SheetContent = ({ children, className, side = "right", open, onOpenChange }: { children: React.ReactNode; className?: string; side?: "top" | "bottom" | "left" | "right"; open?: boolean; onOpenChange?: (open: boolean) => void }) => {
   if (!open) return null;
   const sideStyles = {
@@ -234,8 +236,37 @@ export const SheetDescription = ({ children, className }: { children: React.Reac
   </p>
 );
 
+export const Tooltip = ({ children, content }: { children?: React.ReactNode; content: string }) => {
+  const [isVisible, setIsVisible] = React.useState(false);
+
+  return (
+    <div
+      className="relative inline-flex items-center"
+      onMouseEnter={() => setIsVisible(true)}
+      onMouseLeave={() => setIsVisible(false)}
+    >
+      {children ?? (
+        <span
+          className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-border bg-muted/50 text-muted-foreground cursor-help"
+          aria-label="More information"
+        >
+          <Info className="h-3.5 w-3.5" />
+        </span>
+      )}
+      {isVisible && (
+        <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-50 w-48 p-2 bg-popover text-popover-foreground text-xs rounded-md border shadow-lg pointer-events-none">
+          {content}
+          <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-popover" />
+        </div>
+      )}
+    </div>
+  );
+};
+Tooltip.displayName = "Tooltip";
+
 /**
  * Slider Component
+
  */
 export const Slider = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement> & { step?: number }>(({ className, step = 1, ...props }, ref) => (
   <input

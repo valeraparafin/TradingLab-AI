@@ -7,14 +7,19 @@ import path from 'path';
 import fs from 'fs';
 import { promises as fsp } from 'fs';
 import { z } from 'zod';
-import { 
-  LogicTemplateSchema, 
-  RiskTemplateSchema, 
-  RiskSettingsSchema, 
-  LogicConfigSchema 
+import {
+  LogicTemplateSchema,
+  RiskTemplateSchema,
+  RiskSettingsSchema,
+  LogicConfigSchema
 } from './src/server/schemas/strategy.schema.js';
-import { initDB, getDB, createStatsView } from './db.js';
+import { initDB, getDB, createStatsView } from './src/db/db.js';
 import { PrecisionManager } from './src/utils/precision.js';
+
+import templateRoutes from './src/server/routes/template.routes.js';
+import strategyRoutes from './src/server/routes/strategy.routes.js';
+import analyticsRoutes from './src/server/routes/analytics.routes.js';
+import eventRoutes from './src/server/routes/event.routes.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -25,189 +30,44 @@ const io = new Server(httpServer, {
   }
 });
 
+import { botService } from './src/server/services/bot.service.js';
+botService.setIo(io);
+
 app.use(cors());
 app.use(express.json());
 
-// Store for active bot processes: strategyId -> ChildProcess
-import { botService } from './src/server/services/bot.service.js';
-// The botService.activeBots map replaces the local activeBots map
+// Attach IO to app locals for access in routers
+app.locals.io = io;
+
+// Mount Routers
+app.use('/api/templates', templateRoutes);
+app.use('/api/strategies', strategyRoutes);
+app.use('/api/analytics', analyticsRoutes);
+app.post('/event', eventRoutes);
+
 
 /**
  * Zod Schemas for Template and Strategy Validation
+ * These are now centralized in ./src/server/schemas/strategy.schema.js
  */
  
 
-/**
- * TemplateService: Business logic for managing templates
- */
-class TemplateService {
-  constructor() {
-    this.templatesDir = path.join(process.cwd(), 'templates');
-  }
+ 
+ 
+ 
 
-  async loadTemplate(type, id) {
-    try {
-      const filePath = path.join(this.templatesDir, type, `${id}.json`);
-      const data = await fsp.readFile(filePath, 'utf8');
-      return JSON.parse(data);
-    } catch (err) {
-      return null;
-    }
-  }
+ 
 
-  async saveTemplate(type, id, data) {
-    const schema = type === 'logic' ? LogicTemplateSchema : RiskTemplateSchema;
-    schema.parse(data);
 
-    const dir = path.join(this.templatesDir, type);
-    await fsp.mkdir(dir, { recursive: true });
 
-    const filePath = path.join(dir, `${id}.json`);
-    await fsp.writeFile(filePath, JSON.stringify(data, null, 2));
-  }
 
-  async listTemplates(type, lockChecker) {
-    const dir = path.join(this.templatesDir, type);
-    try {
-      const files = await fsp.readdir(dir);
-      const jsonFiles = files.filter(f => f.endsWith('.json'));
 
-      return await Promise.all(jsonFiles.map(async (f) => {
-        const id = f.replace('.json', '');
-        const content = await this.loadTemplate(type, id);
-        const lock = await lockChecker(type, id);
-        return {
-          id,
-          name: content?.name || id,
-          ...lock
-        };
-      }));
-    } catch (err) {
-      return [];
-    }
-  }
-
-  async deleteTemplate(type, id) {
-    const filePath = path.join(this.templatesDir, type, `${id}.json`);
-    await fsp.unlink(filePath);
-  }
-
-  async duplicateTemplate(type, id, newId) {
-    const data = await this.loadTemplate(type, id);
-    if (!data) throw new Error(`Template ${id} of type ${type} not found`);
-    await this.saveTemplate(type, newId, data);
-  }
-}
-
-const templateService = new TemplateService();
+import { strategyService } from './src/server/services/strategy.service.js';
+import { templateService } from './src/server/services/template.service.js';
 const precisionManager = new PrecisionManager();
 
-/**
- * Helper to check if a template is locked (used by a running strategy)
- */
-async function checkTemplateLock(type, id) {
-  const db = getDB();
-
-  // Use json_extract to filter strategies that use this template ID in the metadata
-  // config is stored as a JSON string in the database.
-  // path: '$.metadata.logicTemplateId' or '$.metadata.riskTemplateId'
-  const jsonPath = type === 'logic' ? '$.metadata.logicTemplateId' : '$.metadata.riskTemplateId';
-
-  const strategies = await db.all(
-    `SELECT id, name, status, config FROM strategies WHERE json_extract(config, ?) = ?`,
-    [jsonPath, id]
-  );
-
-  const usedBy = [];
-  let activeCount = 0;
-  let isLocked = false;
-
-  for (const s of strategies) {
-    usedBy.push({ id: s.id, name: s.name });
-
-    const isRunning = botService.isActive(s.id) || s.status === 'running';
-    if (isRunning) {
-      isLocked = true;
-      activeCount++;
-    }
-  }
-
-  return { isLocked, usedBy, activeCount };
-}
-
-/**
- * Assembler: Merges logic, risk, and user settings into a final strategy config
- */
-async function assembleStrategy(name, settings, logicTemplateId, riskTemplateId) {
-  const [logic, risk] = await Promise.all([
-    templateService.loadTemplate('logic', logicTemplateId),
-    templateService.loadTemplate('risk', riskTemplateId)
-  ]);
-
-  if (!logic) throw new Error(`Logic template ${logicTemplateId} not found`);
-  if (!risk) throw new Error(`Risk template ${riskTemplateId} not found`);
-
-  // Calculate Risk Overrides
-  const riskSettings = risk.settings || risk.content?.settings || risk;
-
-  // Start with existing overrides if they exist in settings
-  const riskOverrides = { ...(settings.riskOverrides || {}) };
-
-  // Extract desired risk values from settings (top-level or inside .risk)
-  const desiredRisk = {
-    ...(settings.risk || {}),
-    ...settings
-  };
-
-  for (const [key, value] of Object.entries(desiredRisk)) {
-    if (riskSettings[key] !== undefined) {
-      if (value !== undefined) {
-        if (value !== riskSettings[key]) {
-          riskOverrides[key] = value;
-        } else {
-          // If it now matches the template, remove the override
-          delete riskOverrides[key];
-        }
-      }
-    }
-  }
-  console.log(`[Assemble] Resulting Overrides:`, riskOverrides);
-
-
-
-  // Calculate Logic Overrides (if any settings are provided for logic)
-  const logicOverrides = {};
-  if (settings.logic) {
-    for (const [key, value] of Object.entries(settings.logic)) {
-      if (value !== undefined && JSON.stringify(value) !== JSON.stringify(logic[key])) {
-        logicOverrides[key] = value;
-      }
-    }
-  }
-
-  return {
-    name,
-    riskTemplateId,
-    riskOverrides,
-    logicTemplateId,
-    logicOverrides,
-    // Preserve only non-risk and non-logic settings (watchlist, timeframe, paperTrading, tradeMode, etc.)
-    ...Object.fromEntries(
-      Object.entries(settings).filter(([key]) => {
-        const riskFields = ['maxTradesPerDay', 'maxTradeSizeUSD', 'riskPerTradePercent', 'stopLossPercent', 'takeProfitPercent', 'risk'];
-        const logicFields = ['logic'];
-        return !riskFields.includes(key) && !logicFields.includes(key);
-      })
-    ),
-    metadata: {
-      logicTemplateId,
-      riskTemplateId,
-      assembledAt: new Date().toISOString()
-    }
-  };
-
-
-}
+// Use strategyService.checkTemplateLock
+// Use strategyService.assembleStrategy
 
 /**
  * Starts a bot engine process for a specific strategy.
@@ -246,8 +106,8 @@ app.get('/api/precision', async (req, res) => {
  */
 app.get('/api/templates', async (req, res) => {
   try {
-    const logicTemplates = await templateService.listTemplates('logic', checkTemplateLock);
-    const riskTemplates = await templateService.listTemplates('risk', checkTemplateLock);
+    const logicTemplates = await templateService.listTemplates('logic', strategyService.checkTemplateLock.bind(strategyService));
+    const riskTemplates = await templateService.listTemplates('risk', strategyService.checkTemplateLock.bind(strategyService));
 
     res.json({ logic: logicTemplates, risk: riskTemplates });
   } catch (err) {
@@ -310,7 +170,7 @@ app.put('/api/templates/:type/:id', async (req, res) => {
 
   try {
     // 1. Check for lock
-    const lock = await checkTemplateLock(type, id);
+    const lock = await strategyService.checkTemplateLock(type, id);
     if (lock.isLocked) {
       return res.status(403).json({
         error: 'Template is locked because it is used by running strategies',
@@ -370,7 +230,7 @@ app.delete('/api/templates/:type/:id', async (req, res) => {
 
   try {
     // 1. Check for lock
-    const lock = await checkTemplateLock(type, id);
+    const lock = await strategyService.checkTemplateLock(type, id);
     if (lock.isLocked) {
       return res.status(403).json({
         error: 'Template is locked because it is used by running strategies',
@@ -408,7 +268,7 @@ app.post('/api/strategies', async (req, res) => {
     const db = getDB();
 
     // 1. Assemble the strategy configuration
-    const finalConfig = await assembleStrategy(name, settings || {}, logicTemplateId, riskTemplateId);
+    const finalConfig = await strategyService.assembleStrategy(name, settings || {}, logicTemplateId, riskTemplateId);
 
     // Separate Logic and Risk for the snapshot model
     const logicConfig = {
@@ -752,7 +612,7 @@ app.post('/api/strategies/config', async (req, res) => {
 
     // Re-assemble the strategy using templates and merged settings
     const finalName = name || oldStrategy.name;
-    const finalConfig = await assembleStrategy(finalName, mergedSettings, finalLogicTemplateId, finalRiskTemplateId);
+    const finalConfig = await strategyService.assembleStrategy(finalName, mergedSettings, finalLogicTemplateId, finalRiskTemplateId);
 
     await db.run(
       'UPDATE strategies SET name = ?, config = ? WHERE id = ?',

@@ -35,8 +35,18 @@ export function resolveConfig(strategyConfig) {
   // Templates are expected to have a 'settings' object
   const mergedRisk = {
     ...(riskTemplate.settings || riskTemplate.content?.settings || riskTemplate),
+    // First apply root-level overrides (from the strategy config)
+    maxTradesPerDay: strategyConfig.maxTradesPerDay,
+    maxTradeSizeUSD: strategyConfig.maxTradeSizeUSD,
+    portfolioValue: strategyConfig.portfolioValue,
+    // Then apply specific riskOverrides if they exist
     ...riskOverrides
   };
+
+  // Clean up undefined values so they don't overwrite template defaults
+  Object.keys(mergedRisk).forEach(key => {
+    if (mergedRisk[key] === undefined) delete mergedRisk[key];
+  });
 
   // Validate Risk Config
   const validationResult = RiskSchema.safeParse(mergedRisk);

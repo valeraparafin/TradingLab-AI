@@ -1,9 +1,13 @@
 import { spawn } from 'child_process';
-import { getDB } from '../../db.js';
+import { getDB } from '../../db/db.js';
 
 class BotService {
-  constructor(io) {
+  constructor() {
     this.activeBots = new Map();
+    this.io = null;
+  }
+
+  setIo(io) {
     this.io = io;
   }
 
@@ -17,11 +21,13 @@ class BotService {
       console.log(`Bot for strategy ${strategyId} exited with code ${code}`);
       this.activeBots.delete(Number(strategyId));
       getDB().run('UPDATE strategies SET status = ? WHERE id = ?', ['stopped', strategyId]).catch(console.error);
-      this.io.emit('event:update', {
-        strategyId,
-        type: 'status_change',
-        payload: { status: 'stopped' }
-      });
+      if (this.io) {
+        this.io.emit('event:update', {
+          strategyId,
+          type: 'status_change',
+          payload: { status: 'stopped' }
+        });
+      }
     });
 
     this.activeBots.set(Number(strategyId), botProcess);
@@ -30,11 +36,13 @@ class BotService {
       ['running', strategyId]
     );
 
-    this.io.emit('event:update', {
-      strategyId,
-      type: 'status_change',
-      payload: { status: 'running' }
-    });
+    if (this.io) {
+      this.io.emit('event:update', {
+        strategyId,
+        type: 'status_change',
+        payload: { status: 'running' }
+      });
+    }
 
     return botProcess;
   }
@@ -47,11 +55,13 @@ class BotService {
     }
     const db = getDB();
     await db.run('UPDATE strategies SET status = ? WHERE id = ?', ['stopped', strategyId]);
-    this.io.emit('event:update', {
-      strategyId,
-      type: 'status_change',
-      payload: { status: 'stopped' }
-    });
+    if (this.io) {
+      this.io.emit('event:update', {
+        strategyId,
+        type: 'status_change',
+        payload: { status: 'stopped' }
+      });
+    }
   }
 
   isActive(strategyId) {

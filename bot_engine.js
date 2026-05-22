@@ -2,7 +2,7 @@ import "dotenv/config";
 import crypto from "crypto";
 import { execSync } from "child_process";
 import path from "path";
-import { initDB, getDB } from "./db.js";
+import { initDB, getDB } from "./src/db/db.js";
 import { resolveConfig } from "./src/config_resolver.js";
 import { IndicatorManager } from "./src/indicators/index.js";
 import { SafetyValidator } from "./src/validators/index.js";
@@ -187,12 +187,15 @@ async function run(inputStrategyId) {
   }
   const rawStrategyConfig = await response.json();
   console.log(`[Engine] Loaded raw config from full-config endpoint for ID: ${strategyIdStr}`);
+  console.log(`[Engine] Raw Config Keys:`, Object.keys(rawStrategyConfig));
   console.log(`[Engine] Professional Risk Params:`, {
     risk_per_trade_percent: rawStrategyConfig.risk_per_trade_percent,
     stop_loss_percent: rawStrategyConfig.stop_loss_percent,
     take_profit_percent: rawStrategyConfig.take_profit_percent,
     max_trades_per_day: rawStrategyConfig.max_trades_per_day,
+    max_trade_size_usd: rawStrategyConfig.max_trade_size_usd,
     portfolio_value: rawStrategyConfig.portfolio_value,
+    portfolioValue: rawStrategyConfig.portfolioValue,
   });
 
   const normalizedConfig = {
@@ -204,11 +207,12 @@ async function run(inputStrategyId) {
       rawStrategyConfig.logicTemplateId ||
       rawStrategyConfig.metadata?.logicTemplateId,
     riskOverrides: {
-      risk_per_trade_percent: rawStrategyConfig.risk_per_trade_percent,
-      stop_loss_percent: rawStrategyConfig.stop_loss_percent,
-      take_profit_percent: rawStrategyConfig.take_profit_percent,
-      max_trades_per_day: rawStrategyConfig.max_trades_per_day,
-      max_trade_size_usd: rawStrategyConfig.max_trade_size_usd,
+      maxTradesPerDay: rawStrategyConfig.max_trades_per_day,
+      maxTradeSizeUSD: rawStrategyConfig.max_trade_size_usd,
+      portfolioValue: rawStrategyConfig.portfolio_value,
+      riskPerTradePercent: rawStrategyConfig.risk_per_trade_percent,
+      stopLossPercent: rawStrategyConfig.stop_loss_percent,
+      takeProfitPercent: rawStrategyConfig.take_profit_percent,
     },
     logicOverrides: rawStrategyConfig.logicOverrides || rawStrategyConfig.logic,
   };

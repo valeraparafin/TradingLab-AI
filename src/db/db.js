@@ -9,7 +9,7 @@ let db = null;
  */
 export async function initDB() {
     db = await open({
-        filename: './trading_lab.db',
+        filename: './data/trading_lab.db',
         driver: sqlite3.Database
     });
 
@@ -32,6 +32,7 @@ export async function initDB() {
             risk_per_trade_percent REAL NOT NULL,
             stop_loss_percent REAL NOT NULL,
             take_profit_percent REAL NOT NULL,
+            max_trade_size_usd REAL NOT NULL,
             min_risk_reward_ratio REAL NOT NULL,
             max_portfolio_heat_percent REAL NOT NULL,
             max_open_positions INTEGER NOT NULL,
