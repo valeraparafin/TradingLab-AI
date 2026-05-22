@@ -4,6 +4,7 @@ import { StrategyHub } from './components/StrategyHub';
 import { LiveMonitor } from './components/LiveMonitor';
 import { TemplateManager } from './components/TemplateManager';
 import { StrategyDetails } from './components/StrategyDetails';
+import { StrategyEditor } from './pages/StrategyEditor';
 import { Card } from './components/ui/components';
 import { cn } from './lib/utils';
 import { strategyApi } from './lib/api';
@@ -92,6 +93,7 @@ function App() {
             } />
             <Route path="/templates" element={<TemplateManager />} />
             <Route path="/strategy/:id" element={<StrategyDetails />} />
+            <Route path="/strategy/edit/:id" element={<StrategyEditor />} />
           </Routes>
         </div>
       </div>

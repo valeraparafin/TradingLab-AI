@@ -27,6 +27,21 @@ export async function initDB() {
             is_archived BOOLEAN DEFAULT FALSE
         );
 
+        CREATE TABLE IF NOT EXISTS strategy_risk_settings (
+            strategy_id INTEGER PRIMARY KEY,
+            risk_per_trade_percent REAL NOT NULL,
+            stop_loss_percent REAL NOT NULL,
+            take_profit_percent REAL NOT NULL,
+            min_risk_reward_ratio REAL NOT NULL,
+            max_portfolio_heat_percent REAL NOT NULL,
+            max_open_positions INTEGER NOT NULL,
+            max_trades_per_day INTEGER NOT NULL,
+            daily_loss_limit_percent REAL NOT NULL,
+            daily_profit_target_percent REAL NOT NULL,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (strategy_id) REFERENCES strategies (id) ON DELETE CASCADE
+        );
+
         CREATE TABLE IF NOT EXISTS trades (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             strategy_id INTEGER NOT NULL,
@@ -126,3 +141,85 @@ export function getDB() {
     }
     return db;
 }
+
+/**
+ * Migrates existing strategy configurations to the hybrid snapshot model.
+ * Extracts risk settings into strategy_risk_settings and renames config to logic_config.
+ */
+export async function migrateToSnapshotModel() {
+    const db = getDB();
+
+    // Professional defaults
+    const defaults = {
+        risk_per_trade_percent: 1.0,
+        stop_loss_percent: 2.0,
+        take_profit_percent: 4.0,
+        min_risk_reward_ratio: 2.0,
+        max_portfolio_heat_percent: 10.0,
+        max_open_positions: 5,
+        max_trades_per_day: 10,
+        daily_loss_limit_percent: 3.0,
+        daily_profit_target_percent: 5.0
+    };
+
+    try {
+        const strategies = await db.all('SELECT id, config FROM strategies');
+
+        for (const strategy of strategies) {
+            let config = {};
+            try {
+                config = JSON.parse(strategy.config || '{}');
+            } catch (e) {
+                console.warn(`Failed to parse config for strategy ${strategy.id}: ${e.message}`);
+            }
+
+            const risk = {
+                strategy_id: strategy.id,
+                risk_per_trade_percent: config.risk_per_trade_percent ?? defaults.risk_per_trade_percent,
+                stop_loss_percent: config.stop_loss_percent ?? defaults.stop_loss_percent,
+                take_profit_percent: config.take_profit_percent ?? defaults.take_profit_percent,
+                min_risk_reward_ratio: config.min_risk_reward_ratio ?? defaults.min_risk_reward_ratio,
+                max_portfolio_heat_percent: config.max_portfolio_heat_percent ?? defaults.max_portfolio_heat_percent,
+                max_open_positions: config.max_open_positions ?? defaults.max_open_positions,
+                max_trades_per_day: config.max_trades_per_day ?? defaults.max_trades_per_day,
+                daily_loss_limit_percent: config.daily_loss_limit_percent ?? defaults.daily_loss_limit_percent,
+                daily_profit_target_percent: config.daily_profit_target_percent ?? defaults.daily_profit_target_percent,
+            };
+
+            await db.run(`
+                INSERT OR REPLACE INTO strategy_risk_settings
+                (strategy_id, risk_per_trade_percent, stop_loss_percent, take_profit_percent, min_risk_reward_ratio, max_portfolio_heat_percent, max_open_positions, max_trades_per_day, daily_loss_limit_percent, daily_profit_target_percent)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `, Object.values(risk));
+
+            // Remove risk params from logic config
+            const logicConfig = { ...config };
+            delete logicConfig.risk_per_trade_percent;
+            delete logicConfig.stop_loss_percent;
+            delete logicConfig.take_profit_percent;
+            delete logicConfig.min_risk_reward_ratio;
+            delete logicConfig.max_portfolio_heat_percent;
+            delete logicConfig.max_open_positions;
+            delete logicConfig.max_trades_per_day;
+            delete logicConfig.daily_loss_limit_percent;
+            delete logicConfig.daily_profit_target_percent;
+
+            await db.run('UPDATE strategies SET config = ? WHERE id = ?', [JSON.stringify(logicConfig), strategy.id]);
+        }
+
+        // Rename column config to logic_config
+        // SQLite 3.25.0+ supports RENAME COLUMN
+        try {
+            await db.exec('ALTER TABLE strategies RENAME COLUMN config TO logic_config');
+        } catch (e) {
+            console.error(`Failed to rename column: ${e.message}. Ensure SQLite version is 3.25.0+`);
+            throw e;
+        }
+
+        console.log('Successfully migrated to snapshot model.');
+    } catch (e) {
+        console.error(`Migration failed: ${e.message}`);
+        throw e;
+    }
+}
+
