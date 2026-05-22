@@ -439,7 +439,7 @@ app.post('/api/strategies', async (req, res) => {
     try {
       const result = await db.run(
         'INSERT INTO strategies (name, logic_config) VALUES (?, ?)',
-        [name, JSON.stringify(logicConfig)]
+        [name, JSON.stringify(toSnake(logicConfig))]
       );
       const strategyId = result.lastID;
 
@@ -486,23 +486,32 @@ app.get('/api/strategies', async (req, res) => {
   try {
     const db = getDB();
     const archived = req.query.archived === 'true';
-    const strategies = await db.all('SELECT * FROM strategies WHERE is_archived = ?', [archived ? 1 : 0]);
 
-    const strategiesWithStats = await Promise.all(strategies.map(async (s) => {
-      const stats = await db.get('SELECT * FROM strategy_stats WHERE strategy_id = ?', [s.id]);
+    const strategiesWithStats = await db.all(`
+      SELECT s.*,
+             st.totalTrades,
+             st.winRate,
+             st.netPnL as totalProfit
+      FROM strategies s
+      LEFT JOIN strategy_stats st ON s.id = st.strategy_id
+      WHERE s.is_archived = ?`,
+      [archived ? 1 : 0]
+    );
 
+    const result = strategiesWithStats.map(s => {
+      const camelS = toCamel(s);
       return {
-        ...s,
+        ...camelS,
         running: botService.isActive(s.id) || s.status === 'running',
         stats: {
-          totalTrades: stats?.totalTrades || 0,
-          winRate: stats?.winRate ? `${stats.winRate.toFixed(2)}%` : '0%',
-          totalProfit: stats?.netPnL || 0
+          totalTrades: s.totalTrades || 0,
+          winRate: s.winRate ? `${s.winRate.toFixed(2)}%` : '0%',
+          totalProfit: s.totalProfit || 0
         }
       };
-    }));
+    });
 
-    res.json(strategiesWithStats);
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -598,7 +607,7 @@ app.delete('/api/strategies/:id', async (req, res) => {
  */
 app.patch('/api/strategies/:id/risk', async (req, res) => {
   const { id: strategyId } = req.params;
-  const updates = req.body;
+  const updates = toSnake(req.body);
 
   try {
     const db = getDB();
@@ -639,7 +648,7 @@ app.patch('/api/strategies/:id/risk', async (req, res) => {
  */
 app.patch('/api/strategies/:id/logic', async (req, res) => {
   const { id: strategyId } = req.params;
-  const updates = req.body;
+  const updates = toSnake(req.body);
 
   try {
     const db = getDB();
@@ -692,8 +701,8 @@ app.get('/api/strategies/full-config/:id', async (req, res) => {
 
     // Flatten the result: combine strategy metadata, logic_config, and risk settings
     const fullConfig = {
-      ...row,
-      ...logicConfig,
+      ...toCamel(row),
+      ...toCamel(logicConfig),
       // Remove redundant keys from the JOIN result
       logic_config: undefined,
       strategy_id: undefined
@@ -754,9 +763,8 @@ app.post('/api/strategies/config', async (req, res) => {
     const finalName = name || oldStrategy.name;
     const finalConfig = await assembleStrategy(finalName, mergedSettings, finalLogicTemplateId, finalRiskTemplateId);
 
-    await db.run(
-      'UPDATE strategies SET name = ?, config = ? WHERE id = ?',
-      [finalName, JSON.stringify(finalConfig), strategyId]
+    await db.run('UPDATE strategies SET name = ?, config = ? WHERE id = ?',
+      [finalName, JSON.stringify(toSnake(finalConfig)), strategyId]
     );
 
     // Fetch the updated strategy to return it in the response
