@@ -41,53 +41,6 @@ import { strategyService } from './src/server/services/strategy.service.js';
  * Returns the decimal precision for a given symbol.
  */
 app.get('/api/precision', async (req, res) => {
-  const { symbol } = req.query;
-  if (!symbol) {
-    return res.status(400).json({ error: 'symbol query parameter is required' });
-  }
-  try {
-    const precision = await precisionManager.getPrecision(symbol);
-    res.json({ symbol, precision });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/**
- * GET /api/templates
- * Returns available logic and risk templates
- */
-app.get('/api/templates', async (req, res) => {
-  try {
-    const logicTemplates = await templateService.listTemplates('logic', checkTemplateLock);
-    const riskTemplates = await templateService.listTemplates('risk', checkTemplateLock);
-
-    res.json({ logic: logicTemplates, risk: riskTemplates });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/**
- * GET /api/templates/:type/:id
- * Returns the content of a specific template
- */
-app.get('/api/templates/:type/:id', async (req, res) => {
-  const { type, id } = req.params;
-  try {
-    const template = await templateService.loadTemplate(type, id);
-    if (!template) {
-      return res.status(404).json({ error: `Template ${id} of type ${type} not found` });
-    }
-    res.json(template);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/**
- * POST /api/templates/:type
- * Creates a new template
  */
 app.post('/api/templates/:type', async (req, res) => {
   const { type } = req.params;
