@@ -612,6 +612,22 @@ app.patch('/api/strategies/:id/risk', async (req, res) => {
       return res.status(400).json({ error: 'No risk settings provided for update' });
     }
 
+    // Dirty Check: Compare updates with existing settings
+    const currentSettings = await db.get('SELECT * FROM strategy_risk_settings WHERE strategy_id = ?', [strategyId]);
+    if (!currentSettings) return res.status(404).json({ error: 'Risk settings not found' });
+
+    let isDirty = false;
+    for (const [key, value] of Object.entries(updates)) {
+      if (currentSettings[key] !== value) {
+        isDirty = true;
+        break;
+      }
+    }
+
+    if (!isDirty) {
+      return res.json({ status: 'no_change', strategyId });
+    }
+
     const setClause = columns.map(col => `${col} = ?`).join(', ');
     const values = [...Object.values(updates), strategyId];
 
@@ -619,8 +635,7 @@ app.patch('/api/strategies/:id/risk', async (req, res) => {
 
     // Bot Restart Trigger
     if (botService.isActive(strategyId) || (await db.get('SELECT status FROM strategies WHERE id = ?', [strategyId]))?.status === 'running') {
-      await botService.stopBot(strategyId);
-      await startBot(strategyId);
+      await botService.restartBot(strategyId);
     }
 
     res.json({ status: 'updated', strategyId });
@@ -647,7 +662,12 @@ app.patch('/api/strategies/:id/logic', async (req, res) => {
     if (!strategy) return res.status(404).json({ error: 'Strategy not found' });
 
     const currentLogic = JSON.parse(strategy.logic_config || '{}');
+
+    // Dirty Check: Compare merged result with current config
     const mergedLogic = { ...currentLogic, ...updates };
+    if (JSON.stringify(currentLogic) === JSON.stringify(mergedLogic)) {
+      return res.json({ status: 'no_change', strategyId });
+    }
 
     // Validate merged config
     LogicConfigSchema.parse(mergedLogic);
@@ -656,8 +676,7 @@ app.patch('/api/strategies/:id/logic', async (req, res) => {
 
     // Bot Restart Trigger
     if (botService.isActive(strategyId) || (await db.get('SELECT status FROM strategies WHERE id = ?', [strategyId]))?.status === 'running') {
-      await botService.stopBot(strategyId);
-      await startBot(strategyId);
+      await botService.restartBot(strategyId);
     }
 
     res.json({ status: 'updated', strategyId });
