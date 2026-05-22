@@ -7,12 +7,13 @@ import path from 'path';
 import fs from 'fs';
 import { promises as fsp } from 'fs';
 import { z } from 'zod';
-import { 
-  LogicTemplateSchema, 
-  RiskTemplateSchema, 
-  RiskSettingsSchema, 
-  LogicConfigSchema 
+import {
+  LogicTemplateSchema,
+  RiskTemplateSchema,
+  RiskSettingsSchema,
+  LogicConfigSchema
 } from './src/server/schemas/strategy.schema.js';
+import { UpdateStrategyDTO } from './src/server/dtos/strategy.dto.js';
 import { initDB, getDB, createStatsView } from './db.js';
 import { PrecisionManager } from './src/utils/precision.js';
 
@@ -647,7 +648,12 @@ app.patch('/api/strategies/:id/logic', async (req, res) => {
     if (!strategy) return res.status(404).json({ error: 'Strategy not found' });
 
     const currentLogic = JSON.parse(strategy.logic_config || '{}');
+
+    // Dirty Check: Compare merged result with current config
     const mergedLogic = { ...currentLogic, ...updates };
+    if (JSON.stringify(currentLogic) === JSON.stringify(mergedLogic)) {
+      return res.json({ status: 'no_change', strategyId });
+    }
 
     // Validate merged config
     LogicConfigSchema.parse(mergedLogic);
@@ -656,8 +662,7 @@ app.patch('/api/strategies/:id/logic', async (req, res) => {
 
     // Bot Restart Trigger
     if (botService.isActive(strategyId) || (await db.get('SELECT status FROM strategies WHERE id = ?', [strategyId]))?.status === 'running') {
-      await botService.stopBot(strategyId);
-      await startBot(strategyId);
+      await botService.restartBot(strategyId);
     }
 
     res.json({ status: 'updated', strategyId });
