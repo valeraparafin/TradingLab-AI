@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Button } from './ui/components';
+import { FormInput } from './ui/FormInput';
+import { useFormState } from '../hooks/useFormState';
 
 interface StrategyConfigFormProps {
   strategy: any;
@@ -9,6 +11,32 @@ interface StrategyConfigFormProps {
   saveButtonText?: string;
 }
 
+interface StrategyFormData {
+  name: string;
+  logicTemplateId: string;
+  riskTemplateId: string;
+  timeframe: string;
+  watchlist: string;
+  paperTrading: boolean;
+  tradeMode: string;
+  portfolioValue: number;
+  maxTradeSizeUSD: number;
+  maxTradesPerDay: number;
+}
+
+const INITIAL_FORM_STATE: StrategyFormData = {
+  name: '',
+  logicTemplateId: '',
+  riskTemplateId: '',
+  timeframe: '4H',
+  watchlist: 'BTCUSDT',
+  paperTrading: true,
+  tradeMode: 'spot',
+  portfolioValue: 10000,
+  maxTradeSizeUSD: 100,
+  maxTradesPerDay: 3,
+};
+
 export const StrategyConfigForm = ({
   strategy,
   templates,
@@ -16,174 +44,108 @@ export const StrategyConfigForm = ({
   onCancel,
   saveButtonText = "Save Changes"
 }: StrategyConfigFormProps) => {
-  const [name, setName] = useState('');
-  const [logicTemplateId, setLogicTemplateId] = useState('');
-  const [riskTemplateId, setRiskTemplateId] = useState('');
-  const [timeframe, setTimeframe] = useState('4H');
-  const [watchlist, setWatchlist] = useState('BTCUSDT');
-  const [paperTrading, setPaperTrading] = useState(true);
-  const [tradeMode, setTradeMode] = useState('spot');
-  const [portfolioValue, setPortfolioValue] = useState(10000);
-  const [maxTradeSizeUSD, setMaxTradeSizeUSD] = useState(100);
-  const [maxTradesPerDay, setMaxTradesPerDay] = useState(3);
-
-  useEffect(() => {
-    if (!strategy) return;
-    try {
-      const config = JSON.parse(strategy.config || '{}');
-      setName(strategy.name);
-      setLogicTemplateId(config.metadata?.logicTemplateId || '');
-      setRiskTemplateId(config.metadata?.riskTemplateId || '');
-      setTimeframe(config.timeframe || '4H');
-      setWatchlist(Array.isArray(config.watchlist) ? config.watchlist.join(', ') : (config.watchlist || 'BTCUSDT'));
-      setPaperTrading(config.paperTrading !== false);
-      setTradeMode(config.tradeMode || 'spot');
-      setPortfolioValue(config.riskOverrides?.portfolioValue || config.risk?.portfolioValue || 10000);
-      setMaxTradeSizeUSD(config.riskOverrides?.maxTradeSizeUSD || config.risk?.maxTradeSizeUSD || 100);
-      setMaxTradesPerDay(config.riskOverrides?.maxTradesPerDay || config.risk?.maxTradesPerDay || 3);
-    } catch (e) {
-      console.error('Error parsing strategy config for form', e);
-    }
-  }, [strategy]);
+  const { formData, setFieldValue, isDirty } = useFormState(INITIAL_FORM_STATE, strategy);
 
   const handleSubmit = async () => {
     const settings = {
-      timeframe,
-      watchlist: watchlist.split(',').map(s => s.trim()),
-      paperTrading,
-      tradeMode,
-      portfolioValue: Number(portfolioValue),
-      maxTradeSizeUSD: Number(maxTradeSizeUSD),
-      maxTradesPerDay: Number(maxTradesPerDay)
+      timeframe: formData.timeframe,
+      watchlist: formData.watchlist.split(',').map(s => s.trim()),
+      paperTrading: formData.paperTrading,
+      tradeMode: formData.tradeMode,
+      portfolioValue: Number(formData.portfolioValue),
+      maxTradeSizeUSD: Number(formData.maxTradeSizeUSD),
+      maxTradesPerDay: Number(formData.maxTradesPerDay)
     };
 
     await onSave({
-      name,
-      logicTemplateId,
-      riskTemplateId,
+      name: formData.name,
+      logicTemplateId: formData.logicTemplateId,
+      riskTemplateId: formData.riskTemplateId,
       settings
     });
   };
 
   return (
     <div className="space-y-4">
-      <div>
-        <label className="block text-xs font-medium mb-1">Strategy Name</label>
-        <input
-          className="w-full p-2 rounded border bg-background text-sm"
-          value={name}
-          onChange={e => setName(e.target.value)}
-          placeholder="e.g. SMC Aggressive"
+      <FormInput
+        label="Strategy Name"
+        value={formData.name}
+        onChange={val => setFieldValue('name', val)}
+        placeholder="e.g. SMC Aggressive"
+      />
+
+      <div className="grid grid-cols-2 gap-4">
+        <FormInput
+          label="Logic Template"
+          type="select"
+          value={formData.logicTemplateId}
+          onChange={val => setFieldValue('logicTemplateId', val)}
+          options={templates.logic.map(t => ({ label: t.name, value: t.id }))}
+        />
+        <FormInput
+          label="Risk Template"
+          type="select"
+          value={formData.riskTemplateId}
+          onChange={val => setFieldValue('riskTemplateId', val)}
+          options={templates.risk.map(t => ({ label: t.name, value: t.id }))}
+        />
+      </div>
+
+      <FormInput
+        label="Timeframe"
+        type="select"
+        value={formData.timeframe}
+        onChange={val => setFieldValue('timeframe', val)}
+        options={['1m', '5m', '15m', '1H', '4H', '1D'].map(tf => ({ label: tf, value: tf }))}
+      />
+
+      <FormInput
+        label="Watchlist (comma separated)"
+        value={formData.watchlist}
+        onChange={val => setFieldValue('watchlist', val)}
+        placeholder="BTCUSDT, ETHUSDT"
+      />
+
+      <div className="grid grid-cols-2 gap-4">
+        <FormInput
+          label="Trade Mode"
+          type="select"
+          value={formData.tradeMode}
+          onChange={val => setFieldValue('tradeMode', val)}
+          options={[
+            { label: 'Spot', value: 'spot' },
+            { label: 'Futures', value: 'futures' },
+          ]}
+        />
+        <FormInput
+          label="Paper Trading"
+          type="checkbox"
+          value={formData.paperTrading}
+          onChange={val => setFieldValue('paperTrading', val)}
         />
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-xs font-medium mb-1">Logic Template</label>
-          <select
-            className="w-full p-2 rounded border bg-background text-sm"
-            value={logicTemplateId}
-            onChange={e => setLogicTemplateId(e.target.value)}
-          >
-            <option value="">Select Logic...</option>
-            {templates.logic.map(t => (
-              <option key={t.id} value={t.id}>{t.name}</option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium mb-1">Risk Template</label>
-          <select
-            className="w-full p-2 rounded border bg-background text-sm"
-            value={riskTemplateId}
-            onChange={e => setRiskTemplateId(e.target.value)}
-          >
-            <option value="">Select Risk...</option>
-            {templates.risk.map(t => (
-              <option key={t.id} value={t.id}>{t.name}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      <div>
-        <label className="block text-xs font-medium mb-1">Timeframe</label>
-        <select
-          className="w-full p-2 rounded border bg-background text-sm"
-          value={timeframe}
-          onChange={e => setTimeframe(e.target.value)}
-        >
-          {['1m', '5m', '15m', '1H', '4H', '1D'].map(tf => (
-          <option key={tf} value={tf}>{tf}</option>
-        ))}
-        </select>
-      </div>
-
-      <div>
-        <label className="block text-xs font-medium mb-1">Watchlist (comma separated)</label>
-        <input
-          className="w-full p-2 rounded border bg-background text-sm"
-          value={watchlist}
-          onChange={e => setWatchlist(e.target.value)}
-          placeholder="BTCUSDT, ETHUSDT"
+        <FormInput
+          label="Portfolio Value (USD)"
+          type="number"
+          value={formData.portfolioValue}
+          onChange={val => setFieldValue('portfolioValue', val)}
+        />
+        <FormInput
+          label="Max Trade Size (USD)"
+          type="number"
+          value={formData.maxTradeSizeUSD}
+          onChange={val => setFieldValue('maxTradeSizeUSD', val)}
         />
       </div>
-
       <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-xs font-medium mb-1">Trade Mode</label>
-          <select
-            className="w-full p-2 rounded border bg-background text-sm"
-            value={tradeMode}
-            onChange={e => setTradeMode(e.target.value)}
-          >
-            <option value="spot">Spot</option>
-            <option value="futures">Futures</option>
-          </select>
-        </div>
-        <div className="flex items-center gap-2 pt-5">
-          <input
-            type="checkbox"
-            id="configFormPaperTrading"
-            checked={paperTrading}
-            onChange={e => setPaperTrading(e.target.checked)}
-            className="w-4 h-4"
-          />
-          <label htmlFor="configFormPaperTrading" className="text-xs font-medium">Paper Trading</label>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-xs font-medium mb-1">Portfolio Value (USD)</label>
-          <input
-            type="number"
-            className="w-full p-2 rounded border bg-background text-sm"
-            value={portfolioValue}
-            onChange={e => setPortfolioValue(Number(e.target.value))}
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium mb-1">Max Trade Size (USD)</label>
-          <input
-            type="number"
-            className="w-full p-2 rounded border bg-background text-sm"
-            value={maxTradeSizeUSD}
-            onChange={e => setMaxTradeSizeUSD(Number(e.target.value))}
-          />
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-xs font-medium mb-1">Max Trades / Day</label>
-          <input
-            type="number"
-            className="w-full p-2 rounded border bg-background text-sm"
-            value={maxTradesPerDay}
-            onChange={e => setMaxTradesPerDay(Number(e.target.value))}
-          />
-        </div>
+        <FormInput
+          label="Max Trades / Day"
+          type="number"
+          value={formData.maxTradesPerDay}
+          onChange={val => setFieldValue('maxTradesPerDay', val)}
+        />
       </div>
 
       <div className="flex justify-end gap-2 pt-4">
@@ -192,7 +154,12 @@ export const StrategyConfigForm = ({
             Cancel
           </Button>
         )}
-        <Button variant="primary" onClick={handleSubmit} className="text-xs">
+        <Button
+          variant="primary"
+          onClick={handleSubmit}
+          className="text-xs"
+          disabled={!isDirty}
+        >
           {saveButtonText}
         </Button>
       </div>
