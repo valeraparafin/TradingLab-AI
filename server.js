@@ -33,6 +33,7 @@ app.use(express.json());
 // Store for active bot processes: strategyId -> ChildProcess
 import { templateService } from './src/server/services/template.service.js';
 import { botService } from './src/server/services/bot.service.js';
+import { strategyService } from './src/server/services/strategy.service.js';
 // The botService.activeBots map replaces the local activeBots map
 
 /**
@@ -40,68 +41,6 @@ import { botService } from './src/server/services/bot.service.js';
  */
  
 
-
-const precisionManager = new PrecisionManager();
-
-/**
- * Helper to check if a template is locked (used by a running strategy)
- */
-async function checkTemplateLock(type, id) {
-  const db = getDB();
-
-  // Use json_extract to filter strategies that use this template ID in the metadata
-  // config is stored as a JSON string in the database.
-  // path: '$.metadata.logicTemplateId' or '$.metadata.riskTemplateId'
-  const jsonPath = type === 'logic' ? '$.metadata.logicTemplateId' : '$.metadata.riskTemplateId';
-
-  const strategies = await db.all(
-    `SELECT id, name, status, config FROM strategies WHERE json_extract(config, ?) = ?`,
-    [jsonPath, id]
-  );
-
-  const usedBy = [];
-  let activeCount = 0;
-  let isLocked = false;
-
-  for (const s of strategies) {
-    usedBy.push({ id: s.id, name: s.name });
-
-    const isRunning = botService.isActive(s.id) || s.status === 'running';
-    if (isRunning) {
-      isLocked = true;
-      activeCount++;
-    }
-  }
-
-  return { isLocked, usedBy, activeCount };
-}
-
-/**
- * Assembler: Merges logic, risk, and user settings into a final strategy config
- */
-async function assembleStrategy(name, settings, logicTemplateId, riskTemplateId) {
-  const [logic, risk] = await Promise.all([
-    templateService.loadTemplate('logic', logicTemplateId),
-    templateService.loadTemplate('risk', riskTemplateId)
-  ]);
-
-  if (!logic) throw new Error(`Logic template ${logicTemplateId} not found`);
-  if (!risk) throw new Error(`Risk template ${riskTemplateId} not found`);
-
-  // Calculate Risk Overrides
-  const riskSettings = risk.settings || risk.content?.settings || risk;
-
-  // Start with existing overrides if they exist in settings
-  const riskOverrides = { ...(settings.riskOverrides || {}) };
-
-  // Extract desired risk values from settings (top-level or inside .risk)
-  const desiredRisk = {
-    ...(settings.risk || {}),
-    ...settings
-  };
-
-  for (const [key, value] of Object.entries(desiredRisk)) {
-    if (riskSettings[key] !== undefined) {
       if (value !== undefined) {
         if (value !== riskSettings[key]) {
           riskOverrides[key] = value;
