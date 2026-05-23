@@ -31,9 +31,9 @@ app.use(cors());
 app.use(express.json());
 
 // Store for active bot processes: strategyId -> ChildProcess
-import { templateService } from './src/server/services/template.service.js';
 import { botService } from './src/server/services/bot.service.js';
 import { strategyService } from './src/server/services/strategy.service.js';
+import templateRouter from './src/server/routes/template.routes.js';
 // The botService.activeBots map replaces the local activeBots map
 
 /**
@@ -57,154 +57,6 @@ app.post('/api/templates/:type', async (req, res) => {
 
     res.json({ id, name, type });
   } catch (err) {
-    if (err instanceof z.ZodError) {
-      res.status(400).json({ error: err.message });
-    } else {
-      res.status(500).json({ error: err.message });
-    }
-  }
-});
-
-/**
- * PUT /api/templates/:type/:id
- * Updates a template's name and content.
- * Enforces lock if the template is used by a running bot.
- */
-app.put('/api/templates/:type/:id', async (req, res) => {
-  const { type, id } = req.params;
-  const { name, ...content } = req.body;
-
-  try {
-    // 1. Check for lock
-    const lock = await checkTemplateLock(type, id);
-    if (lock.isLocked) {
-      return res.status(403).json({
-        error: 'Template is locked because it is used by running strategies',
-        activeStrategies: lock.usedBy
-      });
-    }
-
-    // 2. Verify template exists
-    const original = await templateService.loadTemplate(type, id);
-    if (!original) {
-      return res.status(404).json({ error: `Template ${id} of type ${type} not found` });
-    }
-
-    // 3. Update content (ID remains constant to avoid breaking strategy links)
-    const templateData = { name: name || original.name, ...content };
-    await templateService.saveTemplate(type, id, templateData);
-
-    res.json({ id, name: templateData.name, type });
-  } catch (err) {
-    if (err instanceof z.ZodError) {
-      res.status(400).json({ error: err.message });
-    } else {
-      res.status(500).json({ error: err.message });
-    }
-  }
-});
-
-/**
- * POST /api/templates/:type/:id/duplicate
- * Creates a copy of an existing template with a new name.
- */
-app.post('/api/templates/:type/:id/duplicate', async (req, res) => {
-  const { type, id } = req.params;
-  const { newName } = req.body;
-
-  if (!newName) {
-    return res.status(400).json({ error: 'newName is required for duplication' });
-  }
-
-  try {
-    const newId = slugify(newName);
-    await templateService.duplicateTemplate(type, id, newId);
-
-    res.json({ id: newId, name: newName, type });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/**
- * DELETE /api/templates/:type/:id
- * Removes a template file.
- * Enforces lock if the template is used by a running bot.
- */
-app.delete('/api/templates/:type/:id', async (req, res) => {
-  const { type, id } = req.params;
-
-  try {
-    // 1. Check for lock
-    const lock = await checkTemplateLock(type, id);
-    if (lock.isLocked) {
-      return res.status(403).json({
-        error: 'Template is locked because it is used by running strategies',
-        activeStrategies: lock.usedBy
-      });
-    }
-
-    // 2. Verify template exists
-    const template = await templateService.loadTemplate(type, id);
-    if (!template) {
-      return res.status(404).json({ error: `Template ${id} of type ${type} not found` });
-    }
-
-    // 3. Delete template
-    await templateService.deleteTemplate(type, id);
-
-    res.json({ status: 'deleted', id, type });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-
-/**
- * POST /api/strategies
- * Creates a new strategy by assembling templates and saving as a snapshot.
- */
-app.post('/api/strategies', async (req, res) => {
-  const { name, logicTemplateId, riskTemplateId, settings } = req.body;
-  if (!name || !logicTemplateId || !riskTemplateId) {
-    return res.status(400).json({ error: 'Name, logicTemplateId, and riskTemplateId are required' });
-  }
-
-  try {
-    const db = getDB();
-
-    // 1. Assemble the strategy configuration
-    const finalConfig = await assembleStrategy(name, settings || {}, logicTemplateId, riskTemplateId);
-
-    // Separate Logic and Risk for the snapshot model
-    const logicConfig = {
-      ...finalConfig,
-      metadata: finalConfig.metadata
-    };
-    delete logicConfig.riskOverrides;
-    delete logicConfig.riskTemplateId;
-    delete logicConfig.name;
-
-    const riskSettings = {
-      risk_per_trade_percent: (settings?.risk?.riskPerTradePercent ?? finalConfig.riskOverrides?.riskPerTradePercent ?? 1.0),
-      stop_loss_percent: (settings?.risk?.stopLossPercent ?? finalConfig.riskOverrides?.stopLossPercent ?? 2.0),
-      take_profit_percent: (settings?.risk?.takeProfitPercent ?? finalConfig.riskOverrides?.takeProfitPercent ?? 4.0),
-      min_risk_reward_ratio: (settings?.risk?.minRiskRewardRatio ?? 2.0),
-      max_portfolio_heat_percent: (settings?.risk?.maxPortfolioHeatPercent ?? 10.0),
-      max_open_positions: (settings?.risk?.maxOpenPositions ?? 5),
-      max_trades_per_day: (settings?.risk?.maxTradesPerDay ?? finalConfig.riskOverrides?.maxTradesPerDay ?? 10),
-      daily_loss_limit_percent: (settings?.risk?.dailyLossLimitPercent ?? 3.0),
-      daily_profit_target_percent: (settings?.risk?.dailyProfitTargetPercent ?? 5.0),
-    };
-
-    // Validate risk settings with Zod
-    RiskSettingsSchema.parse(riskSettings);
-
-    // 2. Save in a single transaction
-    await db.run('BEGIN TRANSACTION');
-    try {
-      const result = await db.run(
-        'INSERT INTO strategies (name, logic_config) VALUES (?, ?)',
         [name, JSON.stringify(toSnake(logicConfig))]
       );
       const strategyId = result.lastID;
