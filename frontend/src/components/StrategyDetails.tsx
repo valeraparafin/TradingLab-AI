@@ -46,6 +46,12 @@ export const StrategyDetails = () => {
   const [precision, setPrecision] = useState(2);
   const [xaiData, setXaiData] = useState<Record<string, { gci: number, results: any[] }>>({});
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+  const selectedSymbolRef = React.useRef<string | null>(null);
+
+  useEffect(() => {
+    selectedSymbolRef.current = selectedSymbol;
+  }, [selectedSymbol]);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -162,6 +168,9 @@ export const StrategyDetails = () => {
             }
           }));
 
+          if (!selectedSymbolRef.current) {
+            setSelectedSymbol(symbol);
+          }
         }
       }
     });
