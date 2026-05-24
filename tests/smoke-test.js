@@ -24,6 +24,27 @@ async function runTest() {
     const { id: strategyId } = await createRes.json();
     console.log('✅ OK');
 
+    // 2. Launch Bot
+    console.log('[ ] First Launch (GCI detected)...');
+    const bot = spawn(BOT_CMD, [...BOT_ARGS, strategyId.toString()], { stdio: ['ignore', 'pipe', 'pipe'], shell: true });
+
+    const gciDetected = await new Promise((resolve) => {
+      const timeout = setTimeout(() => resolve(false), 30000);
+      bot.stdout.on('data', (data) => {
+        if (data.toString().includes('Global Confidence Index (GCI):')) {
+          clearTimeout(timeout);
+          resolve(true);
+        }
+      });
+    });
+
+    if (!gciDetected) {
+      bot.kill();
+      throw new Error('GCI not detected in bot logs within 30 seconds');
+    }
+    console.log('✅ OK');
+    bot.kill();
+
     console.log('RESULT: PASSED');
   } catch (e) {
     console.log('RESULT: FAILED');
