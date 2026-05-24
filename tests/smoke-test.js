@@ -45,6 +45,37 @@ async function runTest() {
     console.log('✅ OK');
     bot.kill();
 
+    // 3. Update Config
+    console.log('[ ] Config Updated...');
+    const updateRes = await fetch(`${API_URL}/strategies/${strategyId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        portfolioValue: 2000, // Change a value to verify update
+      }),
+    });
+    if (!updateRes.ok) throw new Error(`Failed to update strategy: ${updateRes.status}`);
+    console.log('✅ OK');
+
+    // 4. Relaunch Bot
+    console.log('[ ] Bot Relaunched...');
+    const bot2 = spawn(BOT_CMD, [...BOT_ARGS, strategyId.toString()], { stdio: ['ignore', 'pipe', 'pipe'], shell: true });
+    const gciDetected2 = await new Promise((resolve) => {
+      const timeout = setTimeout(() => resolve(false), 30000);
+      bot2.stdout.on('data', (L) => {
+        if (L.toString().includes('Global Confidence Index (GCI):')) {
+          clearTimeout(timeout);
+          resolve(true);
+        }
+      });
+    });
+    if (!gciDetected2) {
+      bot2.kill();
+      throw new Error('GCI not detected after relaunch');
+    }
+    console.log('✅ OK');
+    bot2.kill();
+
     console.log('RESULT: PASSED');
   } catch (e) {
     console.log('RESULT: FAILED');
