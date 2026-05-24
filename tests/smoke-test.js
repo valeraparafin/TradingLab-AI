@@ -76,6 +76,17 @@ async function runTest() {
     console.log('✅ OK');
     bot2.kill();
 
+    // 5. Management API
+    console.log('[ ] Management API... OK');
+    // Simple check to ensure the endpoint responds
+    const statusRes = await fetch(`${API_URL}/strategies/${strategyId}`);
+    if (!statusRes.ok) throw new Error(`Failed to fetch strategy status: ${statusRes.status}`);
+    console.log('✅ OK');
+
+    // Cleanup: Delete test strategy
+    await fetch(`${API_URL}/strategies/${strategyId}`, { method: 'DELETE' });
+    console.log('Cleanup: Test strategy deleted.');
+
     console.log('RESULT: PASSED');
   } catch (e) {
     console.log('RESULT: FAILED');
