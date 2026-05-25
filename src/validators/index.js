@@ -12,7 +12,7 @@ export class SafetyValidator {
    */
   run(price, open, strategyData, strategyConfig) {
     const results = [];
-    const safetyChecks = strategyConfig.logic?.safety_checks;
+    const safetyChecks = strategyConfig.logic?.safetyChecks;
 
     if (!safetyChecks || !Array.isArray(safetyChecks)) {
       return { results, allPass: false, gci: 0 };
@@ -20,18 +20,19 @@ export class SafetyValidator {
 
     const weights = {
       // Critical Rules
-      confirmation_break: 2.0,
-      structure_shift: 2.0,
-      trend_filter: 2.0,
+      confirmationBreak: 2.0,
+      structureShift: 2.0,
+      trendFilter: 2.0,
+      obEntry: 2.0,
       // Support Rules
-      wt_oversold: 0.5,
-      wt_overbought: 0.5,
-      mfi_bullish: 0.5,
-      mfi_bearish: 0.5,
-      stoch_rsi_oversold: 0.5,
-      stc_bullish: 0.5,
-      zone_filter: 0.5,
-      unhealthy_move: 0.5,
+      wtOversold: 0.5,
+      wtOverbought: 0.5,
+      mfiBullish: 0.5,
+      mfiBearish: 0.5,
+      stochRsiOversold: 0.5,
+      stcBullish: 0.5,
+      zoneFilter: 0.5,
+      unhealthyMove: 0.5,
     };
 
     let totalWeightedScore = 0;
