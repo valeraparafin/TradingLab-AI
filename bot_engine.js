@@ -9,6 +9,7 @@ import { SafetyValidator } from "./src/validators/index.js";
 import { BitGetService } from "./src/services/exchange/bitget.js";
 import { PrecisionManager } from "./src/utils/precision.js";
 import { toSnake } from "./src/utils/casing.js";
+import { timeframeToMinutes } from "./src/utils/timeframe.js";
 
 // ─── Config ────────────────────────────────────────────────────────────────
 
@@ -641,18 +642,7 @@ async function run(inputStrategyId) {
     if (rawStrategyConfig.intervalSeconds) {
       sleepMs = rawStrategyConfig.intervalSeconds * 1000;
     } else {
-      const timeframeMap = {
-        "1m": 1,
-        "3m": 3,
-        "5m": 5,
-        "15m": 15,
-        "30m": 30,
-        "1H": 60,
-        "4H": 240,
-        "1D": 1440,
-        "1W": 10080,
-      };
-      const minutes = timeframeMap[timeframe];
+      const minutes = timeframeToMinutes(timeframe);
       if (!minutes) {
         throw new Error(`Unsupported timeframe for sleep calculation: ${timeframe}`);
       }
