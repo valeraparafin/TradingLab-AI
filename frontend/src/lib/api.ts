@@ -61,6 +61,7 @@ export const strategyApi = {
   getPositions: (id: number) => api.get(`/strategies/positions/${id}`),
   getEvents: (strategyId: number, limit: number = 100) => api.get(`/strategies/events/${strategyId}?limit=${limit}`),
   getPrecision: (symbol: string) => api.get<{ precision: number }>(`/precision?symbol=${symbol}`),
+  getLatestXai: (id: number) => api.get(`/strategies/xai/${id}`),
 };
 
 export const templateApi = {
