@@ -8,12 +8,14 @@ import { IndicatorManager } from "./src/indicators/index.js";
 import { SafetyValidator } from "./src/validators/index.js";
 import { BitGetService } from "./src/services/exchange/bitget.js";
 import { PrecisionManager } from "./src/utils/precision.js";
+import { toSnake } from "./src/utils/casing.js";
 
 // ─── Config ────────────────────────────────────────────────────────────────
 
 const CONFIG = {
   portfolioValue: undefined,
-  tradeMode: "spot", // Default fallback
+  side: undefined, // Must be provided by decision via trading indicator
+  tradeMode: process.env.TRADE_MODE, // Must be provided via environment or config
   bitget: {
     apiKey: process.env.BITGET_API_KEY,
     secretKey: process.env.BITGET_SECRET_KEY,
@@ -47,9 +49,10 @@ const precisionManager = new PrecisionManager();
 async function logEvent(strategyId, type, payload) {
   const db = getDB();
   const timestamp = Date.now();
+  const snakePayload = typeof payload === 'object' ? toSnake(payload) : payload;
   await db.run(
     "INSERT INTO events (strategy_id, type, payload, timestamp) VALUES (?, ?, ?, ?)",
-    [strategyId, type, JSON.stringify(payload), timestamp],
+    [strategyId, type, JSON.stringify(snakePayload), timestamp],
   );
 
   try {
@@ -71,40 +74,43 @@ async function logEventSimple(strategyId, type, message) {
 
 async function recordTrade(strategyId, tradeData) {
   const db = getDB();
+  const snakeTrade = toSnake(tradeData);
+  console.log(`[DB Debug] Recording trade for strategy ${strategyId}:`, snakeTrade);
   await db.run(
     "INSERT INTO trades (strategy_id, symbol, side, price, size_usd, status, result, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     [
       strategyId,
-      tradeData.symbol,
-      tradeData.side || "BUY",
-      tradeData.price,
-      tradeData.tradeSize,
-      tradeData.status,
-      tradeData.result || 0,
-      tradeData.notes,
+      snakeTrade.symbol,
+      snakeTrade.side || "BUY",
+      snakeTrade.price,
+      snakeTrade.size_usd,
+      snakeTrade.status,
+      snakeTrade.result || 0,
+      snakeTrade.notes,
     ],
   );
 }
 
 async function updateActivePosition(strategyId, positionData) {
   const db = getDB();
-  if (positionData.action === "open") {
+  const snakePos = toSnake(positionData);
+  if (snakePos.action === "open") {
     await db.run(
       "INSERT INTO active_positions (strategy_id, symbol, side, entry_price, size_usd, stop_loss, take_profit, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'OPEN')",
       [
         strategyId,
-        positionData.symbol,
-        positionData.side,
-        positionData.price,
-        positionData.sizeUSD,
-        positionData.stopLoss,
-        positionData.takeProfit,
+        snakePos.symbol,
+        snakePos.side,
+        snakePos.price,
+        snakePos.size_usd,
+        snakePos.stop_loss,
+        snakePos.take_profit,
       ],
     );
-  } else if (positionData.action === "close") {
+  } else if (snakePos.action === "close") {
     await db.run(
       "UPDATE active_positions SET status = 'CLOSED', exit_price = ?, exit_timestamp = CURRENT_TIMESTAMP WHERE strategy_id = ? AND symbol = ? AND status = 'OPEN'",
-      [positionData.exitPrice, strategyId, positionData.symbol],
+      [snakePos.exit_price, strategyId, snakePos.symbol],
     );
   }
 }
@@ -121,7 +127,7 @@ async function countTodaysTrades(strategyId) {
   const db = getDB();
   const today = new Date().toISOString().slice(0, 10);
   const result = await db.get(
-    "SELECT COUNT(*) as count FROM trades WHERE strategy_id = ? AND timestamp >= ?",
+    "SELECT COUNT(*) as count FROM trades WHERE strategy_id = ? AND timestamp >= ? AND status IN ('LIVE', 'PAPER')",
     [strategyId, today],
   );
   return result.count;
@@ -188,12 +194,19 @@ async function run(inputStrategyId) {
   const rawStrategyConfig = await response.json();
   console.log(`[Engine] Loaded raw config from full-config endpoint for ID: ${strategyIdStr}`);
   console.log(`[Engine] Professional Risk Params:`, {
-    risk_per_trade_percent: rawStrategyConfig.risk_per_trade_percent,
-    stop_loss_percent: rawStrategyConfig.stop_loss_percent,
-    take_profit_percent: rawStrategyConfig.take_profit_percent,
-    max_trades_per_day: rawStrategyConfig.max_trades_per_day,
-    portfolio_value: rawStrategyConfig.portfolio_value,
+    riskPerTradePercent: rawStrategyConfig.riskSettings?.riskPerTradePercent,
+    stopLossPercent: rawStrategyConfig.riskSettings?.stopLossPercent,
+    takeProfitPercent: rawStrategyConfig.riskSettings?.takeProfitPercent,
+    maxTradesPerDay: rawStrategyConfig.riskSettings?.maxTradesPerDay,
+    portfolioValue: rawStrategyConfig.riskSettings?.portfolioValue,
   });
+
+  const riskOverrides = {};
+  if (rawStrategyConfig.riskPerTradePercent !== undefined) riskOverrides.riskPerTradePercent = rawStrategyConfig.riskPerTradePercent;
+  if (rawStrategyConfig.stopLossPercent !== undefined) riskOverrides.stopLossPercent = rawStrategyConfig.stopLossPercent;
+  if (rawStrategyConfig.takeProfitPercent !== undefined) riskOverrides.takeProfitPercent = rawStrategyConfig.takeProfitPercent;
+  if (rawStrategyConfig.maxTradesPerDay !== undefined) riskOverrides.maxTradesPerDay = rawStrategyConfig.maxTradesPerDay;
+  if (rawStrategyConfig.maxTradeSizeUSD !== undefined) riskOverrides.maxTradeSizeUSD = rawStrategyConfig.maxTradeSizeUSD;
 
   const normalizedConfig = {
     ...rawStrategyConfig,
@@ -203,31 +216,13 @@ async function run(inputStrategyId) {
     logicTemplateId:
       rawStrategyConfig.logicTemplateId ||
       rawStrategyConfig.metadata?.logicTemplateId,
-    riskOverrides: {
-      risk_per_trade_percent: rawStrategyConfig.risk_per_trade_percent,
-      stop_loss_percent: rawStrategyConfig.stop_loss_percent,
-      take_profit_percent: rawStrategyConfig.take_profit_percent,
-      max_trades_per_day: rawStrategyConfig.max_trades_per_day,
-      max_trade_size_usd: rawStrategyConfig.max_trade_size_usd,
-    },
+    riskOverrides,
     logicOverrides: rawStrategyConfig.logicOverrides || rawStrategyConfig.logic,
   };
 
   const strategyConfig = resolveConfig(normalizedConfig);
 
-  if (!strategyConfig.portfolioValue || strategyConfig.portfolioValue <= 0) {
-    // Fallback to raw config if resolved config doesn't have it (since resolveConfig might not know about the new flat structure)
-    if (!rawStrategyConfig.portfolio_value || rawStrategyConfig.portfolio_value <= 0) {
-      throw new Error(
-        "CRITICAL ERROR: portfolioValue is missing or invalid. Please configure the deposit size in the Strategy Risk settings.",
-      );
-    }
-  }
-
-  // Ensure portfolioValue is available on strategyConfig for later use
-  strategyConfig.portfolioValue = strategyConfig.portfolioValue || rawStrategyConfig.portfolio_value;
-
-  console.log(`[Engine] Loaded strategy config for ID: ${strategyIdStr}`);
+  console.log(`[Engine] Resolved Strategy Config:`, JSON.stringify(strategyConfig, null, 2));
   console.log(
     `[Engine] Resolved Risk Limit: ${strategyConfig.risk.maxTradesPerDay}`,
   );
@@ -244,7 +239,7 @@ async function run(inputStrategyId) {
   // Use the provided strategyId instead of looking it up by name
   const strategyId = parseInt(strategyIdStr);
 
-  const watchlist = rawStrategyConfig.watchlist;
+  const watchlist = rawStrategyConfig.watchlist || rawStrategyConfig.watchlist_list;
   if (!watchlist || !Array.isArray(watchlist) || watchlist.length === 0) {
     throw new Error(
       `Watchlist is empty or missing. Strategy cannot be started.`,
@@ -252,7 +247,10 @@ async function run(inputStrategyId) {
   }
 
   const timeframe =
-    rawStrategyConfig.default_timeframe || rawStrategyConfig.timeframe || "4H";
+    rawStrategyConfig.timeframe || rawStrategyConfig.default_timeframe;
+  if (!timeframe) {
+    throw new Error(`Timeframe is missing in strategy configuration.`);
+  }
 
   await logEventSimple(
     strategyId,
@@ -371,7 +369,7 @@ async function run(inputStrategyId) {
                 await recordTrade(strategyId, {
                   symbol,
                   price,
-                  tradeSize: activePosition.size_usd,
+                  sizeUSD: activePosition.size_usd,
                   side: exitSide,
                   status: "CLOSED",
                   result: pnl,
@@ -425,6 +423,7 @@ async function run(inputStrategyId) {
                     : null);
 
               let strategyData = {};
+              let side = "BUY"; // Default side
               if (logicType) {
                 strategyData = indicatorManager.calculate(logicType, candles);
 
@@ -432,6 +431,7 @@ async function run(inputStrategyId) {
                   console.log(
                     `  Channel Active: Top $${strategyData.channel.top.toFixed(2)} | Bottom $${strategyData.channel.bottom.toFixed(2)}`,
                   );
+                  side = price > strategyData.channel.top ? "BUY" : (price < strategyData.channel.bottom ? "SELL" : "BUY");
                 } else if (logicType === "SMC") {
                   console.log(
                     `  Trend: ${strategyData.structure?.trend === 1 ? "BULLISH" : strategyData.structure?.trend === -1 ? "BEARISH" : "NEUTRAL"}`,
@@ -439,6 +439,7 @@ async function run(inputStrategyId) {
                   console.log(
                     `  OBs detected: ${strategyData.obs?.length || 0} | FVGs detected: ${strategyData.fvgs?.length || 0}`,
                   );
+                  side = strategyData.structure?.trend === 1 ? "BUY" : (strategyData.structure?.trend === -1 ? "SELL" : "BUY");
                 }
               }
 
@@ -470,24 +471,19 @@ async function run(inputStrategyId) {
               });
 
   const risk = strategyConfig.risk;
-  const portfolioValue = strategyConfig.portfolioValue;
-
-  // GCI Confidence Floor and Dynamic Scaling
-  const confidenceFloor = 0.8;
+  const portfolioValue = risk.portfolioValue;
   const riskPercent = risk.riskPerTradePercent;
-  // portfolioValue is already defined above
+  const confidenceFloor = 0.8;
 
+  const baseRiskUSD = portfolioValue * (riskPercent / 100);
 
-              // Base risk in USD based on the strategy's risk percentage
-              const baseRiskUSD = portfolioValue * (riskPercent / 100);
-
-              let finalTradeSize = 0;
-              if (gci >= confidenceFloor) {
-                // Scaling from 30% at 0.8 GCI to 100% at 1.0 GCI
-                const scalingFactor = (gci - confidenceFloor) / (1.0 - confidenceFloor);
-                const multiplier = 0.3 + (0.7 * scalingFactor);
-                finalTradeSize = baseRiskUSD * multiplier;
-              }
+  let finalTradeSize = 0;
+  if (gci >= confidenceFloor) {
+    const scalingFactor = (gci - confidenceFloor) / (1.0 - confidenceFloor);
+    const multiplier = 0.3 + (0.7 * scalingFactor);
+    finalTradeSize = baseRiskUSD * multiplier;
+  }
+  const safeTradeSize = isNaN(finalTradeSize) ? 0 : finalTradeSize;
 
               console.log(
                 "\n── Decision ─────────────────────────────────────────────\n",
@@ -512,7 +508,7 @@ async function run(inputStrategyId) {
                 await recordTrade(strategyId, {
                   symbol,
                   price,
-                  tradeSize: finalTradeSize,
+                  sizeUSD: safeTradeSize,
                   status: "BLOCKED",
                   notes: `Failed: ${results
                     .filter((r) => !r.pass)
@@ -526,7 +522,7 @@ async function run(inputStrategyId) {
                 await recordTrade(strategyId, {
                   symbol,
                   price,
-                  tradeSize: 0,
+                  sizeUSD: 0,
                   status: "BLOCKED",
                   notes: blockedMsg,
                 });
@@ -545,34 +541,34 @@ async function run(inputStrategyId) {
                 const isPaperBot = rawStrategyConfig.paperTrading !== false;
                 if (isPaperBot) {
                   console.log(
-                    `\n📋 PAPER TRADE — would buy ${symbol} ~$${finalTradeSize.toFixed(2)} at market`,
+                    `\n📋 PAPER TRADE — would ${side === "BUY" ? "buy" : "sell"} ${symbol} ~$${finalTradeSize.toFixed(2)} at market`,
                   );
                   await recordTrade(strategyId, {
                     symbol,
                     price,
-                    tradeSize: finalTradeSize,
+                    sizeUSD: safeTradeSize,
                     status: "PAPER",
                     notes: "All conditions met",
                   });
                   await updateActivePosition(strategyId, {
                     action: "open",
                     symbol,
-                    side: "BUY",
+                    side,
                     price,
-                    sizeUSD: finalTradeSize,
-                    stopLoss: price * (1 - risk.stopLossPercent / 100),
-                    takeProfit: price * (1 + risk.takeProfitPercent / 100),
+                    sizeUSD: safeTradeSize,
+                    stopLoss: side === "BUY" ? price * (1 - risk.stopLossPercent / 100) : price * (1 + risk.stopLossPercent / 100),
+                    takeProfit: side === "BUY" ? price * (1 + risk.takeProfitPercent / 100) : price * (1 - risk.takeProfitPercent / 100),
                   });
                 } else {
                   console.log(
-                    `\n🔴 PLACING LIVE ORDER — $${finalTradeSize.toFixed(2)} BUY ${symbol}`,
+                    `\n🔴 PLACING LIVE ORDER — $${finalTradeSize.toFixed(2)} ${side} ${symbol}`,
                   );
                   try {
                     const tradeMode =
                       strategyConfig.tradeMode || CONFIG.tradeMode;
                     const order = await bitgetService.placeOrder(
                       symbol,
-                      "buy",
+                      side.toLowerCase(),
                       finalTradeSize,
                       price,
                       tradeMode,
@@ -581,18 +577,18 @@ async function run(inputStrategyId) {
                     await recordTrade(strategyId, {
                       symbol,
                       price,
-                      tradeSize: finalTradeSize,
+                      sizeUSD: safeTradeSize,
                       status: "LIVE",
                       notes: "Lived order placed",
                     });
                     await updateActivePosition(strategyId, {
                       action: "open",
                       symbol,
-                      side: "BUY",
+                      side,
                       price,
-                      sizeUSD: finalTradeSize,
-                      stopLoss: price * (1 - risk.stopLossPercent),
-                      takeProfit: price * (1 + risk.takeProfitPercent),
+                      sizeUSD: safeTradeSize,
+                      stopLoss: side === "BUY" ? price * (1 - risk.stopLossPercent / 100) : price * (1 + risk.stopLossPercent / 100),
+                      takeProfit: side === "BUY" ? price * (1 + risk.takeProfitPercent / 100) : price * (1 - risk.takeProfitPercent / 100),
                     });
                     console.log(`✅ ORDER PLACED — ${order.orderId}`);
                     await logEventSimple(
@@ -610,7 +606,7 @@ async function run(inputStrategyId) {
                     await recordTrade(strategyId, {
                       symbol,
                       price,
-                      tradeSize: finalTradeSize,
+                      sizeUSD: safeTradeSize,
                       status: "FAILED",
                       notes: err.message,
                     });
@@ -655,9 +651,11 @@ async function run(inputStrategyId) {
         "4H": 240,
         "1D": 1440,
         "1W": 10080,
-        "1D": "1d",
       };
-      const minutes = timeframeMap[timeframe] || 60;
+      const minutes = timeframeMap[timeframe];
+      if (!minutes) {
+        throw new Error(`Unsupported timeframe for sleep calculation: ${timeframe}`);
+      }
       sleepMs = (minutes * 60 * 1000) / 10;
     }
     sleepMs = Math.max(sleepMs, 10000);
