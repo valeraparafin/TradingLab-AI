@@ -52,6 +52,25 @@ export const StrategyDetails = () => {
     selectedSymbolRef.current = selectedSymbol;
   }, [selectedSymbol]);
 
+  const fetchXaiData = async () => {
+    try {
+      const res = await strategyApi.getLatestXai(strategyId);
+      if (res.data) {
+        const { symbol, gci, results } = res.data;
+        setXaiData(prev => ({
+          ...prev,
+          [symbol]: { gci, results }
+        }));
+
+        if (symbol && !selectedSymbolRef.current) {
+          setSelectedSymbol(symbol);
+        }
+      }
+    } catch (e) {
+      console.error('Error fetching latest XAI data', e);
+    }
+  };
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -83,11 +102,14 @@ export const StrategyDetails = () => {
         ]);
 
         setStats(statsRes.data);
-        setPositions(posRes.data);
+        setPositions(posRes.data.map((p: any) => ({
+          ...p,
+          side: (p.side?.toUpperCase().trim() === 'BUY') ? 'LONG' : (p.side?.toUpperCase().trim() === 'SELL' ? 'SHORT' : p.side),
+        })));
 
         // Parse config for control panel
         try {
-          const config = JSON.parse(s.config || '{}');
+          const config = JSON.parse(s.logicConfig || s.config || '{}');
           setTriggerMode(config.triggerMode || 'Adaptive');
           setIntervalValue(config.interval || 60);
 
@@ -101,6 +123,9 @@ export const StrategyDetails = () => {
         // Fetch templates for dropdowns
         const templatesData = await templateApi.getTemplates();
         setTemplates(templatesData);
+
+        // Initialize XAI data
+        await fetchXaiData();
 
       } catch (err: any) {
         setError(err.message || 'An error occurred while fetching strategy details');
@@ -137,7 +162,7 @@ export const StrategyDetails = () => {
 
           const updatedPos: Position = {
             symbol: payload.symbol,
-            side: payload.side === 'BUY' ? 'LONG' : 'SHORT',
+            side: (payload.side?.toUpperCase().trim() === 'BUY') ? 'LONG' : (payload.side?.toUpperCase().trim() === 'SELL' ? 'SHORT' : 'LONG'),
             entryPrice: payload.entry_price,
             currentPrice: payload.current_price,
             pnl: payload.pnl,
@@ -180,10 +205,39 @@ export const StrategyDetails = () => {
     };
   }, [strategyId]);
 
+  const refreshStrategy = async () => {
+    try {
+      const strategiesRes = await strategyApi.getStrategies();
+      const s = strategiesRes.data.find(item => item.id === strategyId);
+      if (s) {
+        setStrategy(s);
+        const config = JSON.parse(s.logicConfig || s.config || '{}');
+        setTriggerMode(config.triggerMode || 'Adaptive');
+        setIntervalValue(config.interval || 60);
+        setSettingsTriggerMode(config.triggerMode || 'Adaptive');
+        setSettingsInterval(config.interval || 60);
+      }
+    } catch (e) {
+      console.error('Error refreshing strategy', e);
+    }
+  };
+
+  useEffect(() => {
+    if (isSettingsOpen) {
+      refreshStrategy();
+    }
+  }, [isSettingsOpen]);
+
   const handleToggle = async () => {
     if (!strategy) return;
     try {
+      const isStarting = strategy.status === 'stopped';
       await strategyApi.toggleStrategy(strategyId);
+
+      if (isStarting) {
+        await fetchXaiData();
+      }
+
       const strategiesRes = await strategyApi.getStrategies();
       const s = strategiesRes.data.find(item => item.id === strategyId);
       if (s) setStrategy(s);
@@ -217,11 +271,7 @@ export const StrategyDetails = () => {
 
     try {
       await strategyApi.updateConfig(strategyId, data);
-
-      // Update local state
-      setStrategy(prev => prev ? { ...prev, name: data.name } : null);
-      setTriggerMode(data.settings.triggerMode);
-      setIntervalValue(data.settings.interval);
+      await refreshStrategy();
 
       setIsSettingsOpen(false);
       toast.success('Settings saved and strategy restarted successfully.');
