@@ -2,13 +2,15 @@ import { getDB } from '../../../db.js';
 import { templateService } from './template.service.js';
 import { botService } from './bot.service.js';
 import { toCamel, toSnake } from '../../../src/utils/casing.js';
+import { timeframeToMinutes } from '../../../src/utils/timeframe.js';
 
 class StrategyService {
   /**
    * Creates a new strategy with initial templates and settings.
    */
   async createStrategy(payload) {
-    const { name, logicTemplateId, riskTemplateId, ...settings } = payload;
+    const { name, logicTemplateId, riskTemplateId, settings: userSettings, ...rest } = payload;
+    const settings = userSettings || rest;
     const db = getDB();
 
     const finalConfig = await this.assembleStrategy(name, settings, logicTemplateId, riskTemplateId);
@@ -134,6 +136,43 @@ class StrategyService {
       ...e,
       payload: e.payload ? JSON.parse(e.payload) : null
     })));
+  }
+
+  /**
+   * Fetches the last "fresh" GCI state from the database based on the strategy's timeframe TTL.
+   */
+  async getLastXaiState(id) {
+    const config = await this.getFullConfig(id);
+    if (!config) return null;
+
+    const timeframe = config.settings?.timeframe || config.timeframe;
+    if (!timeframe) return null;
+
+    const ttlMinutes = timeframeToMinutes(timeframe);
+    if (!ttlMinutes) return null;
+
+    const db = getDB();
+    const lastEvent = await db.get(
+      'SELECT payload, timestamp FROM events WHERE strategy_id = ? AND event_type = "safety_check" ORDER BY timestamp DESC LIMIT 1',
+      [id]
+    );
+
+    if (!lastEvent) return null;
+
+    const eventTime = new Date(lastEvent.timestamp).getTime();
+    const now = Date.now();
+    const diffMinutes = (now - eventTime) / (1000 * 60);
+
+    if (diffMinutes <= ttlMinutes) {
+      try {
+        return JSON.parse(lastEvent.payload);
+      } catch (e) {
+        console.error(`[StrategyService] Error parsing GCI payload for strategy ${id}: ${e.message}`);
+        return null;
+      }
+    }
+
+    return null;
   }
 
   /**
@@ -307,7 +346,7 @@ class StrategyService {
    * Assembler: Merges logic, risk, and user settings into a final strategy config
    */
   async assembleStrategy(name, settings, logicTemplateId, riskTemplateId) {
-
+    if (!settings) settings = {};
 
     const [logic, risk] = await Promise.all([
       templateService.loadTemplate('logic', logicTemplateId),
@@ -321,18 +360,20 @@ class StrategyService {
     const riskSettings = risk.settings || risk.content?.settings || risk;
 
     const riskOverrides = { ...(settings.riskOverrides || settings.risk_overrides || {}) };
-    const desiredRisk = {
+    const combinedUserRisk = {
+      ...settings,
       ...(settings.risk || {}),
-      ...settings
+      ...(settings.riskOverrides || settings.risk_overrides || {})
     };
 
-    for (const [key, value] of Object.entries(desiredRisk)) {
-      if (riskSettings[key] !== undefined) {
+    for (const [key, value] of Object.entries(combinedUserRisk)) {
+      const camelKey = toCamel(key);
+      if (riskSettings[camelKey] !== undefined) {
         if (value !== undefined) {
-          if (value !== riskSettings[key]) {
-            riskOverrides[key] = value;
+          if (value !== riskSettings[camelKey]) {
+            riskOverrides[camelKey] = value;
           } else {
-            delete riskOverrides[key];
+            delete riskOverrides[camelKey];
           }
         }
       }
