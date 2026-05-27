@@ -54,7 +54,7 @@ class StrategyService {
   /**
    * Helper to check if a template is locked (used by a running strategy)
 
-   */
+  */
   async checkTemplateLock(type, id) {
     const db = getDB();
     const jsonPath = type === 'logic' ? '$.metadata.logicTemplateId' : '$.metadata.riskTemplateId';
@@ -119,7 +119,10 @@ class StrategyService {
    */
   async getPositions(id) {
     const db = getDB();
-    const positions = await db.all('SELECT * FROM active_positions WHERE strategy_id = ? AND status = "OPEN"', [id]);
+    const positions = await db.all(
+      'SELECT *, COALESCE(current_price, entry_price) as currentPrice, COALESCE(current_pnl, 0) as currentPnl, COALESCE(current_pnl_percent, 0) as currentPnlPercent, stop_loss as stopLoss, take_profit as takeProfit FROM active_positions WHERE strategy_id = ? AND status = "OPEN"',
+      [id]
+    );
     return toCamel(positions);
   }
 
@@ -152,27 +155,31 @@ class StrategyService {
     if (!ttlMinutes) return null;
 
     const db = getDB();
-    const lastEvent = await db.get(
-      'SELECT payload, timestamp FROM events WHERE strategy_id = ? AND event_type = "safety_check" ORDER BY timestamp DESC LIMIT 1',
-      [id]
+    const now = Date.now();
+    const ttlMs = ttlMinutes * 60 * 1000;
+    const threshold = now - ttlMs;
+
+    const events = await db.all(
+      'SELECT payload, timestamp FROM events WHERE strategy_id = ? AND type = "safety_check" AND timestamp > ? ORDER BY timestamp DESC',
+      [id, threshold]
     );
 
-    if (!lastEvent) return null;
+    if (!events || events.length === 0) return null;
 
-    const eventTime = new Date(lastEvent.timestamp).getTime();
-    const now = Date.now();
-    const diffMinutes = (now - eventTime) / (1000 * 60);
-
-    if (diffMinutes <= ttlMinutes) {
+    const freshStates = {};
+    for (const event of events) {
       try {
-        return JSON.parse(lastEvent.payload);
+        const data = JSON.parse(event.payload);
+        const symbol = data.symbol;
+        if (symbol && !freshStates[symbol]) {
+          freshStates[symbol] = data;
+        }
       } catch (e) {
         console.error(`[StrategyService] Error parsing GCI payload for strategy ${id}: ${e.message}`);
-        return null;
       }
     }
 
-    return null;
+    return Object.keys(freshStates).length > 0 ? freshStates : null;
   }
 
   /**
@@ -417,12 +424,6 @@ class StrategyService {
       }
     };
   }
-
-  // DEBUG: Log the assembled config to see if watchlist is present
-  // Note: This is a temporary debug log for the smoke test failure
-  // This is not part of the final implementation but helps diagnose the missing watchlist
-  // (Ideally, this would be a proper log or a test check)
-
 }
 
 export const strategyService = new StrategyService();

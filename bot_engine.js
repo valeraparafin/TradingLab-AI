@@ -48,13 +48,8 @@ const precisionManager = new PrecisionManager();
 // ─── Logging & Utils ──────────────────────────────────────────────────────────
 
 async function logEvent(strategyId, type, payload) {
-  const db = getDB();
   const timestamp = Date.now();
   const snakePayload = typeof payload === 'object' ? toSnake(payload) : payload;
-  await db.run(
-    "INSERT INTO events (strategy_id, type, payload, timestamp) VALUES (?, ?, ?, ?)",
-    [strategyId, type, JSON.stringify(snakePayload), timestamp],
-  );
 
   try {
     await fetch("http://localhost:3000/event", {
@@ -112,6 +107,11 @@ async function updateActivePosition(strategyId, positionData) {
     await db.run(
       "UPDATE active_positions SET status = 'CLOSED', exit_price = ?, exit_timestamp = CURRENT_TIMESTAMP WHERE strategy_id = ? AND symbol = ? AND status = 'OPEN'",
       [snakePos.exit_price, strategyId, snakePos.symbol],
+    );
+  } else if (snakePos.action === "update_price") {
+    await db.run(
+      "UPDATE active_positions SET current_price = ?, current_pnl = ?, current_pnl_percent = ?, price_updated_at = CURRENT_TIMESTAMP WHERE strategy_id = ? AND symbol = ? AND status = 'OPEN'",
+      [snakePos.current_price, snakePos.current_pnl, snakePos.current_pnl_percent, strategyId, snakePos.symbol],
     );
   }
 }
@@ -405,6 +405,20 @@ async function run(inputStrategyId) {
                       ? (price / activePosition.entry_price - 1) * 100
                       : (1 - price / activePosition.entry_price) * 100,
                   message: "Active position found, monitoring for exit.",
+                });
+
+                await updateActivePosition(strategyId, {
+                  action: "update_price",
+                  symbol,
+                  current_price: price,
+                  current_pnl: activePosition.side === "BUY"
+                      ? activePosition.size_usd *
+                        (price / activePosition.entry_price - 1)
+                      : activePosition.size_usd *
+                        (1 - price / activePosition.entry_price),
+                  current_pnl_percent: activePosition.side === "BUY"
+                      ? (price / activePosition.entry_price - 1) * 100
+                      : (1 - price / activePosition.entry_price) * 100
                 });
               }
             } else {

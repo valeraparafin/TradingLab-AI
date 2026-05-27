@@ -1,5 +1,6 @@
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
+import path from 'path';
 
 let db = null;
 
@@ -9,7 +10,7 @@ let db = null;
  */
 export async function initDB() {
     db = await open({
-        filename: './trading_lab.db',
+        filename: path.join(process.cwd(), 'trading_lab.db'),
         driver: sqlite3.Database
     });
 
@@ -36,6 +37,7 @@ export async function initDB() {
             max_portfolio_heat_percent REAL NOT NULL,
             max_open_positions INTEGER NOT NULL,
             max_trades_per_day INTEGER NOT NULL,
+            max_trade_size_usd REAL NOT NULL,
             daily_loss_limit_percent REAL NOT NULL,
             daily_profit_target_percent REAL NOT NULL,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -95,11 +97,22 @@ export async function initDB() {
         // Column already exists, ignore error
     }
 
+    // Migrate to snapshot model if needed
+    try {
+        await migrateToSnapshotModel();
+    } catch (e) {
+        console.warn(`[DB] Snapshot migration skipped or failed: ${e.message}`);
+    }
+
     try {
         await db.exec('ALTER TABLE active_positions ADD COLUMN status TEXT DEFAULT \'OPEN\'');
         await db.exec('ALTER TABLE active_positions ADD COLUMN exit_price REAL');
         await db.exec('ALTER TABLE active_positions ADD COLUMN exit_timestamp DATETIME');
-        await db.exec('UPDATE active_positions SET status = \'OPEN\' WHERE status IS NULL');
+        await db.exec('ALTER TABLE active_positions ADD COLUMN current_price REAL');
+      await db.exec('ALTER TABLE active_positions ADD COLUMN price_updated_at DATETIME');
+      await db.exec('ALTER TABLE active_positions ADD COLUMN current_pnl REAL');
+      await db.exec('ALTER TABLE active_positions ADD COLUMN current_pnl_percent REAL');
+      await db.exec('UPDATE active_positions SET status = \'OPEN\' WHERE status IS NULL');
     } catch (e) {
         // Columns already exist, ignore error
     }
@@ -190,8 +203,18 @@ export async function updateRecord(table, data, where) {
 export async function migrateToSnapshotModel() {
     const db = getDB();
 
+    // Check if migration is already done (config column should be gone, logic_config should exist)
+    const tableInfo = await db.all("PRAGMA table_info(strategies)");
+    const hasConfig = tableInfo.some(col => col.name === 'config');
+    const hasLogicConfig = tableInfo.some(col => col.name === 'logic_config');
+
+    if (!hasConfig || hasLogicConfig) {
+        return; // Already migrated or config column missing
+    }
+
     // Professional defaults
     const defaults = {
+
         risk_per_trade_percent: 1.0,
         stop_loss_percent: 2.0,
         take_profit_percent: 4.0,
@@ -223,14 +246,15 @@ export async function migrateToSnapshotModel() {
                 max_portfolio_heat_percent: config.max_portfolio_heat_percent ?? defaults.max_portfolio_heat_percent,
                 max_open_positions: config.max_open_positions ?? defaults.max_open_positions,
                 max_trades_per_day: config.max_trades_per_day ?? defaults.max_trades_per_day,
+                max_trade_size_usd: config.max_trade_size_usd ?? defaults.max_trade_size_usd,
                 daily_loss_limit_percent: config.daily_loss_limit_percent ?? defaults.daily_loss_limit_percent,
                 daily_profit_target_percent: config.daily_profit_target_percent ?? defaults.daily_profit_target_percent,
             };
 
             await db.run(`
                 INSERT OR REPLACE INTO strategy_risk_settings
-                (strategy_id, risk_per_trade_percent, stop_loss_percent, take_profit_percent, min_risk_reward_ratio, max_portfolio_heat_percent, max_open_positions, max_trades_per_day, daily_loss_limit_percent, daily_profit_target_percent)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (strategy_id, risk_per_trade_percent, stop_loss_percent, take_profit_percent, min_risk_reward_ratio, max_portfolio_heat_percent, max_open_positions, max_trades_per_day, max_trade_size_usd, daily_loss_limit_percent, daily_profit_target_percent)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `, Object.values(risk));
 
             // Remove risk params from logic config

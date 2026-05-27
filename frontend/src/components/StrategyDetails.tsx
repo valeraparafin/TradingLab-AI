@@ -55,15 +55,39 @@ export const StrategyDetails = () => {
   const fetchXaiData = async () => {
     try {
       const res = await strategyApi.getLatestXai(strategyId);
-      if (res.data) {
-        const { symbol, gci, results } = res.data;
-        setXaiData(prev => ({
-          ...prev,
-          [symbol]: { gci, results }
-        }));
+      if (!res.data) return;
 
-        if (symbol && !selectedSymbolRef.current) {
-          setSelectedSymbol(symbol);
+      let freshData = res.data;
+
+      // If backend returns a single event payload instead of a map of symbols, wrap it in a map
+      if (freshData.symbol && !freshData.BTCUSDT && !freshData.ETHUSDT && typeof freshData.symbol === 'string') {
+        const symbol = freshData.symbol;
+        freshData = { [symbol]: freshData };
+      }
+
+      const filteredData: Record<string, { gci: number, results: any[] }> = {};
+
+      for (const [symbol, data] of Object.entries(freshData)) {
+        // Skip reserved keys if they accidentally appear as top-level keys
+        if (['symbol', 'price', 'allPass', 'gci', 'results'].includes(symbol)) continue;
+
+        if (data && typeof data === 'object') {
+          filteredData[symbol] = {
+            gci: data.gci ?? 0,
+            results: data.results ?? []
+          };
+        }
+      }
+
+      setXaiData(prev => ({
+        ...prev,
+        ...filteredData
+      }));
+
+      if (!selectedSymbolRef.current) {
+        const symbols = Object.keys(filteredData);
+        if (symbols.length > 0) {
+          setSelectedSymbol(symbols[0]);
         }
       }
     } catch (e) {
@@ -105,6 +129,10 @@ export const StrategyDetails = () => {
         setPositions(posRes.data.map((p: any) => ({
           ...p,
           side: (p.side?.toUpperCase().trim() === 'BUY') ? 'LONG' : (p.side?.toUpperCase().trim() === 'SELL' ? 'SHORT' : p.side),
+          pnl: p.currentPnl ?? p.pnl ?? 0,
+          pnlPercent: p.currentPnlPercent ?? p.pnlPercent ?? 0,
+          sl: p.stopLoss ?? p.sl ?? 0,
+          tp: p.takeProfit ?? p.tp ?? 0,
         })));
 
         // Parse config for control panel
@@ -180,21 +208,25 @@ export const StrategyDetails = () => {
           }
         });
       } else if (data.type === 'safety_check') {
-        const symbol = data.payload?.symbol || 'DEFAULT';
+        const symbol = data.payload?.symbol;
         const gci = data.payload?.gci;
         const results = data.payload?.results;
 
-        if (gci !== undefined || results !== undefined) {
-          setXaiData(prev => ({
-            ...prev,
-            [symbol]: {
-              gci: gci !== undefined ? gci : (prev[symbol]?.gci || 0),
-              results: results !== undefined ? results : (prev[symbol]?.results || []),
-            }
-          }));
+        // Safety check: ensure symbol is a valid string and not a reserved key
+        const reservedKeys = ['symbol', 'price', 'allPass', 'gci', 'results'];
+        if (symbol && typeof symbol === 'string' && !reservedKeys.includes(symbol)) {
+          if (gci !== undefined || results !== undefined) {
+            setXaiData(prev => ({
+              ...prev,
+              [symbol]: {
+                gci: gci !== undefined ? gci : (prev[symbol]?.gci || 0),
+                results: results !== undefined ? results : (prev[symbol]?.results || []),
+              }
+            }));
 
-          if (!selectedSymbolRef.current) {
-            setSelectedSymbol(symbol);
+            if (!selectedSymbolRef.current) {
+              setSelectedSymbol(symbol);
+            }
           }
         }
       }
@@ -433,7 +465,10 @@ export const StrategyDetails = () => {
 
             {Object.keys(xaiData).length > 0 || positions.length > 0 ? (
               <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar max-w-md">
-                {Array.from(new Set([...Object.keys(xaiData), ...positions.map(p => p.symbol)])).map((symbol) => {
+                {Array.from(new Set([
+                  ...Object.keys(xaiData).filter(key => xaiData[key] && typeof xaiData[key] === 'object' && 'gci' in xaiData[key]),
+                  ...positions.map(p => p.symbol)
+                ])).map((symbol) => {
                   const isActive = selectedSymbol === symbol;
                   const data = xaiData[symbol];
                   const gci = data?.gci;
@@ -526,7 +561,7 @@ export const StrategyDetails = () => {
                           <td className="py-3">{parseFloat(pos.entryPrice?.toFixed(precision) || '0').toString()}</td>
                           <td className="py-3">{parseFloat(pos.currentPrice?.toFixed(precision) || '0').toString()}</td>
                           <td className={cn("py-3 font-medium", pos.pnl >= 0 ? "text-emerald-500" : "text-rose-500")}>
-                            {pos.pnl >= 0 ? `+${pos.pnl?.toFixed(2) || '0.00'}` : pos.pnl?.toFixed(2) || '0.00'} USDT ({pos.pnl >= 0 ? `+${pos.pnl_percent?.toFixed(2) || '0.00'}` : pos.pnl_percent?.toFixed(2) || '0.00'}%)
+                            {pos.pnl >= 0 ? `+${pos.pnl?.toFixed(2) || '0.00'}` : pos.pnl?.toFixed(2) || '0.00'} USDT ({pos.pnl >= 0 ? `+${pos.pnlPercent?.toFixed(2) || '0.00'}` : pos.pnlPercent?.toFixed(2) || '0.00'}%)
                           </td>
                           <td className="py-3 text-xs text-muted-foreground">
                             {parseFloat(pos.sl?.toFixed(precision) || '0').toString()} / {parseFloat(pos.tp?.toFixed(precision) || '0').toString()}
