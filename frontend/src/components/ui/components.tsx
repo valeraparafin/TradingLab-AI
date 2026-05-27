@@ -96,7 +96,6 @@ export const Tabs = ({ children, defaultValue, onValueChange }: { children: Reac
             onValueChange: handleValueChange
           });
         }
-        return child;
       })}
     </div>
   );
@@ -108,7 +107,7 @@ export const TabsList = ({ children, className }: { children: React.ReactNode; c
   </div>
 );
 
-export const TabsTrigger = ({ value, children, isActive, onClick, className }: { value: string; children: React.ReactNode; isActive?: boolean; onClick?: () => void; className?: string }) => (
+export const TabsTrigger = ({ value, children, isActive, onClick, className }: { value: string; children: React.ReactNode; isActive?: boolean; onClick: () => void; className?: string }) => (
   <button
     onClick={onClick}
     className={cn(
@@ -126,9 +125,6 @@ export const TabsContent = ({ value, isActive, children, className }: { value: s
   return <div className={cn("mt-2 ring-offset-background", className)}>{children}</div>;
 };
 
-/**
- * Sheet Components
- */
 export const Sheet = ({ children, open, onOpenChange }: { children: React.ReactNode; open?: boolean; onOpenChange?: (open: boolean) => void }) => {
   const [internalOpen, setInternalOpen] = React.useState(false);
   const isOpen = open !== undefined ? open : internalOpen;
@@ -153,7 +149,6 @@ export const Sheet = ({ children, open, onOpenChange }: { children: React.ReactN
         if (React.isValidElement(child)) {
           return React.cloneElement(child as any, { open: isOpen, onOpenChange: handleOpenChange });
         }
-        return child;
       })}
     </div>
   );
@@ -178,7 +173,7 @@ export const SheetTrigger = ({ children, className, ...props }: { children: Reac
 
 import { X } from 'lucide-react';
 
-export const SheetContent = ({ children, className, side = "right", open, onOpenChange }: { children: React.ReactNode; className?: string; side?: "top" | "bottom" | "left" | "right"; open?: boolean; onOpenChange?: (open: boolean) => void }) => {
+export const SheetContent = ({ children, className, side = "right", open, onOpenChange }: { children: React.ReactNode; className?: string; side?: "top" | "bottom" | "left" | "right"; open?: boolean; onOpenChange?: (boolean) => void }) => {
   if (!open) return null;
   const sideStyles = {
     top: "inset-x-0 top-0 border-b",
@@ -194,7 +189,7 @@ export const SheetContent = ({ children, className, side = "right", open, onOpen
         onClick={() => onOpenChange?.(false)}
       />
       <div className={cn(
-        "fixed z-50 bg-background p-6 shadow-2xl transition-all duration-300 ease-in-out flex flex-col border-l",
+        "fixed z-50 bg-background p-6 shadow-2xl transition-all duration-out ease-in-out flex flex-col border-l",
         sideStyles[side],
         className
       )}>
@@ -234,9 +229,6 @@ export const SheetDescription = ({ children, className }: { children: React.Reac
   </p>
 );
 
-/**
- * Slider Component
- */
 export const Slider = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement> & { step?: number }>(({ className, step = 1, ...props }, ref) => (
   <input
     type="range"
@@ -251,9 +243,6 @@ export const Slider = React.forwardRef<HTMLInputElement, React.InputHTMLAttribut
 ));
 Slider.displayName = "Slider";
 
-/**
- * ToggleGroup Components
- */
 export const ToggleGroup = ({ children, value, onValueChange, type = "single" }: { children: React.ReactNode; value: string | string[]; onValueChange: (value: any) => void; type?: "single" | "multiple" }) => {
   return (
     <div className="inline-flex items-center justify-start rounded-md bg-muted p-1" role="group">
@@ -272,12 +261,11 @@ export const ToggleGroup = ({ children, value, onValueChange, type = "single" }:
                 onValueChange(itemValue);
               } else {
                 const current = value as string[];
-                onValueChange(current.includes(itemValue) ? current.filter(v => v !== itemValue) : [...current, itemValue]);
+                onValueChange(current.includes(itemValue) ? current.includes(itemValue) : [...current, itemValue]);
               }
             }
           });
         }
-        return child;
       })}
     </div>
   );
@@ -288,11 +276,11 @@ export const ToggleGroupItem = React.forwardRef<HTMLButtonElement, React.ButtonH
     <button
       ref={ref}
       className={cn(
-        "inline-flex items-center justify-center rounded-sm px-3 py-1.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
-        isSelected ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
-        className
-      )}
-      {...props}
+      "inline-flex items-center justify-center rounded-sm px-3 py-1.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+      isSelected ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+      className
+    )}
+    {...props}
     >
       {props.children}
     </button>
@@ -300,9 +288,6 @@ export const ToggleGroupItem = React.forwardRef<HTMLButtonElement, React.ButtonH
 );
 ToggleGroupItem.displayName = "ToggleGroupItem";
 
-/**
- * Resizable Components
- */
 export const ResizablePanelGroup = ({ children, direction = "horizontal", className }: { children: React.ReactNode; direction?: "horizontal" | "vertical"; className?: string }) => (
   <div className={cn(
     "flex",
@@ -320,16 +305,15 @@ export const ResizablePanel = React.forwardRef<HTMLDivElement, React.HTMLAttribu
       className={cn("relative min-w-0 overflow-hidden", className)}
       {...props}
     />
-  )
-);
+  ));
 ResizablePanel.displayName = "ResizablePanel";
 
-export const ResizableHandle = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ className, ...props }, ref) => (
+export const ResizableHandle = React.forwardRef<HTMLDivElement>(({ className, ...props }, ref) => (
   <div
     ref={ref}
     className={cn(
       "bg-border transition-colors hover:bg-accent cursor-pointer",
-      "w-1 h-full", // Default horizontal
+      "w-1 h-full",
       className
     )}
     {...props}
@@ -367,7 +351,7 @@ export const Select = ({ children, value, onValueChange }: { children: React.Rea
             }
           });
         }
-        return child;
+        return null;
       })}
     </div>
   );
@@ -400,23 +384,23 @@ export const SelectContent = ({ children, value, onValueChange, isOpen }: { chil
             }
           });
         }
-        return child;
       })}
     </div>
   );
 };
 
-export const SelectItem = ({ value, children }: { value: string; children: React.ReactNode; isSelected?: boolean; onClick?: (e: any) => void }) => (
-  <div
-    onClick={onClick}
-    className={cn(
-      "relative flex w-full cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground transition-colors",
-      // isSelected is now passed as a prop via cloneElement in SelectContent
-    )}
-  >
-    {children}
-  </div>
-);
+export const SelectItem = ({ value, children }: { value: string; children: React.ReactNode; isSelected?: boolean; onClick?: (e: any) => void }) => {
+  return (
+    <div
+      onClick={onClick}
+      className={cn(
+        "relative flex w-full cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground transition-colors",
+      )}
+    >
+      {children}
+    </div>
+  );
+};
 
 interface CheckboxProps extends React.InputHTMLAttributes<HTMLInputElement> {
   onCheckedChange?: (checked: boolean) => void;
@@ -439,9 +423,6 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(({ cla
 ));
 Checkbox.displayName = "Checkbox";
 
-/**
- * Popover Components
- */
 export const Popover = ({ children, open, onOpenChange }: { children: React.ReactNode; open?: boolean; onOpenChange?: (open: boolean) => void }) => {
   const [internalOpen, setInternalOpen] = React.useState(false);
   const isOpen = open !== undefined ? open : internalOpen;
@@ -466,7 +447,6 @@ export const Popover = ({ children, open, onOpenChange }: { children: React.Reac
         if (React.isValidElement(child)) {
           return React.cloneElement(child as any, { isOpen, onOpenChange: handleOpenChange });
         }
-        return child;
       })}
     </div>
   );

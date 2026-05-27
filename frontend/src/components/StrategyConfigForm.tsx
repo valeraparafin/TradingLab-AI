@@ -22,6 +22,14 @@ interface StrategyFormData {
   portfolioValue: number;
   maxTradeSizeUSD: number;
   maxTradesPerDay: number;
+  riskPerTradePercent: number;
+  stopLossPercent: number;
+  takeProfitPercent: number;
+  minRiskRewardRatio: number;
+  maxPortfolioHeatPercent: number;
+  maxOpenPositions: number;
+  dailyLossLimitPercent: number;
+  dailyProfitTargetPercent: number;
 }
 
 const INITIAL_FORM_STATE: StrategyFormData = {
@@ -35,6 +43,14 @@ const INITIAL_FORM_STATE: StrategyFormData = {
   portfolioValue: 10000,
   maxTradeSizeUSD: 100,
   maxTradesPerDay: 3,
+  riskPerTradePercent: 1,
+  stopLossPercent: 2,
+  takeProfitPercent: 4,
+  minRiskRewardRatio: 2,
+  maxPortfolioHeatPercent: 5,
+  maxOpenPositions: 3,
+  dailyLossLimitPercent: 2,
+  dailyProfitTargetPercent: 5,
 };
 
 export const StrategyConfigForm = ({
@@ -50,11 +66,19 @@ export const StrategyConfigForm = ({
     const settings = {
       timeframe: formData.timeframe,
       watchlist: formData.watchlist.split(',').map(s => s.trim()),
-      paperTrading: formData.paperTrading,
-      tradeMode: formData.tradeMode,
-      portfolioValue: Number(formData.portfolioValue),
-      maxTradeSizeUSD: Number(formData.maxTradeSizeUSD),
-      maxTradesPerDay: Number(formData.maxTradesPerDay)
+      paper_trading: formData.paperTrading,
+      trade_mode: formData.tradeMode,
+      portfolio_value: Number(formData.portfolioValue),
+      max_trade_size_usd: Number(formData.maxTradeSizeUSD),
+      max_trades_per_day: Number(formData.maxTradesPerDay),
+      risk_per_trade_percent: Number(formData.riskPerTradePercent),
+      stop_loss_percent: Number(formData.stopLossPercent),
+      take_profit_percent: Number(formData.takeProfitPercent),
+      min_risk_reward_ratio: Number(formData.minRiskRewardRatio),
+      max_portfolio_heat_percent: Number(formData.maxPortfolioHeatPercent),
+      max_open_positions: Number(formData.maxOpenPositions),
+      daily_loss_limit_percent: Number(formData.dailyLossLimitPercent),
+      daily_profit_target_percent: Number(formData.dailyProfitTargetPercent),
     };
 
     await onSave({
@@ -125,27 +149,87 @@ export const StrategyConfigForm = ({
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <FormInput
-          label="Portfolio Value (USD)"
-          type="number"
-          value={formData.portfolioValue}
-          onChange={val => setFieldValue('portfolioValue', val)}
-        />
-        <FormInput
-          label="Max Trade Size (USD)"
-          type="number"
-          value={formData.maxTradeSizeUSD}
-          onChange={val => setFieldValue('maxTradeSizeUSD', val)}
-        />
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        <FormInput
-          label="Max Trades / Day"
-          type="number"
-          value={formData.maxTradesPerDay}
-          onChange={val => setFieldValue('maxTradesPerDay', val)}
-        />
+      <div className="border-t pt-4 mt-4">
+        <h4 className="text-sm font-semibold mb-4">Risk Settings</h4>
+        <div className="grid grid-cols-2 gap-4">
+          <FormInput
+            label="Portfolio Value (USD)"
+            type="number"
+            value={formData.portfolioValue}
+            onChange={val => setFieldValue('portfolioValue', val)}
+            tooltip="Total capital allocated to this strategy"
+          />
+          <FormInput
+            label="Max Trade Size (USD)"
+            type="number"
+            value={formData.maxTradeSizeUSD}
+            onChange={val => setFieldValue('maxTradeSizeUSD', val)}
+            tooltip="Absolute maximum USD per trade"
+          />
+          <FormInput
+            label="Risk per Trade (%)"
+            type="number"
+            value={formData.riskPerTradePercent}
+            onChange={val => setFieldValue('riskPerTradePercent', val)}
+            tooltip="Percentage of portfolio to risk per trade"
+          />
+          <FormInput
+            label="Stop Loss (%)"
+            type="number"
+            value={formData.stopLossPercent}
+            onChange={val => setFieldValue('stopLossPercent', val)}
+            tooltip="Percentage drop from entry to trigger Stop Loss"
+          />
+          <FormInput
+            label="Take Profit (%)"
+            type="number"
+            value={formData.takeProfitPercent}
+            onChange={val => setFieldValue('takeProfitPercent', val)}
+            tooltip="Percentage gain from entry to trigger Take Profit"
+          />
+          <FormInput
+            label="Min Risk/Reward"
+            type="number"
+            value={formData.minRiskRewardRatio}
+            onChange={val => setFieldValue('minRiskRewardRatio', val)}
+            tooltip="Minimum acceptable Reward-to-Risk ratio"
+          />
+          <FormInput
+            label="Max Portfolio Heat (%)"
+            type="number"
+            value={formData.maxPortfolioHeatPercent}
+            onChange={val => setFieldValue('maxPortfolioHeatPercent', val)}
+            tooltip="Maximum combined risk of all open positions"
+          />
+          <FormInput
+            label="Max Open Positions"
+            type="number"
+            value={formData.maxOpenPositions}
+            onChange={val => setFieldValue('maxOpenPositions', val)}
+            tooltip="Maximum number of concurrent trades"
+          />
+          <FormInput
+            label="Max Trades / Day"
+            type="number"
+            value={formData.maxTradesPerDay}
+            onChange={val => setFieldValue('maxTradesPerDay', val)}
+            tooltip="Limit on total trades executed per 24h"
+          />
+          <FormInput
+            label="Daily Loss Limit (%)"
+            type="number"
+            value={formData.dailyLossLimitPercent}
+            onChange={val => setFieldValue('dailyLossLimitPercent', val)}
+            tooltip="Daily loss threshold to stop trading"
+          />
+          <FormInput
+            label="Daily Profit Target (%)"
+            type="number"
+            value={formData.dailyProfitTargetPercent}
+            onChange={val => setFieldValue('dailyProfitTargetPercent', val)}
+            tooltip="Daily profit threshold to stop trading"
+          />
+        </div>
       </div>
 
       <div className="flex justify-end gap-2 pt-4">
