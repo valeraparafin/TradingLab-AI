@@ -29,6 +29,7 @@ Thumbs.db
 
 # Claude Code
 .claude/
+CLAUDE.md
 
 # Database & Data
 *.db
@@ -37,3 +38,4 @@ trades.csv
 
 # Graphify
 graphify-out/
+docs/superpowers
