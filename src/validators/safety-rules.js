@@ -1,3 +1,16 @@
+export const ob_entry = (price, open, data, config) => {
+  const inOB = data.obs?.some(
+    (ob) => price >= ob.range.bottom && price <= ob.range.top,
+  );
+  return {
+    label: "Order Block Entry",
+    required: "Price in OB",
+    actual: `${inOB}`,
+    pass: !!inOB,
+    score: !!inOB ? 1.0 : 0.0,
+  };
+};
+
 export const confirmation_break = (price, open, data, config) => {
   const rejection = data.rejection;
   if (!rejection)
@@ -248,5 +261,29 @@ export const sommi_diamond_bull = (price, open, data, config) => {
     actual: `${val}`,
     pass: !!val,
     score: !!val ? 1.0 : 0.0,
+  };
+};
+
+export const momentum_shift = (price, open, data, config) => {
+  const { wt, wtCrossUp, wtCrossDown } = data;
+  const side = config.side;
+
+  let pass = false;
+  let actual = "none";
+
+  if (side === "LONG") {
+    pass = wtCrossUp && wt?.wt2 <= -53;
+    actual = pass ? "bullish_shift" : (wtCrossUp ? "crossover_not_extreme" : "no_crossover");
+  } else if (side === "SHORT") {
+    pass = wtCrossDown && wt?.wt2 >= 53;
+    actual = pass ? "bearish_shift" : (wtCrossDown ? "crossover_not_extreme" : "no_crossover");
+  }
+
+  return {
+    label: "Momentum Shift",
+    required: "Crossover in Extreme Zone",
+    actual: actual,
+    pass: pass,
+    score: pass ? 1.0 : 0.0,
   };
 };

@@ -41,6 +41,8 @@ const WaveTrend = {
 
     // Detect Cross Up (Bullish)
     const wtCrossUp = wt1Array.length > 1 && wt1Array[wt1Array.length - 2] < wt2Array[wt2Array.length - 2] && wt1 > wt2;
+    // Detect Cross Down (Bearish)
+    const wtCrossDown = wt1Array.length > 1 && wt1Array[wt1Array.length - 2] > wt2Array[wt2Array.length - 2] && wt1 < wt2;
 
     // --- MFI Calculation ---
     const mfi = this.calcMFI(candles, mfiLen);
@@ -54,6 +56,7 @@ const WaveTrend = {
     return {
       wt: { wt1, wt2 },
       wtCrossUp,
+      wtCrossDown,
       mfi,
       stochRsi,
       stc,
@@ -168,6 +171,7 @@ const WaveTrend = {
     return {
       wt: { wt1: 0, wt2: 0 },
       wtCrossUp: false,
+      wtCrossDown: false,
       mfi: 50,
       stochRsi: { k: 50, d: 50 },
       stc: 50,

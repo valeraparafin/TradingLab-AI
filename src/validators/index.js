@@ -33,13 +33,14 @@ export class SafetyValidator {
       stcBullish: 0.5,
       zoneFilter: 0.5,
       unhealthyMove: 0.5,
+      momentumShift: 1.5,
     };
 
     let totalWeightedScore = 0;
     let totalWeight = 0;
 
     for (const check of safetyChecks) {
-      const validator = rules[check.id];
+      const validator = rules[check.id === "momentum_shift" ? "momentum_shift" : check.id];
       if (validator) {
         const result = validator(price, open, strategyData, strategyConfig);
         results.push(result);
