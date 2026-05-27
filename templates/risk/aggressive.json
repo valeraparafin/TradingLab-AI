@@ -9,7 +9,12 @@
       "maxTradeSizeUSD": 500,
       "stopLossPercent": 0.05,
       "takeProfitPercent": 0.15,
-      "maxTradesPerDay": 10
+      "maxTradesPerDay": 10,
+      "minRiskRewardRatio": 1.5,
+      "maxPortfolioHeatPercent": 15,
+      "maxOpenPositions": 8,
+      "dailyLossLimitPercent": 5,
+      "dailyProfitTargetPercent": 10
     }
   }
 }
