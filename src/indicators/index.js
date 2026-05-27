@@ -16,14 +16,17 @@ export class IndicatorManager {
    * @returns {Object} The calculation results
    */
   calculate(type, candles) {
-    switch (type) {
+    if (!type) return {};
+    const normalizedType = type.toUpperCase();
+
+    switch (normalizedType) {
       case 'SMC':
         return SMC.execute(candles, this.config);
-      case 'Breakout':
-        return Breakout.execute(candles, this.config);
-      case 'VMC_CipherB':
+      case 'BREAKOUT':
+        return { channel: Breakout.execute(candles, this.config) };
+      case 'VMC_CIPHERB':
         return WaveTrend.execute(candles, this.config);
-      case 'Reversal':
+      case 'REVERSAL':
         return Reversal.execute(candles, this.config);
       default:
         throw new Error(`Unsupported indicator type: ${type}`);

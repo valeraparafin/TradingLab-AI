@@ -2,8 +2,12 @@ import { spawn } from 'child_process';
 import { getDB } from '../../../db.js';
 
 class BotService {
-  constructor(io) {
+  constructor() {
     this.activeBots = new Map();
+    this.io = null;
+  }
+
+  setIo(io) {
     this.io = io;
   }
 

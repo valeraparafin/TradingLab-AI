@@ -27,6 +27,7 @@ const RuleItem: React.FC<{ rule: RuleResult; index: number }> = ({ rule, index }
                        (typeof rule.actual === 'number' && Math.abs(rule.actual) > 1 && Math.abs(rule.actual) <= 150);
 
   const isTrend = labelLower.includes('trend') || labelLower.includes('state');
+  const isMomentum = labelLower.includes('momentum');
 
   const binaryKeywords = ['cross', 'detected'];
   const isBinaryLabel = binaryKeywords.some(k => labelLower.includes(k));
@@ -84,6 +85,22 @@ const RuleItem: React.FC<{ rule: RuleResult; index: number }> = ({ rule, index }
       symmetricValue = 0;
       scoreLabel = 'NEUTRAL';
       barColor = 'bg-zinc-400';
+    }
+  } else if (isMomentum) {
+    // Momentum Shift Logic
+    const momentumVal = String(rule.actual).toLowerCase();
+    if (momentumVal.includes('bullish')) {
+      symmetricValue = 1.0;
+      scoreLabel = 'BULLISH SHIFT';
+      barColor = 'bg-emerald-500';
+    } else if (momentumVal.includes('bearish')) {
+      symmetricValue = -1.0;
+      scoreLabel = 'BEARISH SHIFT';
+      barColor = 'bg-rose-500';
+    } else {
+      symmetricValue = 0;
+      scoreLabel = momentumVal.includes('extreme') ? 'NO EXTREME' : 'STALLED';
+      barColor = 'bg-zinc-300';
     }
   } else if (shouldTreatAsBinary) {
     // Binary Signals (Crosses, Detections)

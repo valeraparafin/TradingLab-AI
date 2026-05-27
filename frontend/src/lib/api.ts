@@ -46,6 +46,15 @@ export interface TemplatesResponse {
 
 export type TemplateType = 'logic' | 'risk';
 
+export interface XaiState {
+  symbol: string;
+  gci: number;
+  results: Array<{ label: string; score: number; actual: any }>;
+  [key: string]: any;
+}
+
+export type XaiMap = Record<string, XaiState>;
+
 export const strategyApi = {
   getStrategies: (archived = false) => api.get<Strategy[]>(`/strategies?archived=${archived}`),
   createStrategy: (data: { name: string; logicTemplateId: string; riskTemplateId: string; settings?: any }) => api.post('/strategies', data),
@@ -61,7 +70,7 @@ export const strategyApi = {
   getPositions: (id: number) => api.get(`/strategies/positions/${id}`),
   getEvents: (strategyId: number, limit: number = 100) => api.get(`/strategies/events/${strategyId}?limit=${limit}`),
   getPrecision: (symbol: string) => api.get<{ precision: number }>(`/precision?symbol=${symbol}`),
-  getLatestXai: (id: number) => api.get(`/strategies/xai/${id}`),
+  getLatestXai: (id: number) => api.get<XaiMap | XaiState | null>(`/strategies/xai/${id}`),
 };
 
 export const templateApi = {

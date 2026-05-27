@@ -1,5 +1,6 @@
 import { getDB } from '../../../db.js';
 import { botService } from './bot.service.js';
+import { toCamel } from '../../../src/utils/casing.js';
 
 class AnalyticsService {
   /**
@@ -7,7 +8,7 @@ class AnalyticsService {
    */
   async getLeaderboard() {
     const db = getDB();
-    return await db.all(`
+    const results = await db.all(`
       SELECT
         s.name,
         COUNT(CASE WHEN t.status = 'CLOSED' THEN 1 END) as total_trades,
@@ -18,6 +19,7 @@ class AnalyticsService {
       GROUP BY s.id
       ORDER BY total_profit DESC
     `);
+    return toCamel(results);
   }
 
   /**

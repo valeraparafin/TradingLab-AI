@@ -1,13 +1,20 @@
 import fs from 'fs';
 import path from 'path';
 import { z } from 'zod';
+import { toCamel } from './utils/casing.js';
 
 const RiskSchema = z.object({
-  maxTradesPerDay: z.number().positive(),
+  portfolioValue: z.number().positive(),
   maxTradeSizeUSD: z.number().positive(),
   riskPerTradePercent: z.number().min(0).max(100),
   stopLossPercent: z.number().min(0).max(100),
   takeProfitPercent: z.number().min(0).max(100),
+  minRiskRewardRatio: z.number().positive(),
+  maxPortfolioHeatPercent: z.number().min(0).max(100),
+  maxOpenPositions: z.number().int().positive(),
+  maxTradesPerDay: z.number().int().positive(),
+  dailyLossLimitPercent: z.number().min(0).max(100),
+  dailyProfitTargetPercent: z.number().min(0).max(100),
 });
 
 /**
@@ -32,10 +39,13 @@ export function resolveConfig(strategyConfig) {
   }
   const riskTemplate = JSON.parse(fs.readFileSync(riskTemplatePath, 'utf8'));
 
-  // Templates are expected to have a 'settings' object
+  // Convert template and overrides to camelCase for consistency
+  const templateSettings = toCamel(riskTemplate.settings || riskTemplate.content?.settings || riskTemplate);
+  const normalizedOverrides = toCamel(riskOverrides);
+
   const mergedRisk = {
-    ...(riskTemplate.settings || riskTemplate.content?.settings || riskTemplate),
-    ...riskOverrides
+    ...templateSettings,
+    ...normalizedOverrides
   };
 
   // Validate Risk Config
@@ -51,9 +61,12 @@ export function resolveConfig(strategyConfig) {
   }
   const logicTemplate = JSON.parse(fs.readFileSync(logicTemplatePath, 'utf8'));
 
+  const templateLogic = toCamel(logicTemplate.settings || logicTemplate.content?.settings || logicTemplate);
+  const normalizedLogicOverrides = toCamel(logicOverrides);
+
   const mergedLogic = {
-    ...(logicTemplate.settings || logicTemplate.content?.settings || logicTemplate),
-    ...logicOverrides
+    ...templateLogic,
+    ...normalizedLogicOverrides
   };
 
   return {
