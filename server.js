@@ -28,6 +28,7 @@ app.use(cors());
 app.use(express.json());
 
 app.use('/api/templates', templateRouter);
+app.use('/api', strategyRouter);
 app.use('/api/strategies', strategyRouter);
 app.use('/api/analytics', analyticsRouter);
 

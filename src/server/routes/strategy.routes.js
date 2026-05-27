@@ -3,7 +3,7 @@ import { strategyService } from '../services/strategy.service.js';
 import { botService } from '../services/bot.service.js';
 import { getDB } from '../../../db.js';
 import { toCamel, toSnake } from '../../../src/utils/casing.js';
-import { PrecisionManager } from '../../../src/utils/precision.js';
+import { precisionManager } from '../../../src/utils/precision.js';
 import { z } from 'zod';
 import {
   RiskSettingsSchema,
@@ -22,7 +22,7 @@ router.get('/precision', async (req, res) => {
   if (!symbol) return res.status(400).json({ error: 'symbol is required' });
 
   try {
-    const precision = PrecisionManager.getPrecision(symbol);
+    const precision = await precisionManager.getPrecision(symbol);
     res.json({ symbol, precision });
   } catch (err) {
     res.status(500).json({ error: err.message });

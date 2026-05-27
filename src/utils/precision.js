@@ -52,3 +52,5 @@ export class PrecisionManager {
     return value.toFixed(precision);
   }
 }
+
+export const precisionManager = new PrecisionManager();
