@@ -1,0 +1,19 @@
+{
+  "name": "VMC Cipher B 15m Balanced Logic",
+  "type": "VMC_CipherB",
+  "mode": "balanced",
+  "indicators": {
+    "wtLen": 9,
+    "wtAvg": 12,
+    "mfiLen": 21,
+    "rsiLen": 14,
+    "stochLen": 14,
+    "stcFast": 23,
+    "stcSlow": 50
+  },
+  "safety_checks": [
+    { "id": "wt_cross_up", "required": "True" },
+    { "id": "wt_oversold", "required": "True" },
+    { "id": "mfi_bullish", "required": "True" }
+  ]
+}

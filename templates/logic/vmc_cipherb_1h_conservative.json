@@ -1,0 +1,20 @@
+{
+  "name": "VMC Cipher B 1h Conservative Logic",
+  "type": "VMC_CipherB",
+  "mode": "conservative",
+  "indicators": {
+    "wtLen": 9,
+    "wtAvg": 12,
+    "mfiLen": 60,
+    "rsiLen": 14,
+    "stochLen": 14,
+    "stcFast": 23,
+    "stcSlow": 50
+  },
+  "safety_checks": [
+    { "id": "wt_cross_up", "required": "True" },
+    { "id": "wt_oversold", "required": "True" },
+    { "id": "mfi_bullish", "required": "True" },
+    { "id": "stc_bullish", "required": "True" }
+  ]
+}

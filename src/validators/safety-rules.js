@@ -267,21 +267,26 @@ export const sommi_diamond_bull = (price, open, data, config) => {
 export const momentum_shift = (price, open, data, config) => {
   const { wt, wtCrossUp, wtCrossDown } = data;
   const side = config.side;
+  const mode = config.mode || "balanced";
 
   let pass = false;
   let actual = "none";
 
+  // For aggressive mode, we allow a wider window for the crossover
+  const wtThresholdLong = mode === "aggressive" ? -40 : -53;
+  const wtThresholdShort = mode === "aggressive" ? 40 : 53;
+
   if (side === "LONG") {
-    pass = wtCrossUp && wt?.wt2 <= -53;
+    pass = wtCrossUp && wt?.wt2 <= wtThresholdLong;
     actual = pass ? "bullish_shift" : (wtCrossUp ? "crossover_not_extreme" : "no_crossover");
   } else if (side === "SHORT") {
-    pass = wtCrossDown && wt?.wt2 >= 53;
+    pass = wtCrossDown && wt?.wt2 >= wtThresholdShort;
     actual = pass ? "bearish_shift" : (wtCrossDown ? "crossover_not_extreme" : "no_crossover");
   }
 
   return {
     label: "Momentum Shift",
-    required: "Crossover in Extreme Zone",
+    required: `Crossover in Zone (${mode === "aggressive" ? "Wide" : "Extreme"})`,
     actual: actual,
     pass: pass,
     score: pass ? 1.0 : 0.0,

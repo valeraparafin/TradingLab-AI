@@ -1,0 +1,20 @@
+{
+  "name": "VMC Cipher B 5m Aggressive Logic",
+  "type": "VMC_CipherB",
+  "mode": "aggressive",
+  "indicators": {
+    "wtLen": 9,
+    "wtAvg": 12,
+    "mfiLen": 14,
+    "rsiLen": 14,
+    "stochLen": 14,
+    "stcFast": 23,
+    "stcSlow": 50
+  },
+  "safety_checks": [
+    { "id": "wt_cross_up", "required": "True" },
+    { "id": "wt_oversold", "required": "True" },
+    { "id": "mfi_bullish", "required": "True" },
+    { "id": "stoch_rsi_oversold", "required": "True" }
+  ]
+}
