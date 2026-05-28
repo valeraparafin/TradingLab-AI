@@ -661,7 +661,7 @@ export const StrategyDetails = () => {
                                 </Badge>
                               </td>
                               <td className="py-3">{trade.price?.toString()}</td>
-                              <td className="py-3">{trade.size_usd?.toString()}</td>
+                              <td className="py-3">{trade.sizeUsd?.toString()}</td>
                               <td className={cn("py-3 font-medium", trade.result === 'WIN' ? "text-emerald-500" : "text-rose-500")}>
                                 {trade.result}
                               </td>
