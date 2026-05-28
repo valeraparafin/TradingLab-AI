@@ -42,6 +42,8 @@ export const StrategyDetails = () => {
   const [strategy, setStrategy] = useState<Strategy | null>(null);
   const [stats, setStats] = useState<StrategyStats | null>(null);
   const [positions, setPositions] = useState<Position[]>([]);
+  const [closedPositions, setClosedPositions] = useState<Position[]>([]);
+  const [tradeHistory, setTradeHistory] = useState<any[]>([]);
   const [xaiData, setXaiData] = useState<Record<string, { gci: number, results: any[] }>>({});
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const selectedSymbolRef = React.useRef<string | null>(null);
@@ -118,9 +120,11 @@ export const StrategyDetails = () => {
         setStrategy(s);
 
         // Fetch stats and positions
-        const [statsRes, posRes] = await Promise.all([
+        const [statsRes, posRes, closedPosRes, historyRes] = await Promise.all([
           strategyApi.getStats(strategyId),
-          strategyApi.getPositions(strategyId)
+          strategyApi.getPositions(strategyId),
+          strategyApi.getClosedPositions(strategyId),
+          strategyApi.getTradeHistory(strategyId)
         ]);
 
         setStats(statsRes.data);
@@ -132,6 +136,17 @@ export const StrategyDetails = () => {
           sl: p.stopLoss ?? p.sl ?? 0,
           tp: p.takeProfit ?? p.tp ?? 0,
         })));
+
+        setClosedPositions(closedPosRes.data.map((p: any) => ({
+          ...p,
+          side: (p.side?.toUpperCase().trim() === 'BUY') ? 'LONG' : (p.side?.toUpperCase().trim() === 'SELL' ? 'SHORT' : p.side),
+          pnl: p.currentPnl ?? p.pnl ?? 0,
+          pnlPercent: p.currentPnlPercent ?? p.pnlPercent ?? 0,
+          sl: p.stopLoss ?? p.sl ?? 0,
+          tp: p.takeProfit ?? p.tp ?? 0,
+        })));
+
+        setTradeHistory(historyRes.data || []);
 
         // Parse config for control panel
         try {
@@ -505,63 +520,155 @@ export const StrategyDetails = () => {
           <ResizablePanel className="flex-1 overflow-hidden">
             <Card className="h-full flex flex-col">
               <CardHeader>
-                <CardTitle className="text-lg">Active Positions</CardTitle>
+                <CardTitle className="text-lg">Positions & History</CardTitle>
               </CardHeader>
               <CardContent className="flex-1 overflow-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="sticky top-0 bg-card z-10">
-                    <tr className="text-muted-foreground border-b border-border">
-                      <th className="pb-3 font-medium">Symbol</th>
-                      <th className="pb-3 font-medium">Side</th>
-                      <th className="pb-3 font-medium">Entry</th>
-                      <th className="pb-3 font-medium">Current</th>
-                      <th className="pb-3 font-medium">PnL</th>
-                      <th className="pb-3 font-medium">SL/TP</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {positions.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="py-8 text-center text-muted-foreground italic">No active positions</td>
-                      </tr>
-                    ) : (
-                      positions.map((pos, i) => (
-                        <tr key={i} className="hover:bg-muted/50">
-                          <td className="py-3 font-medium">
-                            <div className="flex items-center gap-2">
-                              {pos.symbol}
-                              <button
-                                onClick={() => setSelectedSymbol(pos.symbol)}
-                                className={cn(
-                                  "p-1 rounded-full transition-all hover:bg-blue-50",
-                                  selectedSymbol === pos.symbol
-                                    ? "text-blue-600 bg-blue-50"
-                                    : "text-zinc-300 hover:text-blue-500"
-                                )}
-                                title={`View ${pos.symbol} in XAI Hub`}
-                              >
-                                <Sparkles className={cn("h-3 w-3", selectedSymbol === pos.symbol && "fill-current")} />
-                              </button>
-                            </div>
-                          </td>
-                          <td className="py-3">
-                            <Badge variant={pos.side === 'LONG' ? 'success' : 'danger'} className="text-[10px]">
-                              {pos.side}
-                            </Badge>
-                          </td>
-                          <td className="py-3">{pos.entryPrice?.toString()}</td>
-                          <td className="py-3">{pos.currentPrice?.toString()}</td>
-                          <td className={cn("py-3 font-medium", pos.pnl >= 0 ? "text-emerald-500" : "text-rose-500")}>
-                            {pos.pnl >= 0 ? `+${pos.pnl}` : pos.pnl} USDT ({pos.pnlPercent}%)
-                          </td>
-                          <td className="py-3 text-xs text-muted-foreground">
-                            {pos.sl?.toString()} / {pos.tp?.toString()}
-                          </td>
+                <Tabs defaultValue="active" className="h-full flex flex-col">
+                  <TabsList className="mb-4">
+                    <TabsTrigger value="active">Active</TabsTrigger>
+                    <TabsTrigger value="closed">Closed</TabsTrigger>
+                    <TabsTrigger value="history">History</TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="active" className="flex-1 mt-0">
+                    <table className="w-full text-left text-sm">
+                      <thead className="sticky top-0 bg-card z-10">
+                        <tr className="text-muted-foreground border-b border-border">
+                          <th className="pb-3 font-medium">Symbol</th>
+                          <th className="pb-3 font-medium">Side</th>
+                          <th className="pb-3 font-medium">Entry</th>
+                          <th className="pb-3 font-medium">Current</th>
+                          <th className="pb-3 font-medium">PnL</th>
+                          <th className="pb-3 font-medium">SL/TP</th>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {positions.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="py-8 text-center text-muted-foreground italic">No active positions</td>
+                          </tr>
+                        ) : (
+                          positions.map((pos, i) => (
+                            <tr key={i} className="hover:bg-muted/50">
+                              <td className="py-3 font-medium">
+                                <div className="flex items-center gap-2">
+                                  {pos.symbol}
+                                  <button
+                                    onClick={() => setSelectedSymbol(pos.symbol)}
+                                    className={cn(
+                                      "p-1 rounded-full transition-all hover:bg-blue-50",
+                                      selectedSymbol === pos.symbol
+                                        ? "text-blue-600 bg-blue-50"
+                                        : "text-zinc-300 hover:text-blue-500"
+                                    )}
+                                    title={`View ${pos.symbol} in XAI Hub`}
+                                  >
+                                    <Sparkles className={cn("h-3 w-3", selectedSymbol === pos.symbol && "fill-current")} />
+                                  </button>
+                                </div>
+                              </td>
+                              <td className="py-3">
+                                <Badge variant={pos.side === 'LONG' ? 'success' : 'danger'} className="text-[10px]">
+                                  {pos.side}
+                                </Badge>
+                              </td>
+                              <td className="py-3">{pos.entryPrice?.toString()}</td>
+                              <td className="py-3">{pos.currentPrice?.toString()}</td>
+                              <td className={cn("py-3 font-medium", pos.pnl >= 0 ? "text-emerald-500" : "text-rose-500")}>
+                                {pos.pnl >= 0 ? `+${pos.pnl}` : pos.pnl} USDT ({pos.pnlPercent}%)
+                              </td>
+                              <td className="py-3 text-xs text-muted-foreground">
+                                {pos.sl?.toString()} / {pos.tp?.toString()}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </TabsContent>
+
+                  <TabsContent value="closed" className="flex-1 mt-0">
+                    <table className="w-full text-left text-sm">
+                      <thead className="sticky top-0 bg-card z-10">
+                        <tr className="text-muted-foreground border-b border-border">
+                          <th className="pb-3 font-medium">Symbol</th>
+                          <th className="pb-3 font-medium">Side</th>
+                          <th className="pb-3 font-medium">Entry</th>
+                          <th className="pb-3 font-medium">Exit</th>
+                          <th className="pb-3 font-medium">Final PnL</th>
+                          <th className="pb-3 font-medium">PnL%</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {closedPositions.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="py-8 text-center text-muted-foreground italic">No closed positions found</td>
+                          </tr>
+                        ) : (
+                          closedPositions.map((pos, i) => (
+                            <tr key={i} className="hover:bg-muted/50">
+                              <td className="py-3 font-medium">{pos.symbol}</td>
+                              <td className="py-3">
+                                <Badge variant={pos.side === 'LONG' ? 'success' : 'danger'} className="text-[10px]">
+                                  {pos.side}
+                                </Badge>
+                              </td>
+                              <td className="py-3">{pos.entryPrice?.toString()}</td>
+                              <td className="py-3">{pos.currentPrice?.toString()}</td>
+                              <td className={cn("py-3 font-medium", pos.pnl >= 0 ? "text-emerald-500" : "text-rose-500")}>
+                                {pos.pnl >= 0 ? `+${pos.pnl}` : pos.pnl} USDT
+                              </td>
+                              <td className={cn("py-3 font-medium", pos.pnlPercent >= 0 ? "text-emerald-500" : "text-rose-500")}>
+                                {pos.pnlPercent}%
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </TabsContent>
+
+                  <TabsContent value="history" className="flex-1 mt-0">
+                    <table className="w-full text-left text-sm">
+                      <thead className="sticky top-0 bg-card z-10">
+                        <tr className="text-muted-foreground border-b border-border">
+                          <th className="pb-3 font-medium">Timestamp</th>
+                          <th className="pb-3 font-medium">Symbol</th>
+                          <th className="pb-3 font-medium">Side</th>
+                          <th className="pb-3 font-medium">Price</th>
+                          <th className="pb-3 font-medium">Size USD</th>
+                          <th className="pb-3 font-medium">Result</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {tradeHistory.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="py-8 text-center text-muted-foreground italic">No trade history found</td>
+                          </tr>
+                        ) : (
+                          tradeHistory.map((trade, i) => (
+                            <tr key={i} className="hover:bg-muted/50">
+                              <td className="py-3 text-xs text-muted-foreground">
+                                {new Date(trade.timestamp).toLocaleString()}
+                              </td>
+                              <td className="py-3 font-medium">{trade.symbol}</td>
+                              <td className="py-3">
+                                <Badge variant={(trade.side?.toUpperCase() === 'BUY' || trade.side?.toUpperCase() === 'LONG') ? 'success' : 'danger'} className="text-[10px]">
+                                  {trade.side}
+                                </Badge>
+                              </td>
+                              <td className="py-3">{trade.price?.toString()}</td>
+                              <td className="py-3">{trade.size_usd?.toString()}</td>
+                              <td className={cn("py-3 font-medium", trade.result === 'WIN' ? "text-emerald-500" : "text-rose-500")}>
+                                {trade.result}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </TabsContent>
+                </Tabs>
               </CardContent>
             </Card>
           </ResizablePanel>
