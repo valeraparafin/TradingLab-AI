@@ -14,22 +14,6 @@ import { UpdateStrategyDTO } from '../dtos/strategy.dto.js';
 const router = express.Router();
 
 /**
- * GET /precision
- * Returns the decimal precision for a given symbol.
- */
-router.get('/precision', async (req, res) => {
-  const { symbol } = req.query;
-  if (!symbol) return res.status(400).json({ error: 'symbol is required' });
-
-  try {
-    const precision = await precisionManager.getPrecision(symbol);
-    res.json({ symbol, precision });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/**
  * GET /export/:strategyId
  * Streams trade history as CSV.
  */
@@ -277,7 +261,15 @@ router.get('/stats/:id', async (req, res) => {
 router.get('/positions/:id', async (req, res) => {
   const { id } = req.params;
   try {
-    const positions = await strategyService.getPositions(id);
+    let positions = await strategyService.getPositions(id);
+    
+    // Format calculated values, leave exchange data (prices) untouched
+    positions = positions.map(pos => ({
+      ...pos,
+      currentPnl: precisionManager.format(pos.currentPnl, 'USDT'),
+      currentPnlPercent: precisionManager.format(pos.currentPnlPercent, 'PERCENT'), // Logic for percent might be needed
+    }));
+    
     res.json(positions);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -292,7 +284,21 @@ router.get('/xai/:id', async (req, res) => {
   const { id } = req.params;
   try {
     const xaiState = await strategyService.getLastXaiState(id);
-    res.json(xaiState); // returns object or null (200 OK)
+    if (!xaiState) return res.json(null);
+
+    // Format XAI results: use 'INDICATOR' precision for values since XAI usually shows indicator levels
+    const formattedXai = {};
+    for (const [symbol, state] of Object.entries(xaiState)) {
+      formattedXai[symbol] = {
+        ...state,
+        results: state.results?.map(r => ({
+          ...r,
+          actual: typeof r.actual === 'number' ? precisionManager.format(r.actual, 'INDICATOR') : r.actual
+        }))
+      };
+    }
+
+    res.json(formattedXai);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

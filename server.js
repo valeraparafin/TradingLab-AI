@@ -11,9 +11,11 @@ import { initDB, getDB, createStatsView } from './db.js';
 
 import { botService } from './src/server/services/bot.service.js';
 import { strategyService } from './src/server/services/strategy.service.js';
+import { assetService } from './src/server/services/asset.service.js';
 import templateRouter from './src/server/routes/template.routes.js';
 import strategyRouter from './src/server/routes/strategy.routes.js';
 import analyticsRouter from './src/server/routes/analytics.routes.js';
+import assetRouter from './src/server/routes/asset.routes.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -31,6 +33,7 @@ app.use('/api/templates', templateRouter);
 app.use('/api', strategyRouter);
 app.use('/api/strategies', strategyRouter);
 app.use('/api/analytics', analyticsRouter);
+app.use('/api/assets', assetRouter);
 
 
 
@@ -89,6 +92,7 @@ async function startServer() {
   try {
     await initDB();
     await createStatsView();
+    await assetService.init();
     await syncStrategies();
     botService.setIo(io);
     // Reset all strategy statuses to 'stopped' on startup since child processes are gone

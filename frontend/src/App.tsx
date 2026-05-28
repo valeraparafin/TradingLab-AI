@@ -5,6 +5,7 @@ import { LiveMonitor } from './components/LiveMonitor';
 import { TemplateManager } from './components/TemplateManager';
 import { StrategyDetails } from './components/StrategyDetails';
 import { StrategyEditor } from './pages/StrategyEditor';
+import { AssetsPage } from './pages/AssetsPage';
 import { Card } from './components/ui/components';
 import { cn } from './lib/utils';
 import { strategyApi } from './lib/api';
@@ -46,6 +47,7 @@ function App() {
               <nav className="flex gap-4 mr-4">
                 <Link to="/" className="text-sm font-medium hover:text-primary transition-colors">Dashboard</Link>
                 <Link to="/templates" className="text-sm font-medium hover:text-primary transition-colors">Templates</Link>
+                <Link to="/assets" className="text-sm font-medium hover:text-primary transition-colors">Assets</Link>
               </nav>
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
@@ -92,6 +94,7 @@ function App() {
               </div>
             } />
             <Route path="/templates" element={<TemplateManager />} />
+            <Route path="/assets" element={<AssetsPage />} />
             <Route path="/strategy/:id" element={<StrategyDetails />} />
             <Route path="/strategy/edit/:id" element={<StrategyEditor />} />
           </Routes>

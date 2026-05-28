@@ -19,6 +19,13 @@ export async function initDB() {
 
     // Create tables
     await db.exec(`
+        CREATE TABLE IF NOT EXISTS assets (
+            symbol TEXT PRIMARY KEY,
+            price_precision INTEGER,
+            quantity_precision INTEGER,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS strategies (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT UNIQUE NOT NULL,

@@ -1,6 +1,7 @@
 import { getDB } from '../../../db.js';
 import { botService } from './bot.service.js';
 import { toCamel } from '../../../src/utils/casing.js';
+import { precisionManager } from '../../../src/utils/precision.js';
 
 class AnalyticsService {
   /**
@@ -19,7 +20,13 @@ class AnalyticsService {
       GROUP BY s.id
       ORDER BY total_profit DESC
     `);
-    return toCamel(results);
+    
+    const camelResults = toCamel(results);
+    return camelResults.map(row => ({
+      ...row,
+      totalProfit: precisionManager.format(row.totalProfit || 0, 'USDT'),
+      winRate: row.winRate ? precisionManager.format(row.winRate, 'PERCENT') : '0.00%'
+    }));
   }
 
   /**
@@ -48,8 +55,8 @@ class AnalyticsService {
     }).length;
 
     return {
-      totalProfit,
-      winRate: winRate + '%',
+      totalProfit: precisionManager.format(totalProfit, 'USDT'),
+      winRate: precisionManager.format(parseFloat(winRate), 'PERCENT'),
       activeBots: `${activeBotsCount} / ${strategies.length}`
     };
   }
