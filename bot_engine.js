@@ -8,7 +8,7 @@ import { IndicatorManager } from "./src/indicators/index.js";
 import { SafetyValidator } from "./src/validators/index.js";
 import { BitGetService } from "./src/services/exchange/bitget.js";
 import { PrecisionManager } from "./src/utils/precision.js";
-import { toSnake } from "./src/utils/casing.js";
+import { toSnake, toCamel } from "./src/utils/casing.js";
 import { timeframeToMinutes } from "./src/utils/timeframe.js";
 
 // ─── Config ────────────────────────────────────────────────────────────────
@@ -391,19 +391,25 @@ async function run(inputStrategyId) {
                   side: activePosition.side,
                   entry_price: activePosition.entry_price,
                   size_usd: activePosition.size_usd,
-                  stop_loss: activePosition.stop_loss,
-                  take_profit: activePosition.take_profit,
-                  current_price: price,
+                  stop_loss: precisionManager.format(activePosition.stop_loss, symbol),
+                  take_profit: precisionManager.format(activePosition.take_profit, symbol),
+                  current_price: precisionManager.format(price, symbol),
                   pnl:
-                    activePosition.side === "BUY"
-                      ? activePosition.size_usd *
-                        (price / activePosition.entry_price - 1)
-                      : activePosition.size_usd *
-                        (1 - price / activePosition.entry_price),
+                    precisionManager.format(
+                      activePosition.side === "BUY"
+                        ? activePosition.size_usd *
+                          (price / activePosition.entry_price - 1)
+                        : activePosition.size_usd *
+                          (1 - price / activePosition.entry_price),
+                      "USDT"
+                    ),
                   pnl_percent:
-                    activePosition.side === "BUY"
-                      ? (price / activePosition.entry_price - 1) * 100
-                      : (1 - price / activePosition.entry_price) * 100,
+                    precisionManager.format(
+                      activePosition.side === "BUY"
+                        ? (price / activePosition.entry_price - 1) * 100
+                        : (1 - price / activePosition.entry_price) * 100,
+                      "PERCENT"
+                    ),
                   message: "Active position found, monitoring for exit.",
                 });
 
@@ -411,14 +417,14 @@ async function run(inputStrategyId) {
                   action: "update_price",
                   symbol,
                   current_price: price,
-                  current_pnl: activePosition.side === "BUY"
+                  current_pnl: precisionManager.format(activePosition.side === "BUY"
                       ? activePosition.size_usd *
                         (price / activePosition.entry_price - 1)
                       : activePosition.size_usd *
-                        (1 - price / activePosition.entry_price),
-                  current_pnl_percent: activePosition.side === "BUY"
+                        (1 - price / activePosition.entry_price), "USDT"),
+                  current_pnl_percent: precisionManager.format(activePosition.side === "BUY"
                       ? (price / activePosition.entry_price - 1) * 100
-                      : (1 - price / activePosition.entry_price) * 100
+                      : (1 - price / activePosition.entry_price) * 100, "PERCENT")
                 });
               }
             } else {
@@ -565,15 +571,15 @@ async function run(inputStrategyId) {
                     status: "PAPER",
                     notes: "All conditions met",
                   });
-                  await updateActivePosition(strategyId, {
-                    action: "open",
-                    symbol,
-                    side,
-                    price,
-                    sizeUSD: safeTradeSize,
-                    stopLoss: side === "BUY" ? price * (1 - risk.stopLossPercent / 100) : price * (1 + risk.stopLossPercent / 100),
-                    takeProfit: side === "BUY" ? price * (1 + risk.takeProfitPercent / 100) : price * (1 - risk.takeProfitPercent / 100),
-                  });
+                await updateActivePosition(strategyId, {
+                  action: "open",
+                  symbol,
+                  side,
+                  price,
+                  sizeUSD: safeTradeSize,
+                  stopLoss: precisionManager.format(side === "BUY" ? price * (1 - risk.stopLossPercent / 100) : price * (1 + risk.stopLossPercent / 100), symbol),
+                  takeProfit: precisionManager.format(side === "BUY" ? price * (1 + risk.takeProfitPercent / 100) : price * (1 - risk.takeProfitPercent / 100), symbol),
+                });
                 } else {
                   console.log(
                     `\n🔴 PLACING LIVE ORDER — $${finalTradeSize.toFixed(2)} ${side} ${symbol}`,

@@ -3,6 +3,7 @@ import { templateService } from './template.service.js';
 import { botService } from './bot.service.js';
 import { toCamel, toSnake } from '../../../src/utils/casing.js';
 import { timeframeToMinutes } from '../../../src/utils/timeframe.js';
+import { precisionManager } from '../../../src/utils/precision.js';
 
 class StrategyService {
   /**
@@ -123,7 +124,20 @@ class StrategyService {
       'SELECT *, COALESCE(current_price, entry_price) as currentPrice, COALESCE(current_pnl, 0) as currentPnl, COALESCE(current_pnl_percent, 0) as currentPnlPercent, stop_loss as stopLoss, take_profit as takeProfit FROM active_positions WHERE strategy_id = ? AND status = "OPEN"',
       [id]
     );
-    return toCamel(positions);
+
+    return positions.map(p => {
+      const camelPos = toCamel(p);
+      const symbol = camelPos.symbol;
+
+      return {
+        ...camelPos,
+        currentPrice: precisionManager.format(Number(camelPos.currentPrice), symbol),
+        currentPnl: precisionManager.format(Number(camelPos.currentPnl), 'USDT'),
+        currentPnlPercent: precisionManager.format(Number(camelPos.currentPnlPercent), 'PERCENT'),
+        stopLoss: camelPos.stopLoss ? precisionManager.format(Number(camelPos.stopLoss), symbol) : null,
+        takeProfit: camelPos.takeProfit ? precisionManager.format(Number(camelPos.takeProfit), symbol) : null,
+      };
+    });
   }
 
   /**

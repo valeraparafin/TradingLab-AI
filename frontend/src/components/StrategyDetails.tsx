@@ -1,11 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { strategyApi, type Strategy } from '../lib/api';
+import { strategyApi, templateApi, type Strategy } from '../lib/api';
 import { Card, CardHeader, CardTitle, CardContent, Badge, Button, Separator, Tabs, TabsList, TabsTrigger, TabsContent, ToggleGroup, ToggleGroupItem, ResizablePanelGroup, ResizablePanel, ResizableHandle, Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, Slider, Popover, PopoverTrigger, PopoverContent, Checkbox } from './ui/components';
 import { StrategyTerminal } from './StrategyTerminal';
 import GCIGauge from './XAI/GCIGauge';
 import RuleConfidenceList from './XAI/RuleConfidenceList';
-import { templateApi } from '../lib/api';
 import { Input, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/components';
 import { StrategyConfigForm } from './StrategyConfigForm';
 import { cn } from '../lib/utils';
@@ -43,7 +42,6 @@ export const StrategyDetails = () => {
   const [strategy, setStrategy] = useState<Strategy | null>(null);
   const [stats, setStats] = useState<StrategyStats | null>(null);
   const [positions, setPositions] = useState<Position[]>([]);
-  const [precision, setPrecision] = useState(2);
   const [xaiData, setXaiData] = useState<Record<string, { gci: number, results: any[] }>>({});
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const selectedSymbolRef = React.useRef<string | null>(null);
@@ -178,13 +176,6 @@ export const StrategyDetails = () => {
       if (data.type === 'position_active') {
         const payload = data.payload;
 
-        try {
-          const precisionRes = await strategyApi.getPrecision(payload.symbol);
-          setPrecision(precisionRes.data.precision);
-        } catch (e) {
-          console.error('Error fetching precision', e);
-        }
-
         setPositions(prev => {
           const existingIndex = prev.findIndex(p => p.symbol === payload.symbol);
 
@@ -194,7 +185,7 @@ export const StrategyDetails = () => {
             entryPrice: payload.entry_price,
             currentPrice: payload.current_price,
             pnl: payload.pnl,
-            pnl_percent: payload.pnl_percent,
+            pnlPercent: payload.pnl_percent,
             sl: payload.stop_loss,
             tp: payload.take_profit,
           };
@@ -558,13 +549,13 @@ export const StrategyDetails = () => {
                               {pos.side}
                             </Badge>
                           </td>
-                          <td className="py-3">{parseFloat(pos.entryPrice?.toFixed(precision) || '0').toString()}</td>
-                          <td className="py-3">{parseFloat(pos.currentPrice?.toFixed(precision) || '0').toString()}</td>
+                          <td className="py-3">{pos.entryPrice?.toString()}</td>
+                          <td className="py-3">{pos.currentPrice?.toString()}</td>
                           <td className={cn("py-3 font-medium", pos.pnl >= 0 ? "text-emerald-500" : "text-rose-500")}>
-                            {pos.pnl >= 0 ? `+${pos.pnl?.toFixed(2) || '0.00'}` : pos.pnl?.toFixed(2) || '0.00'} USDT ({pos.pnl >= 0 ? `+${pos.pnlPercent?.toFixed(2) || '0.00'}` : pos.pnlPercent?.toFixed(2) || '0.00'}%)
+                            {pos.pnl >= 0 ? `+${pos.pnl}` : pos.pnl} USDT ({pos.pnlPercent}%)
                           </td>
                           <td className="py-3 text-xs text-muted-foreground">
-                            {parseFloat(pos.sl?.toFixed(precision) || '0').toString()} / {parseFloat(pos.tp?.toFixed(precision) || '0').toString()}
+                            {pos.sl?.toString()} / {pos.tp?.toString()}
                           </td>
                         </tr>
                       ))
