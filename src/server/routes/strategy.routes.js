@@ -305,9 +305,38 @@ router.get('/xai/:id', async (req, res) => {
 });
 
 /**
+ * GET /positions/closed/:id
+ * Returns all closed positions for a specific strategy.
+ */
+router.get('/positions/closed/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const positions = await strategyService.getClosedPositions(id);
+    res.json(positions);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /trades/:id
+ * Returns trade history for a specific strategy.
+ */
+router.get('/trades/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const trades = await strategyService.getTradeHistory(id);
+    res.json(trades);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
  * GET /events/:strategyId
  * Returns event logs for a specific strategy.
  */
+
 router.get('/events/:strategyId', async (req, res) => {
   const { strategyId } = req.params;
   const limit = req.query.limit ? parseInt(req.query.limit) : 100;
