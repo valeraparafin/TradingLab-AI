@@ -55,6 +55,12 @@ export interface XaiState {
 
 export type XaiMap = Record<string, XaiState>;
 
+export interface AssetPrecision {
+  symbol: string;
+  pricePrecision: number;
+  quantityPrecision: number;
+}
+
 export const strategyApi = {
   getStrategies: (archived = false) => api.get<Strategy[]>(`/strategies?archived=${archived}`),
   createStrategy: (data: { name: string; logicTemplateId: string; riskTemplateId: string; settings?: any }) => api.post('/strategies', data),
@@ -69,7 +75,7 @@ export const strategyApi = {
   getStats: (id: number) => api.get(`/strategies/stats/${id}`),
   getPositions: (id: number) => api.get(`/strategies/positions/${id}`),
   getEvents: (strategyId: number, limit: number = 100) => api.get(`/strategies/events/${strategyId}?limit=${limit}`),
-  getPrecision: (symbol: string) => api.get<{ precision: number }>(`/precision?symbol=${symbol}`),
+  // getPrecision: (symbol: string) => api.get<{ precision: number }>(`/precision?symbol=${symbol}`),
   getLatestXai: (id: number) => api.get<XaiMap | XaiState | null>(`/strategies/xai/${id}`),
 };
 
@@ -86,16 +92,17 @@ export const templateApi = {
     const res = await api.post(`/templates/${type}`, data);
     return res.data;
   },
-  updateTemplate: async (type: TemplateType, id: string, data: Partial<Template>) => {
-    const res = await api.put(`/templates/${type}/${id}`, data);
-    return res.data;
-  },
-  deleteTemplate: async (type: TemplateType, id: string) => {
-    const res = await api.delete(`/templates/${type}/${id}`);
+  updateTemplate: async (type: TemplateType, id: string, newName: string) => {
+    const res = await api.put(`/templates/${type}/${id}`, { newName });
     return res.data;
   },
   duplicateTemplate: async (type: TemplateType, id: string, newName: string) => {
-    const res = await api.post(`/templates/${type}/${id}/duplicate`, { newName });
+    const res = await api.post(`/templates/${type}/${id}`, { newName });
     return res.data;
   },
+};
+
+export const assetApi = {
+  getAssets: () => api.get<AssetPrecision[]>('/assets'),
+  syncAssets: () => api.post('/assets/sync'),
 };
