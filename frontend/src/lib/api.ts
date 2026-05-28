@@ -74,6 +74,8 @@ export const strategyApi = {
   exportTrades: (strategyId: number) => api.get(`/export/${strategyId}`, { responseType: 'blob' }),
   getStats: (id: number) => api.get(`/strategies/stats/${id}`),
   getPositions: (id: number) => api.get(`/strategies/positions/${id}`),
+  getClosedPositions: (id: number) => api.get(`/strategies/positions/closed/${id}`),
+  getTradeHistory: (id: number) => api.get(`/strategies/trades/${id}`),
   getEvents: (strategyId: number, limit: number = 100) => api.get(`/strategies/events/${strategyId}?limit=${limit}`),
   // getPrecision: (symbol: string) => api.get<{ precision: number }>(`/precision?symbol=${symbol}`),
   getLatestXai: (id: number) => api.get<XaiMap | XaiState | null>(`/strategies/xai/${id}`),
