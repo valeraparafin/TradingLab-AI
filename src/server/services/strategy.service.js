@@ -141,6 +141,43 @@ class StrategyService {
   }
 
   /**
+   * Returns closed positions for a specific strategy.
+   */
+  async getClosedPositions(id) {
+    const db = getDB();
+    const positions = await db.all(
+      'SELECT *, COALESCE(current_price, entry_price) as currentPrice, COALESCE(current_pnl, 0) as currentPnl, COALESCE(current_pnl_percent, 0) as currentPnlPercent, stop_loss as stopLoss, take_profit as takeProfit FROM active_positions WHERE strategy_id = ? AND status = "CLOSED"',
+      [id]
+    );
+
+    return positions.map(p => {
+      const camelPos = toCamel(p);
+      const symbol = camelPos.symbol;
+
+      return {
+        ...camelPos,
+        currentPrice: precisionManager.format(Number(camelPos.currentPrice), symbol),
+        currentPnl: precisionManager.format(Number(camelPos.currentPnl), 'USDT'),
+        currentPnlPercent: precisionManager.format(Number(camelPos.currentPnlPercent), 'PERCENT'),
+        stopLoss: camelPos.stopLoss ? precisionManager.format(Number(camelPos.stopLoss), symbol) : null,
+        takeProfit: camelPos.takeProfit ? precisionManager.format(Number(camelPos.takeProfit), symbol) : null,
+      };
+    });
+  }
+
+  /**
+   * Returns raw trade history for a specific strategy.
+   */
+  async getTradeHistory(id) {
+    const db = getDB();
+    const trades = await db.all(
+      'SELECT * FROM trades WHERE strategy_id = ? ORDER BY timestamp DESC',
+      [id]
+    );
+    return toCamel(trades);
+  }
+
+  /**
    * Returns event logs for a specific strategy.
    */
   async getEvents(id) {
