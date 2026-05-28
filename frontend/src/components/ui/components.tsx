@@ -79,6 +79,11 @@ export const Separator = React.forwardRef<HTMLDivElement, React.HTMLAttributes<H
 ));
 Separator.displayName = "Separator";
 
+export const TabsContext = React.createContext<{
+  value: string;
+  setValue: (val: string) => void;
+}>({ value: "", setValue: () => {} });
+
 export const Tabs = ({ children, defaultValue, onValueChange }: { children: React.ReactNode; defaultValue: string; onValueChange?: (value: string) => void }) => {
   const [value, setValue] = React.useState(defaultValue);
   const handleValueChange = (val: string) => {
@@ -86,18 +91,11 @@ export const Tabs = ({ children, defaultValue, onValueChange }: { children: Reac
     onValueChange?.(val);
   };
   return (
-    <div className="w-full" data-tabs-value={value}>
-      {React.Children.map(children, child => {
-        if (React.isValidElement(child)) {
-          return React.cloneElement(child as any, {
-            value,
-            isActive: value === (child.props as any).value,
-            onClick: () => handleValueChange((child.props as any).value),
-            onValueChange: handleValueChange
-          });
-        }
-      })}
-    </div>
+    <TabsContext.Provider value={{ value, setValue: handleValueChange }}>
+      <div className="w-full" data-tabs-value={value}>
+        {children}
+      </div>
+    </TabsContext.Provider>
   );
 };
 
@@ -107,21 +105,26 @@ export const TabsList = ({ children, className }: { children: React.ReactNode; c
   </div>
 );
 
-export const TabsTrigger = ({ value, children, isActive, onClick, className }: { value: string; children: React.ReactNode; isActive?: boolean; onClick: () => void; className?: string }) => (
-  <button
-    onClick={onClick}
-    className={cn(
-      "inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1 text-xs font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
-      isActive ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
-      className
-    )}
-  >
-    {children}
-  </button>
-);
+export const TabsTrigger = ({ value, children, className }: { value: string; children: React.ReactNode; className?: string }) => {
+  const { value: activeValue, setValue } = React.useContext(TabsContext);
+  const isActive = activeValue === value;
+  return (
+    <button
+      onClick={() => setValue(value)}
+      className={cn(
+        "inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1 text-xs font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+        isActive ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+        className
+      )}
+    >
+      {children}
+    </button>
+  );
+};
 
-export const TabsContent = ({ value, isActive, children, className }: { value: string; isActive?: boolean; children: React.ReactNode; className?: string }) => {
-  if (!isActive) return null;
+export const TabsContent = ({ value, children, className }: { value: string; children: React.ReactNode; className?: string }) => {
+  const { value: activeValue } = React.useContext(TabsContext);
+  if (activeValue !== value) return null;
   return <div className={cn("mt-2 ring-offset-background", className)}>{children}</div>;
 };
 

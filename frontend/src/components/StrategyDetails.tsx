@@ -593,16 +593,18 @@ export const StrategyDetails = () => {
                         <tr className="text-muted-foreground border-b border-border">
                           <th className="pb-3 font-medium">Symbol</th>
                           <th className="pb-3 font-medium">Side</th>
+                          <th className="pb-3 font-medium">Size</th>
                           <th className="pb-3 font-medium">Entry</th>
                           <th className="pb-3 font-medium">Exit</th>
                           <th className="pb-3 font-medium">Final PnL</th>
                           <th className="pb-3 font-medium">PnL%</th>
                         </tr>
+
                       </thead>
                       <tbody className="divide-y divide-border">
                         {closedPositions.length === 0 ? (
                           <tr>
-                            <td colSpan={6} className="py-8 text-center text-muted-foreground italic">No closed positions found</td>
+                            <td colSpan={7} className="py-8 text-center text-muted-foreground italic">No closed positions found</td>
                           </tr>
                         ) : (
                           closedPositions.map((pos, i) => (
@@ -613,8 +615,9 @@ export const StrategyDetails = () => {
                                   {pos.side}
                                 </Badge>
                               </td>
+                              <td className="py-3">{pos.sizeUsd?.toString()}</td>
                               <td className="py-3">{pos.entryPrice?.toString()}</td>
-                              <td className="py-3">{pos.currentPrice?.toString()}</td>
+                              <td className="py-3">{pos.exitPrice?.toString()}</td>
                               <td className={cn("py-3 font-medium", pos.pnl >= 0 ? "text-emerald-500" : "text-rose-500")}>
                                 {pos.pnl >= 0 ? `+${pos.pnl}` : pos.pnl} USDT
                               </td>

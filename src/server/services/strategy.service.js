@@ -146,7 +146,7 @@ class StrategyService {
   async getClosedPositions(id) {
     const db = getDB();
     const positions = await db.all(
-      'SELECT *, COALESCE(current_price, entry_price) as currentPrice, COALESCE(current_pnl, 0) as currentPnl, COALESCE(current_pnl_percent, 0) as currentPnlPercent, stop_loss as stopLoss, take_profit as takeProfit FROM active_positions WHERE strategy_id = ? AND status = "CLOSED"',
+      'SELECT * FROM active_positions WHERE strategy_id = ? AND status = "CLOSED"',
       [id]
     );
 
@@ -154,11 +154,28 @@ class StrategyService {
       const camelPos = toCamel(p);
       const symbol = camelPos.symbol;
 
+      let finalPnl = Number(camelPos.currentPnl || 0);
+      let finalPnlPercent = Number(camelPos.currentPnlPercent || 0);
+
+      // Если PnL нулевой, но есть цена выхода, рассчитываем его вручную
+      if ((finalPnl === 0) && camelPos.exitPrice && camelPos.entryPrice) {
+        const entry = Number(camelPos.entryPrice);
+        const exit = Number(camelPos.exitPrice);
+        const size = Number(camelPos.sizeUsd || 0);
+
+        const diffPercent = camelPos.side?.toUpperCase() === 'BUY'
+          ? (exit - entry) / entry
+          : (entry - exit) / entry;
+
+        finalPnlPercent = diffPercent * 100;
+        finalPnl = diffPercent * size;
+      }
+
       return {
         ...camelPos,
-        currentPrice: precisionManager.format(Number(camelPos.currentPrice), symbol),
-        currentPnl: precisionManager.format(Number(camelPos.currentPnl), 'USDT'),
-        currentPnlPercent: precisionManager.format(Number(camelPos.currentPnlPercent), 'PERCENT'),
+        exitPrice: precisionManager.format(Number(camelPos.exitPrice || camelPos.entryPrice), symbol),
+        currentPnl: precisionManager.format(finalPnl, 'USDT'),
+        currentPnlPercent: precisionManager.format(finalPnlPercent, 'PERCENT'),
         stopLoss: camelPos.stopLoss ? precisionManager.format(Number(camelPos.stopLoss), symbol) : null,
         takeProfit: camelPos.takeProfit ? precisionManager.format(Number(camelPos.takeProfit), symbol) : null,
       };
@@ -171,7 +188,7 @@ class StrategyService {
   async getTradeHistory(id) {
     const db = getDB();
     const trades = await db.all(
-      'SELECT * FROM trades WHERE strategy_id = ? ORDER BY timestamp DESC',
+      'SELECT * FROM trades WHERE strategy_id = ? AND status != "BLOCKED" ORDER BY timestamp DESC',
       [id]
     );
     return toCamel(trades);
