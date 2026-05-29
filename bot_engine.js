@@ -8,6 +8,7 @@ import { IndicatorManager } from "./src/indicators/index.js";
 import { SafetyValidator } from "./src/validators/index.js";
 import { BitGetService } from "./src/services/exchange/bitget.js";
 import { PrecisionManager } from "./src/utils/precision.js";
+import { assetService } from "./src/server/services/asset.service.js";
 import { toSnake, toCamel } from "./src/utils/casing.js";
 import { timeframeToMinutes } from "./src/utils/timeframe.js";
 
@@ -176,6 +177,7 @@ async function fetchCandles(symbol, interval, limit = 500) {
 
 async function run(inputStrategyId) {
   await initDB();
+  await assetService.init();
 
   const strategyIdStr = inputStrategyId || process.env.STRATEGY_ID;
   if (!strategyIdStr) {
