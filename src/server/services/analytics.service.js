@@ -46,6 +46,23 @@ class AnalyticsService {
     const totalTrades = summary.total_trades || 0;
     const winRate = totalTrades ? ((summary.successful_trades / totalTrades) * 100).toFixed(2) : '0.00';
 
+    // Calculate total profit percentage
+    // We need the total investment (sum of size_usd for all unique positions opened)
+    // or we can use a simpler approach: sum of (pnl_percent * size_usd) / total_volume
+    // Actually, a better way to get a "portfolio percentage" is to track initial capital
+    // But since we don't have a global starting balance, we can calculate the aggregated PnL%
+    // as a weighted average of all closed trades' pnl_percent relative to their size.
+
+    const trades = await db.all('SELECT result, size_usd, pnl_percent FROM trades WHERE status = "CLOSED"');
+    let weightedPnlSum = 0;
+    let totalVolume = 0;
+    for (const t of trades) {
+      const size = Number(t.size_usd || 0);
+      weightedPnlSum += (Number(t.pnl_percent || 0) / 100) * size;
+      totalVolume += size;
+    }
+    const totalPnlPercent = totalVolume > 0 ? (weightedPnlSum / totalVolume) * 100 : 0;
+
     // Count active bots from both DB status and active process map (only non-archived)
     const strategies = await db.all('SELECT id, status FROM strategies WHERE is_archived = 0');
     const activeBotsCount = strategies.filter(s => {
@@ -56,6 +73,7 @@ class AnalyticsService {
 
     return {
       totalProfit: precisionManager.format(totalProfit, 'USDT'),
+      totalPnlPercent: precisionManager.format(totalPnlPercent, 'PERCENT'),
       winRate: precisionManager.format(parseFloat(winRate), 'PERCENT'),
       activeBots: `${activeBotsCount} / ${strategies.length}`
     };

@@ -11,7 +11,8 @@ import { cn } from './lib/utils';
 import { strategyApi } from './lib/api';
 
 interface AnalyticsSummary {
-  totalProfit: number;
+  totalProfit: string;
+  totalPnlPercent: string;
   winRate: string;
   activeBots: string;
 }
@@ -68,9 +69,9 @@ function App() {
                         <div className="text-xs text-muted-foreground uppercase">Total Profit</div>
                         <div className={cn(
                           "text-2xl font-bold",
-                          analytics?.totalProfit >= 0 ? "text-green-500" : "text-red-500"
+                          analytics?.totalProfit && !analytics.totalProfit.includes('-') ? "text-green-500" : "text-red-500"
                         )}>
-                          {analytics ? `${analytics.totalProfit >= 0 ? '+' : ''}$${analytics.totalProfit.toLocaleString()}` : 'Loading...'}
+                          {analytics ? `${analytics.totalProfit} (${analytics.totalPnlPercent})` : 'Loading...'}
                         </div>
                       </div>
                       <div className="p-4 rounded-lg bg-muted border border-border">
