@@ -53,15 +53,18 @@ class AnalyticsService {
     // But since we don't have a global starting balance, we can calculate the aggregated PnL%
     // as a weighted average of all closed trades' pnl_percent relative to their size.
 
-    const trades = await db.all('SELECT result, size_usd, pnl_percent FROM trades WHERE status = "CLOSED"');
-    let weightedPnlSum = 0;
+    const trades = await db.all('SELECT result, size_usd FROM trades WHERE status = "CLOSED"');
+    let aggProfit = 0;
     let totalVolume = 0;
+
     for (const t of trades) {
+      const result = Number(t.result || 0);
       const size = Number(t.size_usd || 0);
-      weightedPnlSum += (Number(t.pnl_percent || 0) / 100) * size;
+      aggProfit += result;
       totalVolume += size;
     }
-    const totalPnlPercent = totalVolume > 0 ? (weightedPnlSum / totalVolume) * 100 : 0;
+
+    const totalPnlPercent = totalVolume > 0 ? (aggProfit / totalVolume) * 100 : 0;
 
     // Count active bots from both DB status and active process map (only non-archived)
     const strategies = await db.all('SELECT id, status FROM strategies WHERE is_archived = 0');
