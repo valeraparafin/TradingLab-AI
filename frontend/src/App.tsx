@@ -71,7 +71,7 @@ function App() {
                           "text-2xl font-bold",
                           analytics?.totalProfit && !analytics.totalProfit.includes('-') ? "text-green-500" : "text-red-500"
                         )}>
-                          {analytics ? `${analytics.totalProfit} (${analytics.totalPnlPercent}%)` : 'Loading...'}
+                          {analytics ? `${!analytics.totalProfit.includes('-') ? '+' : ''}$${analytics.totalProfit} (${analytics.totalPnlPercent}%)` : 'Loading...'}
                         </div>
                       </div>
                       <div className="p-4 rounded-lg bg-muted border border-border">
