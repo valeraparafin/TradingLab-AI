@@ -3,21 +3,38 @@ import { open } from 'sqlite';
 import path from 'path';
 
 let db = null;
+let aiDb = null;
 
 /**
- * Initializes the SQLite database and creates necessary tables.
- * @returns {Promise<import('sqlite').Database>} The database connection.
+ * Initializes the SQLite databases and creates necessary tables.
+ * @returns {Promise<import('sqlite').Database>} The main database connection.
  */
 export async function initDB() {
+    // 1. Main Database (Manual Strategies - STABLE/LEGACY)
     db = await open({
         filename: path.join(process.cwd(), 'trading_lab.db'),
         driver: sqlite3.Database
     });
 
-    // Enable foreign key constraints
-    await db.get('PRAGMA foreign_keys = ON');
+    // 2. AI Database (Experimental/Autonomous - DCA)
+    aiDb = await open({
+        filename: path.join(process.cwd(), 'ai_trading.db'),
+        driver: sqlite3.Database
+    });
 
-    // Create tables
+    // Enable foreign key constraints for both
+    await db.get('PRAGMA foreign_keys = ON');
+    await aiDb.get('PRAGMA foreign_keys = ON');
+
+    // --- SAFETY: Fix legacy schema columns if they are missing ---
+    try { await db.exec('ALTER TABLE trades ADD COLUMN size_usd REAL'); } catch (e) {}
+    try { await db.exec('ALTER TABLE active_positions ADD COLUMN size_usd REAL'); } catch (e) {}
+    try { await db.exec('ALTER TABLE active_positions ADD COLUMN entry_price REAL'); } catch (e) {}
+    try { await db.exec('ALTER TABLE active_positions ADD COLUMN stop_loss REAL'); } catch (e) {}
+    try { await db.exec('ALTER TABLE active_positions ADD COLUMN take_profit REAL'); } catch (e) {}
+    try { await db.exec('ALTER TABLE active_positions ADD COLUMN status TEXT'); } catch (e) {}
+
+    // --- Main DB Schema (STABLE - DO NOT CHANGE COLUMN NAMES) ---
     await db.exec(`
         CREATE TABLE IF NOT EXISTS assets (
             symbol TEXT PRIMARY KEY,
@@ -85,16 +102,85 @@ export async function initDB() {
         );
 
         CREATE TABLE IF NOT EXISTS active_positions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT,
             strategy_id INTEGER NOT NULL,
-            symbol TEXT NOT NULL,
-            side TEXT NOT NULL,
+            side TEXT,
             entry_price REAL NOT NULL,
+            avg_entry_price REAL,
             size_usd REAL NOT NULL,
             stop_loss REAL,
             take_profit REAL,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            status TEXT DEFAULT 'OPEN',
+            current_price REAL,
+            current_pnl REAL,
+            current_pnl_percent REAL,
+            exit_price REAL,
+            exit_timestamp DATETIME,
+            price_updated_at DATETIME,
+            last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (symbol, strategy_id),
             FOREIGN KEY (strategy_id) REFERENCES strategies (id) ON DELETE CASCADE
+        );
+    `);
+
+    // --- AI DB Schema (DCA/AUTONOMOUS) ---
+    await aiDb.exec(`
+        CREATE TABLE IF NOT EXISTS ai_risk_profiles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL,
+            is_template BOOLEAN DEFAULT FALSE,
+            risk_per_trade_percent REAL,
+            max_trade_size_usd REAL,
+            stop_loss_percent REAL,
+            take_profit_percent REAL,
+            max_portfolio_heat_percent REAL,
+            max_open_positions INTEGER,
+            daily_loss_limit_percent REAL,
+            daily_profit_target_percent REAL,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS ai_strategies (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL,
+            config TEXT,
+            status TEXT DEFAULT 'stopped',
+            last_run DATETIME
+        );
+
+        CREATE TABLE IF NOT EXISTS ai_agent_config (
+            id TEXT PRIMARY KEY,
+            agent_id INTEGER NOT NULL,
+            base_order_size REAL,
+            max_position_cap REAL,
+            deviation REAL,
+            multiplier REAL,
+            max_layers INTEGER,
+            trade_mode TEXT CHECK(trade_mode IN ('ONE_WAY', 'HEDGE')),
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS ai_paper_trades (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            strategy_id INTEGER,
+            symbol TEXT,
+            side TEXT,
+            price REAL,
+            size_usd REAL,
+            status TEXT,
+            timestamp DATETIME,
+            mode TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS ai_active_positions (
+            symbol TEXT,
+            strategy_id INTEGER NOT NULL,
+            total_quantity REAL NOT NULL,
+            total_cost REAL NOT NULL,
+            avg_entry_price REAL NOT NULL,
+            current_layer INTEGER DEFAULT 0,
+            last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (symbol, strategy_id)
         );
     `);
 
@@ -104,24 +190,10 @@ export async function initDB() {
         // Column already exists, ignore error
     }
 
-    // Migrate to snapshot model if needed
     try {
-        await migrateToSnapshotModel();
+        await aiDb.exec('ALTER TABLE ai_strategies ADD COLUMN risk_profile_id INTEGER REFERENCES ai_risk_profiles(id)');
     } catch (e) {
-        console.warn(`[DB] Snapshot migration skipped or failed: ${e.message}`);
-    }
-
-    try {
-        await db.exec('ALTER TABLE active_positions ADD COLUMN status TEXT DEFAULT \'OPEN\'');
-        await db.exec('ALTER TABLE active_positions ADD COLUMN exit_price REAL');
-        await db.exec('ALTER TABLE active_positions ADD COLUMN exit_timestamp DATETIME');
-        await db.exec('ALTER TABLE active_positions ADD COLUMN current_price REAL');
-      await db.exec('ALTER TABLE active_positions ADD COLUMN price_updated_at DATETIME');
-      await db.exec('ALTER TABLE active_positions ADD COLUMN current_pnl REAL');
-      await db.exec('ALTER TABLE active_positions ADD COLUMN current_pnl_percent REAL');
-      await db.exec('UPDATE active_positions SET status = \'OPEN\' WHERE status IS NULL');
-    } catch (e) {
-        // Columns already exist, ignore error
+        // Column already exists, ignore error
     }
 
     return db;
@@ -131,8 +203,8 @@ export async function initDB() {
  * Creates a SQL view for real-time strategy performance metrics.
  */
 export async function createStatsView() {
-    const db = getDB();
-    await db.exec(`
+    const targetDb = getDB('main');
+    await targetDb.exec(`
         DROP VIEW IF EXISTS strategy_stats;
         CREATE VIEW strategy_stats AS
         SELECT
@@ -152,10 +224,16 @@ export async function createStatsView() {
 
 /**
  * Returns the existing database connection.
-
- * @throws {Error} If the database has not been initialized.
+ * @param {string} type - 'main' for manual strategies, 'ai' for autonomous agents.
+ * @throws {Error} If the requested database has not been initialized.
  */
-export function getDB() {
+export function getDB(type = 'main') {
+    if (type === 'ai') {
+        if (!aiDb) {
+            throw new Error('AI Database not initialized. Call initDB() first.');
+        }
+        return aiDb;
+    }
     if (!db) {
         throw new Error('Database not initialized. Call initDB() first.');
     }
@@ -164,32 +242,31 @@ export function getDB() {
 
 /**
  * Executes a set of operations within a single database transaction.
- * @param {function(import('sqlite').Database): Promise<any>} callback The operations to perform.
- * @returns {Promise<any>} The result of the callback.
- * @throws {Error} If the transaction fails.
+ * @param {string} type - Which DB to use ('main' or 'ai').
+ * @param {function} callback - The operations to perform.
  */
-export async function transaction(callback) {
-    const db = getDB();
-    await db.run('BEGIN TRANSACTION');
+export async function transaction(type = 'main', callback) {
+    const targetDb = getDB(type);
+    await targetDb.run('BEGIN TRANSACTION');
     try {
-        const result = await callback(db);
-        await db.run('COMMIT');
+        const result = await callback(targetDb);
+        await targetDb.run('COMMIT');
         return result;
     } catch (e) {
-        await db.run('ROLLBACK');
+        await targetDb.run('ROLLBACK');
         throw e;
     }
 }
 
 /**
  * Updates a record in the database dynamically.
- * @param {string} table Table name.
- * @param {object} data Key-value pairs of columns to update.
- * @param {object} where Key-value pairs for the WHERE clause.
- * @returns {Promise<{changes: number}>}
+ * @param {string} type - Which DB to use ('main' or 'ai').
+ * @param {string} table - Table name.
+ * @param {object} data - Key-value pairs of columns to update.
+ * @param {object} where - Key-value pairs for the WHERE clause.
  */
-export async function updateRecord(table, data, where) {
-    const db = getDB();
+export async function updateRecord(type = 'main', table, data, where) {
+    const targetDb = getDB(type);
     const keys = Object.keys(data);
     const values = Object.values(data);
     const setClause = keys.map(k => `${k} = ?`).join(', ');
@@ -199,29 +276,23 @@ export async function updateRecord(table, data, where) {
     const whereClause = whereKeys.map(k => `${k} = ?`).join(' AND ');
 
     const sql = `UPDATE ${table} SET ${setClause} WHERE ${whereClause}`;
-    const result = await db.run(sql, [...values, ...whereValues]);
+    const result = await targetDb.run(sql, [...values, ...whereValues]);
     return { changes: result.changes };
 }
 
 /**
  * Migrates existing strategy configurations to the hybrid snapshot model.
- * Extracts risk settings into strategy_risk_settings and renames config to logic_config.
+ * (Kept for legacy support in the main DB)
  */
 export async function migrateToSnapshotModel() {
-    const db = getDB();
-
-    // Check if migration is already done (config column should be gone, logic_config should exist)
-    const tableInfo = await db.all("PRAGMA table_info(strategies)");
+    const targetDb = getDB('main');
+    const tableInfo = await targetDb.all("PRAGMA table_info(strategies)");
     const hasConfig = tableInfo.some(col => col.name === 'config');
     const hasLogicConfig = tableInfo.some(col => col.name === 'logic_config');
 
-    if (!hasConfig || hasLogicConfig) {
-        return; // Already migrated or config column missing
-    }
+    if (!hasConfig || hasLogicConfig) return;
 
-    // Professional defaults
     const defaults = {
-
         risk_per_trade_percent: 1.0,
         stop_loss_percent: 2.0,
         take_profit_percent: 4.0,
@@ -229,21 +300,16 @@ export async function migrateToSnapshotModel() {
         max_portfolio_heat_percent: 10.0,
         max_open_positions: 5,
         max_trades_per_day: 10,
+        max_trade_size_usd: 100,
         daily_loss_limit_percent: 3.0,
         daily_profit_target_percent: 5.0
     };
 
     try {
-        const strategies = await db.all('SELECT id, config FROM strategies');
-
+        const strategies = await targetDb.all('SELECT id, config FROM strategies');
         for (const strategy of strategies) {
             let config = {};
-            try {
-                config = JSON.parse(strategy.config || '{}');
-            } catch (e) {
-                console.warn(`Failed to parse config for strategy ${strategy.id}: ${e.message}`);
-            }
-
+            try { config = JSON.parse(strategy.config || '{}'); } catch (e) {}
             const risk = {
                 strategy_id: strategy.id,
                 risk_per_trade_percent: config.risk_per_trade_percent ?? defaults.risk_per_trade_percent,
@@ -257,41 +323,17 @@ export async function migrateToSnapshotModel() {
                 daily_loss_limit_percent: config.daily_loss_limit_percent ?? defaults.daily_loss_limit_percent,
                 daily_profit_target_percent: config.daily_profit_target_percent ?? defaults.daily_profit_target_percent,
             };
-
-            await db.run(`
+            await targetDb.run(`
                 INSERT OR REPLACE INTO strategy_risk_settings
                 (strategy_id, risk_per_trade_percent, stop_loss_percent, take_profit_percent, min_risk_reward_ratio, max_portfolio_heat_percent, max_open_positions, max_trades_per_day, max_trade_size_usd, daily_loss_limit_percent, daily_profit_target_percent)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `, Object.values(risk));
-
-            // Remove risk params from logic config
             const logicConfig = { ...config };
-            delete logicConfig.risk_per_trade_percent;
-            delete logicConfig.stop_loss_percent;
-            delete logicConfig.take_profit_percent;
-            delete logicConfig.min_risk_reward_ratio;
-            delete logicConfig.max_portfolio_heat_percent;
-            delete logicConfig.max_open_positions;
-            delete logicConfig.max_trades_per_day;
-            delete logicConfig.daily_loss_limit_percent;
-            delete logicConfig.daily_profit_target_percent;
-
-            await db.run('UPDATE strategies SET config = ? WHERE id = ?', [JSON.stringify(logicConfig), strategy.id]);
+            ['risk_per_trade_percent', 'stop_loss_percent', 'take_profit_percent', 'min_risk_reward_ratio', 'max_portfolio_heat_percent', 'max_open_positions', 'max_trades_per_day', 'max_trade_size_usd', 'daily_loss_limit_percent', 'daily_profit_target_percent'].forEach(k => delete logicConfig[k]);
+            await targetDb.run('UPDATE strategies SET config = ? WHERE id = ?', [JSON.stringify(logicConfig), strategy.id]);
         }
-
-        // Rename column config to logic_config
-        // SQLite 3.25.0+ supports RENAME COLUMN
-        try {
-            await db.exec('ALTER TABLE strategies RENAME COLUMN config TO logic_config');
-        } catch (e) {
-            console.error(`Failed to rename column: ${e.message}. Ensure SQLite version is 3.25.0+`);
-            throw e;
-        }
-
-        console.log('Successfully migrated to snapshot model.');
+        await targetDb.exec('ALTER TABLE strategies RENAME COLUMN config TO logic_config');
     } catch (e) {
         console.error(`Migration failed: ${e.message}`);
-        throw e;
     }
 }
-
