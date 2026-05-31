@@ -12,6 +12,8 @@ import { initDB, getDB, createStatsView } from './db.js';
 import { botService } from './src/server/services/bot.service.js';
 import { strategyService } from './src/server/services/strategy.service.js';
 import { assetService } from './src/server/services/asset.service.js';
+import { aiStrategyService } from './src/server/services/aiStrategyService.js';
+import AgentOrchestrator from './src/agents/AgentOrchestrator.js';
 import templateRouter from './src/server/routes/template.routes.js';
 import strategyRouter from './src/server/routes/strategy.routes.js';
 import analyticsRouter from './src/server/routes/analytics.routes.js';
@@ -34,6 +36,163 @@ app.use('/api', strategyRouter);
 app.use('/api/strategies', strategyRouter);
 app.use('/api/analytics', analyticsRouter);
 app.use('/api/assets', assetRouter);
+
+let orchestrator = null;
+
+app.post('/api/agents/start', async (req, res) => {
+  const { agent_id } = req.body;
+
+  if (!agent_id) {
+    return res.status(400).json({ success: false, error: 'Missing agent_id' });
+  }
+
+  try {
+    const db = getDB();
+    const agent = await db.get('SELECT * FROM ai_strategies WHERE id = ?', [agent_id]);
+    if (!agent) {
+      return res.status(404).json({ success: false, error: 'Agent not found' });
+    }
+
+    const riskProfile = await aiStrategyService.getRiskProfile(agent.risk_profile_id);
+    if (!riskProfile) {
+      return res.status(404).json({ success: false, error: 'Risk profile not found' });
+    }
+
+    // Map DB snake_case to AgentOrchestrator's expectations if necessary
+    // Note: AgentOrchestrator uses this.config.risk_per_trade_percent
+    const config = {
+      ...riskProfile,
+      symbols: ['BTCUSDT', 'ETHUSDT'], // Default symbols
+      portfolioValue: 10000,        // Default portfolio
+      cycleInterval: 300000        // Default interval
+    };
+
+    if (orchestrator) {
+      orchestrator.stop();
+    }
+
+    orchestrator = new AgentOrchestrator(io, config);
+    orchestrator.start();
+
+    res.json({ status: 'started', message: `Agentic trading loop initiated for agent ${agent_id}` });
+  } catch (err) {
+    console.error(`[Agent Start Error] ${err.message}`);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/agents/stop', (req, res) => {
+  orchestrator.stop();
+  res.json({ status: 'stopped', message: 'Agentic trading loop halted' });
+});
+
+app.get('/api/agents/trades', async (req, res) => {
+  const { interval = 'day' } = req.query;
+  try {
+    const db = getDB();
+
+    // Define time range based on interval
+    let dateFilter = 'datetime(\'now\', \'-1 day\')';
+    if (interval === 'week') dateFilter = 'datetime(\'now\', \'-7 days\')';
+    if (interval === 'month') dateFilter = 'datetime(\'now\', \'-30 days\')';
+
+    // AI trades are stored in paper_trades (default mode)
+    const trades = await db.all(
+      `SELECT * FROM paper_trades WHERE timestamp >= ${dateFilter} ORDER BY timestamp DESC`
+    );
+
+    const activePositions = await db.all(
+      `SELECT * FROM active_positions WHERE status = 'OPEN'`
+    );
+
+    res.json({
+      success: true,
+      data: {
+        trades,
+        activePositions
+      }
+    });
+  } catch (err) {
+    console.error(`[AI Trades Error] ${err.message}`);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/agents/summary', async (req, res) => {
+  try {
+    const db = getDB();
+
+    // Calculate total PnL from paper_trades
+    // In paper_trades, we don't have a 'result' column like in 'trades',
+    // we'd need to calculate it or add it.
+    // For now, let's sum up some mock PnL or a simplified version.
+    const stats = await db.get(`
+      SELECT
+        COUNT(*) as totalTrades,
+        SUM(CASE WHEN status = 'EXECUTED' THEN 1 ELSE 0 END) as successfulTrades
+      FROM paper_trades
+    `);
+
+    res.json({
+      success: true,
+      data: {
+        totalProfit: '0.00', // Placeholder until we implement PnL calculation for paper trades
+        totalPnlPercent: '0%',
+        winRate: '0%',
+        activeBots: '1'
+      }
+    });
+  } catch (err) {
+    console.error(`[AI Summary Error] ${err.message}`);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/agents/config', async (req, res) => {
+  const { agent_id, settings } = req.body;
+  if (!agent_id || !settings) {
+    return res.status(400).json({ success: false, error: 'Missing agent_id or settings' });
+  }
+
+  try {
+    const db = getDB();
+    const agent = await db.get('SELECT * FROM ai_strategies WHERE id = ?', [agent_id]);
+    if (!agent) {
+      return res.status(404).json({ success: false, error: 'Agent not found' });
+    }
+
+    const result = await aiStrategyService.updateRiskProfile(agent.risk_profile_id, settings);
+    res.json({
+      success: true,
+      status: result.changes > 0 ? 'updated' : 'no_changes',
+      message: result.changes > 0 ? 'Configuration updated successfully' : 'No changes detected'
+    });
+  } catch (err) {
+    console.error(`[Config Update Error] ${err.message}`);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/agents/config/:agent_id', async (req, res) => {
+  const { agent_id } = req.params;
+  try {
+    const db = getDB();
+    const config = await db.get('SELECT * FROM strategy_risk_settings WHERE strategy_id = ?', [agent_id]);
+
+    if (!config) {
+      return res.status(404).json({ success: false, error: 'Configuration not found for this agent' });
+    }
+
+    res.json({
+      success: true,
+      data: config
+    });
+  } catch (err) {
+    console.error(`[Config Fetch Error] ${err.message}`);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 
 
 
@@ -93,8 +252,10 @@ async function startServer() {
     await initDB();
     await createStatsView();
     await assetService.init();
+    await aiStrategyService.seedTemplates();
     await syncStrategies();
     botService.setIo(io);
+    // orchestrator.start(); // Removed: agents now start only via API button
     // Reset all strategy statuses to 'stopped' on startup since child processes are gone
     await getDB().run('UPDATE strategies SET status = ? WHERE status = ?', ['stopped', 'running']);
     httpServer.listen(PORT, () => {
