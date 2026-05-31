@@ -1,0 +1,104 @@
+import fs from 'fs/promises';
+import path from 'path';
+import { getDB } from '../../../db.js';
+
+/**
+ * AI Strategy Service handles the management of AI risk profiles
+ * and strategy configurations in the ai_trading.db.
+ */
+export const aiStrategyService = {
+    /**
+     * Seeds the ai_risk_profiles table from JSON templates in templates/risk/*.
+     * Maps camelCase JSON settings to snake_case DB columns.
+     */
+    async seedTemplates() {
+        const db = getDB('ai');
+        const templatesDir = path.join(process.cwd(), 'templates', 'risk');
+        const files = (await fs.readdir(templatesDir)).filter(f => f.endsWith('.json'));
+
+        console.log(`Seeding AI risk profiles from ${files.length} templates...`);
+
+        for (const file of files) {
+            const filePath = path.join(templatesDir, file);
+            const content = await fs.readFile(filePath, 'utf8');
+            const json = JSON.parse(content);
+
+            // Handle both formats: { content: { settings: ... } } or { settings: ... }
+            const data = json.content ? json.content : json;
+            const settings = data.settings || {};
+            const profileName = data.name || path.basename(file, '.json');
+
+            const values = {
+                name: profileName,
+                is_template: 1, // true
+                risk_per_trade_percent: settings.riskPerTradePercent,
+                max_trade_size_usd: settings.maxTradeSizeUSD,
+                stop_loss_percent: settings.stopLossPercent,
+                take_profit_percent: settings.takeProfitPercent,
+                max_portfolio_heat_percent: settings.maxPortfolioHeatPercent,
+                max_open_positions: settings.maxOpenPositions,
+                daily_loss_limit_percent: settings.dailyLossLimitPercent,
+                daily_profit_target_percent: settings.dailyProfitTargetPercent,
+            };
+
+            const sql = `
+                INSERT OR REPLACE INTO ai_risk_profiles
+                (name, is_template, risk_per_trade_percent, max_trade_size_usd, stop_loss_percent, take_profit_percent, max_portfolio_heat_percent, max_open_positions, daily_loss_limit_percent, daily_profit_target_percent)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `;
+
+            await db.run(sql, Object.values(values));
+            console.log(`  ✓ Seeded profile: ${profileName}`);
+        }
+        console.log('AI risk profiles seeding complete.');
+    },
+
+    /**
+     * Fetches a risk profile by its ID.
+     * @param {number} profileId
+     */
+    async getRiskProfile(profileId) {
+        const db = getDB('ai');
+        return await db.get('SELECT * FROM ai_risk_profiles WHERE id = ?', [profileId]);
+    },
+
+    /**
+     * Updates a specific risk profile's values.
+     * Expects settings in camelCase to match frontend/JSON.
+     * @param {number} id
+     * @param {object} settings
+     */
+    async updateRiskProfile(id, settings) {
+        const db = getDB('ai');
+
+        // Map camelCase settings to snake_case columns
+        const mapping = {
+            riskPerTradePercent: 'risk_per_trade_percent',
+            maxTradeSizeUSD: 'max_trade_size_usd',
+            stopLossPercent: 'stop_loss_percent',
+            takeProfitPercent: 'take_profit_percent',
+            maxPortfolioHeatPercent: 'max_portfolio_heat_percent',
+            maxOpenPositions: 'max_open_positions',
+            dailyLossLimitPercent: 'daily_loss_limit_percent',
+            dailyProfitTargetPercent: 'daily_profit_target_percent',
+        };
+
+        const updates = [];
+        const params = [];
+
+        for (const [key, value] of Object.entries(settings)) {
+            if (mapping[key]) {
+                updates.push(`${mapping[key]} = ?`);
+                params.push(value);
+            }
+        }
+
+        if (updates.length === 0) return { changes: 0 };
+
+        params.push(id);
+        const sql = `UPDATE ai_risk_profiles SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
+        const result = await db.run(sql, params);
+
+        return { changes: result.changes };
+    }
+};
