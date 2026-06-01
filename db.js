@@ -196,6 +196,20 @@ export async function initDB() {
         // Column already exists, ignore error
     }
 
+    const aiStrategyColumns = [
+        'ALTER TABLE ai_strategies ADD COLUMN logic_template_id INTEGER',
+        'ALTER TABLE ai_strategies ADD COLUMN watchlist TEXT',
+        "ALTER TABLE ai_strategies ADD COLUMN timeframe TEXT DEFAULT '1H'",
+        "ALTER TABLE ai_strategies ADD COLUMN trade_mode TEXT DEFAULT 'spot'",
+        'ALTER TABLE ai_strategies ADD COLUMN paper_trading INTEGER DEFAULT 1',
+        'ALTER TABLE ai_strategies ADD COLUMN portfolio_value REAL DEFAULT 10000',
+        'ALTER TABLE ai_strategies ADD COLUMN cycle_interval_ms INTEGER DEFAULT 300000',
+        'ALTER TABLE ai_strategies ADD COLUMN is_archived BOOLEAN DEFAULT FALSE',
+    ];
+    for (const stmt of aiStrategyColumns) {
+        try { await aiDb.exec(stmt); } catch (e) { /* column exists */ }
+    }
+
     return db;
 }
 

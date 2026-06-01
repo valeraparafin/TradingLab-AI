@@ -14,43 +14,67 @@ export const aiStrategyService = {
     async seedTemplates() {
         const db = getDB('ai');
         const templatesDir = path.join(process.cwd(), 'templates', 'risk');
-        const files = (await fs.readdir(templatesDir)).filter(f => f.endsWith('.json'));
 
-        console.log(`Seeding AI risk profiles from ${files.length} templates...`);
+        try {
+            const files = (await fs.readdir(templatesDir)).filter(f => f.endsWith('.json'));
 
-        for (const file of files) {
-            const filePath = path.join(templatesDir, file);
-            const content = await fs.readFile(filePath, 'utf8');
-            const json = JSON.parse(content);
+            console.log(`Seeding AI risk profiles from ${files.length} templates...`);
 
-            // Handle both formats: { content: { settings: ... } } or { settings: ... }
-            const data = json.content ? json.content : json;
-            const settings = data.settings || {};
-            const profileName = data.name || path.basename(file, '.json');
+            for (const file of files) {
+                const filePath = path.join(templatesDir, file);
+                const content = await fs.readFile(filePath, 'utf8');
+                const json = JSON.parse(content);
 
-            const values = {
-                name: profileName,
-                is_template: 1, // true
-                risk_per_trade_percent: settings.riskPerTradePercent,
-                max_trade_size_usd: settings.maxTradeSizeUSD,
-                stop_loss_percent: settings.stopLossPercent,
-                take_profit_percent: settings.takeProfitPercent,
-                max_portfolio_heat_percent: settings.maxPortfolioHeatPercent,
-                max_open_positions: settings.maxOpenPositions,
-                daily_loss_limit_percent: settings.dailyLossLimitPercent,
-                daily_profit_target_percent: settings.dailyProfitTargetPercent,
-            };
+                // Handle both formats: { content: { settings: ... } } or { settings: ... }
+                const data = json.content ? json.content : json;
+                const settings = data.settings || {};
+                const profileName = data.name || path.basename(file, '.json');
 
-            const sql = `
-                INSERT OR REPLACE INTO ai_risk_profiles
-                (name, is_template, risk_per_trade_percent, max_trade_size_usd, stop_loss_percent, take_profit_percent, max_portfolio_heat_percent, max_open_positions, daily_loss_limit_percent, daily_profit_target_percent)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `;
+                const values = {
+                    name: profileName,
+                    is_template: 1, // true
+                    risk_per_trade_percent: settings.riskPerTradePercent,
+                    max_trade_size_usd: settings.maxTradeSizeUSD,
+                    stop_loss_percent: settings.stopLossPercent,
+                    take_profit_percent: settings.takeProfitPercent,
+                    max_portfolio_heat_percent: settings.maxPortfolioHeatPercent,
+                    max_open_positions: settings.maxOpenPositions,
+                    daily_loss_limit_percent: settings.dailyLossLimitPercent,
+                    daily_profit_target_percent: settings.dailyProfitTargetPercent,
+                };
 
-            await db.run(sql, Object.values(values));
-            console.log(`  ✓ Seeded profile: ${profileName}`);
+                const sql = `
+                    INSERT OR REPLACE INTO ai_risk_profiles
+                    (name, is_template, risk_per_trade_percent, max_trade_size_usd, stop_loss_percent, take_profit_percent, max_portfolio_heat_percent, max_open_positions, daily_loss_limit_percent, daily_profit_target_percent)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `;
+
+                await db.run(sql, Object.values(values));
+                console.log(`  ✓ Seeded profile: ${profileName}`);
+            }
+            console.log('AI risk profiles seeding complete.');
+        } catch (e) {
+            console.warn(`[seedTemplates] Could not read templates/risk directory: ${e.message}. Falling back to defaults.`);
         }
-        console.log('AI risk profiles seeding complete.');
+
+        // Fallback: insert default templates if none exist yet
+        const existing = await db.all('SELECT COUNT(*) AS c FROM ai_risk_profiles WHERE is_template = 1');
+        if (!existing[0].c) {
+            const defaults = [
+                { name: 'Conservative', risk_per_trade_percent: 0.5, max_trade_size_usd: 50,  stop_loss_percent: 1.5, take_profit_percent: 3, max_portfolio_heat_percent: 3,  max_open_positions: 2, daily_loss_limit_percent: 1, daily_profit_target_percent: 3 },
+                { name: 'Balanced',     risk_per_trade_percent: 1,   max_trade_size_usd: 100, stop_loss_percent: 2,   take_profit_percent: 4, max_portfolio_heat_percent: 5,  max_open_positions: 3, daily_loss_limit_percent: 2, daily_profit_target_percent: 5 },
+                { name: 'Aggressive',   risk_per_trade_percent: 2,   max_trade_size_usd: 250, stop_loss_percent: 3,   take_profit_percent: 6, max_portfolio_heat_percent: 10, max_open_positions: 5, daily_loss_limit_percent: 4, daily_profit_target_percent: 8 },
+            ];
+            for (const d of defaults) {
+                await db.run(
+                    `INSERT OR REPLACE INTO ai_risk_profiles
+                     (name, is_template, risk_per_trade_percent, max_trade_size_usd, stop_loss_percent, take_profit_percent, max_portfolio_heat_percent, max_open_positions, daily_loss_limit_percent, daily_profit_target_percent)
+                     VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [d.name, d.risk_per_trade_percent, d.max_trade_size_usd, d.stop_loss_percent, d.take_profit_percent, d.max_portfolio_heat_percent, d.max_open_positions, d.daily_loss_limit_percent, d.daily_profit_target_percent]
+                );
+            }
+            console.log('AI risk profiles seeded with 3 default templates.');
+        }
     },
 
     /**
