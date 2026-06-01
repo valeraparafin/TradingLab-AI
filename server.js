@@ -82,6 +82,9 @@ app.post('/api/agents/start', async (req, res) => {
     if (orchestrators.has(agentId)) return res.json({ status: 'already_running' });
 
     const riskProfile = agent.risk_profile_id ? await aiStrategyService.getRiskProfile(agent.risk_profile_id) : {};
+    if (!agent.risk_profile_id || !riskProfile || Object.keys(riskProfile).length === 0) {
+      console.warn(`[Agent Start] Agent ${agentId} is starting WITHOUT risk constraints — no risk profile configured.`);
+    }
     // Real-mode safety: no exchange-account picker yet -> force paper trading regardless of agent.paper_trading.
     const paperTrading = true; // TODO: honor agent.paper_trading once exchange accounts exist
     const config = {
@@ -151,7 +154,7 @@ app.get('/api/agents/summary', async (req, res) => {
       params.push(Number(req.query.agent_id));
     }
     // Keep placeholder PnL — real calculation deferred
-    await db.get(`SELECT COUNT(*) as totalTrades FROM ai_paper_trades${whereClause}`, params);
+    const stats = await db.get(`SELECT COUNT(*) as totalTrades FROM ai_paper_trades${whereClause}`, params);
     const allAgents = await aiStrategyService.listAgents();
     res.json({
       success: true,
@@ -162,6 +165,7 @@ app.get('/api/agents/summary', async (req, res) => {
         activeBots: String(orchestrators.size),
         totalAgents: allAgents.length,
         runningAgents: orchestrators.size,
+        totalTrades: stats?.totalTrades ?? 0,
       }
     });
   } catch (err) {
@@ -234,7 +238,10 @@ app.get('/api/agents/:id', async (req, res) => {
 
 app.put('/api/agents/:id', async (req, res) => {
   try {
-    await aiStrategyService.updateAgent(Number(req.params.id), req.body);
+    const id = Number(req.params.id);
+    const agent = await aiStrategyService.getAgent(id);
+    if (!agent) return res.status(404).json({ success: false, error: 'Agent not found' });
+    await aiStrategyService.updateAgent(id, req.body);
     res.json({ success: true });
   } catch (err) {
     console.error(`[Agent Update Error] ${err.message}`);
