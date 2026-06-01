@@ -34,6 +34,7 @@ interface AIRiskConfigFormProps {
   initialConfig: Partial<Record<string, number>> | null;
   onSave: (settings: AIRiskSettings) => Promise<void>;
   onCancel?: () => void;
+  showAgentPicker?: boolean;
 }
 
 interface RiskField {
@@ -86,6 +87,7 @@ export const AIRiskConfigForm = ({
   initialConfig,
   onSave,
   onCancel,
+  showAgentPicker = true,
 }: AIRiskConfigFormProps) => {
   const [settings, setSettings] = useState<AIRiskSettings>(EMPTY_SETTINGS);
   const [templateId, setTemplateId] = useState('');
@@ -129,13 +131,15 @@ export const AIRiskConfigForm = ({
 
   return (
     <div className="space-y-4">
-      <FormInput
-        label="AI Agent"
-        type="select"
-        value={selectedAgentId ? String(selectedAgentId) : ''}
-        onChange={val => onAgentChange(Number(val))}
-        options={agents.map(a => ({ label: `${a.name} (${a.status})`, value: String(a.id) }))}
-      />
+      {showAgentPicker && (
+        <FormInput
+          label="AI Agent"
+          type="select"
+          value={selectedAgentId ? String(selectedAgentId) : ''}
+          onChange={val => onAgentChange(Number(val))}
+          options={agents.map(a => ({ label: `${a.name} (${a.status})`, value: String(a.id) }))}
+        />
+      )}
 
       <FormInput
         label="Risk Template"
