@@ -17,7 +17,7 @@ export class AnalystAgent {
     constructor(orchestrator) {
         this.orchestrator = orchestrator;
         this.tools = new ToolRegistry();
-        this.indicators = (orchestrator?.config?.indicators) || ['SMC'];
+        this.indicators = (orchestrator?.llmContext?.indicators) || (orchestrator?.config?.indicators) || ['SMC'];
         this.capabilities = ['analysis', 'market-research', 'strategy-optimization'];
         this.experts = {
             macro: { weight: 0.3, name: 'Macro Analyst' },

@@ -1,27 +1,31 @@
 import { AnalystAgent } from './AnalystAgent.js';
-import RiskAgent from './RiskAgent.js';
 import { agentMemory } from './AgentMemory.js';
 import { toolRegistry } from '../registry/ToolRegistry.js';
-import { tradeExecutor } from './TradeExecutor.js';
+import { TradeExecutor } from './TradeExecutor.js';
+import { RiskPolicy } from './RiskPolicy.js';
 
 /**
- * AgentOrchestrator manages the high-level adversarial loop between agents.
- * It coordinates the flow: Analyst (Proposal) -> Risk (Review) -> Execution.
+ * AgentOrchestrator manages the loop: Analyst (qualitative proposal) ->
+ * RiskPolicy (deterministic sizing + gating) -> TradeExecutor.
  */
 export default class AgentOrchestrator {
   constructor(io, config = {}) {
     this.io = io;
     this.config = config;
-    this.agentId = config.agentId ?? null;
+    this.agentId = config.execution?.agentId ?? config.agentId ?? null;
+    this.llmContext = config.llmContext || {};
+    this.execution = config.execution || { paperTrading: true };
     this.memory = agentMemory;
     this.analyst = new AnalystAgent(this);
-    this.risk = new RiskAgent(config);
+    this.riskPolicy = new RiskPolicy(config.guardrails || {});
+    this.tradeExecutor = new TradeExecutor({
+      tradeMode: this.execution.paperTrading ? 'PAPER' : 'REAL',
+      agentId: this.agentId,
+    });
     this.toolRegistry = toolRegistry;
-    this.tradeExecutor = tradeExecutor;
-
     this.isRunning = false;
     this.loopInterval = null;
-    this.symbolsToWatch = config.symbols || ['BTCUSDT', 'ETHUSDT'];
+    this.symbolsToWatch = config.execution?.symbols || config.symbols || ['BTCUSDT', 'ETHUSDT'];
   }
 
   /**
@@ -45,80 +49,59 @@ export default class AgentOrchestrator {
    */
   async runCycle() {
     if (!this.isRunning) return;
-
     for (const symbol of this.symbolsToWatch) {
       try {
-        console.log(`\n--- Starting Agentic Cycle for ${symbol} ---`);
-
-        // 1. Analyst proposes a trade
-        const proposal = await this.analyst.process({ symbol });
-
-        // Log Analyst episode to memory
+        // 1. Analyst proposes (qualitative — no numbers)
+        const proposal = await this.analyst.process({ symbol, timeframe: this.llmContext.timeframe });
         await this.memory.saveEpisode({
-          agent_id: 'AnalystAgent',
-          input: { symbol },
-          reasoning: proposal.reasoning,
-          action: 'PROPOSE_TRADE',
-          observation: 'Market analysis complete',
-          result: JSON.stringify(proposal)
+          agent_id: 'AnalystAgent', input: { symbol }, reasoning: proposal.rationale,
+          action: 'PROPOSE_TRADE', observation: 'analysis complete', result: JSON.stringify(proposal),
         });
 
-        // 2. RiskAgent reviews the proposal
-        const riskReview = await this.risk.process({
-          type: 'TRADE_RECOMMENDATION',
-          payload: {
-            symbol: proposal.symbol,
-            size: (this.config.portfolioValue || 10000) * (this.config.risk_per_trade_percent || 0.01),
-            side: proposal.signal,
-            price: await this._getCurrentPrice(symbol)
-          }
-        });
+        // 2. Deterministic policy decides size/SL/TP and gates
+        const entryPrice = await this._getCurrentPrice(symbol);
+        const portfolioState = await this._getPortfolioState();
+        const verdict = this.riskPolicy.evaluate(proposal, { entryPrice, ...portfolioState });
 
-        // Log Risk episode
         await this.memory.saveEpisode({
-          agent_id: 'RiskAgent',
-          input: proposal,
-          reasoning: riskReview.reasoning,
-          action: 'VETO_CHECK',
-          observation: 'Risk limits evaluated',
-          result: riskReview.decision
+          agent_id: 'RiskPolicy', input: proposal, reasoning: verdict.reason || 'permitted',
+          action: 'GATE', observation: 'limits evaluated', result: verdict.decision,
         });
 
-        if (riskReview.decision === 'APPROVED') {
-          const tradeParams = {
-            symbol: proposal.symbol,
-            side: proposal.signal.toLowerCase(),
-            sizeUSD: (this.config.portfolioValue || 10000) * (this.config.risk_per_trade_percent || 0.01),
-            price: await this._getCurrentPrice(symbol),
-            stop_loss: proposal.stop_loss,
-            take_profit: proposal.take_profit
-          };
-
-          this.broadcastDecision({
-            symbol,
-            decision: 'EXECUTE',
-            reasoning: `Analyst proposed ${proposal.signal}, RiskAgent approved: ${riskReview.reasoning}`,
-            details: tradeParams
-          });
-
-          // 3. Execute the trade
-          const executionResult = await this.tradeExecutor.executeTrade(tradeParams);
-
-          this.broadcastThought({
-            agent: 'orchestrator',
-            thought: `Trade Executed: ${executionResult.status === 'SUCCESS' ? 'Success' : 'Failed'}`
-          });
-        } else {
-          this.broadcastDecision({
-            symbol,
-            decision: 'VETOED',
-            reasoning: `Analyst proposed ${proposal.signal}, but RiskAgent vetoed: ${riskReview.reasoning}`
-          });
+        if (verdict.decision !== 'PERMIT') {
+          this.broadcastDecision({ symbol, decision: 'VETOED',
+            reasoning: `${proposal.side} proposed; policy denied: ${verdict.reason}` });
+          continue;
         }
 
+        // 3. Execute
+        const order = verdict.order;
+        const tradeParams = {
+          symbol, side: order.side.toLowerCase(), sizeUSD: order.sizeUSD,
+          price: order.entryPrice, marketType: this.execution.tradeMode,
+        };
+        this.broadcastDecision({ symbol, decision: 'EXECUTE',
+          reasoning: `${proposal.side} (conviction ${proposal.conviction}); SL ${order.slPrice}, TP ${order.tpPrice}`,
+          details: tradeParams });
+        const executionResult = await this.tradeExecutor.executeTrade(tradeParams);
+        this.broadcastThought({ agent: 'orchestrator',
+          thought: `Trade ${executionResult.success ? 'Executed' : 'Failed'} (${order.side} ${symbol})` });
       } catch (error) {
         console.error(`Error in cycle for ${symbol}:`, error);
       }
+    }
+  }
+
+  /** Open-position / heat / daily-pnl snapshot for the policy. Deterministic, no mock equity. */
+  async _getPortfolioState() {
+    try {
+      const { getDB } = await import('../../db.js');
+      const db = getDB('ai');
+      const row = await db.get(
+        'SELECT COUNT(*) AS c FROM ai_active_positions WHERE strategy_id = ?', [this.agentId]);
+      return { openPositions: row?.c || 0, portfolioHeatPct: 0, dailyPnlPct: 0 };
+    } catch (_) {
+      return { openPositions: 0, portfolioHeatPct: 0, dailyPnlPct: 0 };
     }
   }
 
