@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useSocket } from '../hooks/useSocket';
 import { Card, Badge, Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '../components/ui/components';
@@ -117,7 +117,7 @@ export function AICockpitPage() {
   }, [socket, id]);
 
   // Fetch trades for this agent
-  const fetchTrades = async () => {
+  const fetchTrades = useCallback(async () => {
     try {
       const res = await fetch(`http://localhost:3000/api/agents/trades?agent_id=${id}&interval=${interval}`);
       const data = await res.json();
@@ -125,13 +125,13 @@ export function AICockpitPage() {
     } catch (err) {
       console.error('Failed to fetch AI trades', err);
     }
-  };
+  }, [id, interval]);
 
   useEffect(() => {
     fetchTrades();
     const timer = setInterval(fetchTrades, 10000);
     return () => clearInterval(timer);
-  }, [id, interval]);
+  }, [fetchTrades]);
 
   // Load risk templates + agent config for the configure panel
   useEffect(() => {
@@ -147,19 +147,20 @@ export function AICockpitPage() {
     loadConfigData();
   }, []);
 
-  useEffect(() => {
-    const fetchAgentConfig = async () => {
-      try {
-        const res = await fetch(`http://localhost:3000/api/agents/config/${id}`);
-        const data = await res.json();
-        setAgentConfig(data.success ? data.data : null);
-      } catch (err) {
-        console.error('Failed to fetch agent config', err);
-        setAgentConfig(null);
-      }
-    };
-    fetchAgentConfig();
+  const fetchAgentConfig = useCallback(async () => {
+    try {
+      const res = await fetch(`http://localhost:3000/api/agents/config/${id}`);
+      const data = await res.json();
+      setAgentConfig(data.success ? data.data : null);
+    } catch (err) {
+      console.error('Failed to fetch agent config', err);
+      setAgentConfig(null);
+    }
   }, [id]);
+
+  useEffect(() => {
+    fetchAgentConfig();
+  }, [fetchAgentConfig]);
 
   const saveAgentConfig = async (settings: AIRiskSettings) => {
     const res = await fetch('http://localhost:3000/api/agents/config', {
@@ -169,6 +170,7 @@ export function AICockpitPage() {
     });
     const data = await res.json();
     if (!data.success) throw new Error(data.error || 'Save failed');
+    await fetchAgentConfig();
     setIsConfigOpen(false);
   };
 
@@ -176,14 +178,17 @@ export function AICockpitPage() {
     const isRunning = agentStatus === 'running';
     const endpoint = isRunning ? '/api/agents/stop' : '/api/agents/start';
     try {
-      await fetch(`http://localhost:3000${endpoint}`, {
+      const res = await fetch(`http://localhost:3000${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ agent_id: id }),
       });
+      const data = await res.json();
+      if (!res.ok || data.success === false) throw new Error(data.error || 'Toggle failed');
       setAgentStatus(isRunning ? 'stopped' : 'running');
     } catch (err) {
       console.error('Failed to toggle agent', err);
+      alert('Failed to toggle agent: ' + (err as Error).message);
     }
   };
 
