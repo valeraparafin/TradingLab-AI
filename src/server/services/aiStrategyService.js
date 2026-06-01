@@ -87,11 +87,70 @@ export const aiStrategyService = {
     },
 
     /**
-     * Lists all AI agents (ai_strategies) for the config panel dropdown.
+     * Creates a new AI agent (ai_strategies row).
+     * @param {object} a - Agent fields.
+     * @returns {{ id: number }}
      */
-    async listAgents() {
+    async createAgent(a) {
         const db = getDB('ai');
-        return await db.all('SELECT id, name, status, risk_profile_id FROM ai_strategies ORDER BY name');
+        const r = await db.run(
+            `INSERT INTO ai_strategies
+               (name, status, logic_template_id, risk_profile_id, watchlist, timeframe, trade_mode, paper_trading, portfolio_value, cycle_interval_ms, is_archived)
+             VALUES (?, 'stopped', ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+            [a.name, a.logic_template_id ?? null, a.risk_profile_id ?? null, a.watchlist ?? '', a.timeframe ?? '1H',
+             a.trade_mode ?? 'spot', a.paper_trading ?? 1, a.portfolio_value ?? 10000, a.cycle_interval_ms ?? 300000]
+        );
+        return { id: r.lastID };
+    },
+
+    /**
+     * Fetches a single AI agent by id.
+     * @param {number} id
+     */
+    async getAgent(id) {
+        const db = getDB('ai');
+        return await db.get('SELECT * FROM ai_strategies WHERE id = ?', [id]);
+    },
+
+    /**
+     * Lists AI agents. Excludes archived agents by default.
+     * @param {boolean} includeArchived - Pass true to include archived agents.
+     */
+    async listAgents(includeArchived = false) {
+        const db = getDB('ai');
+        const where = includeArchived ? '' : 'WHERE is_archived = 0';
+        return await db.all(
+            `SELECT id, name, status, logic_template_id, risk_profile_id, watchlist, timeframe, trade_mode, paper_trading, portfolio_value, cycle_interval_ms, last_run, is_archived
+               FROM ai_strategies ${where} ORDER BY name`
+        );
+    },
+
+    /**
+     * Updates allowed fields on an AI agent.
+     * @param {number} id
+     * @param {object} fields - Key-value pairs of fields to update.
+     */
+    async updateAgent(id, fields) {
+        const db = getDB('ai');
+        const allowed = ['name', 'logic_template_id', 'risk_profile_id', 'watchlist', 'timeframe', 'trade_mode', 'paper_trading', 'portfolio_value', 'cycle_interval_ms', 'status', 'last_run'];
+        const sets = [], params = [];
+        for (const [k, v] of Object.entries(fields)) {
+            if (allowed.includes(k)) { sets.push(`${k} = ?`); params.push(v); }
+        }
+        if (!sets.length) return { changes: 0 };
+        params.push(id);
+        const r = await db.run(`UPDATE ai_strategies SET ${sets.join(', ')} WHERE id = ?`, params);
+        return { changes: r.changes };
+    },
+
+    /**
+     * Archives an AI agent (sets is_archived=1, status='stopped').
+     * @param {number} id
+     */
+    async archiveAgent(id) {
+        const db = getDB('ai');
+        const r = await db.run("UPDATE ai_strategies SET is_archived = 1, status = 'stopped' WHERE id = ?", [id]);
+        return { changes: r.changes };
     },
 
     /**
