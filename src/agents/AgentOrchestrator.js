@@ -12,6 +12,7 @@ export default class AgentOrchestrator {
   constructor(io, config = {}) {
     this.io = io;
     this.config = config;
+    this.agentId = config.agentId ?? null;
     this.memory = agentMemory;
     this.analyst = new AnalystAgent(this);
     this.risk = new RiskAgent(config);
@@ -28,7 +29,7 @@ export default class AgentOrchestrator {
    */
   broadcastThought(payload) {
     console.log(`[Agent-Thought] ${payload.thought}`);
-    this.io.emit('agent:thought', payload);
+    this.io.emit('agent:thought', { agentId: this.agentId, ...payload });
   }
 
   /**
@@ -36,7 +37,7 @@ export default class AgentOrchestrator {
    */
   broadcastDecision(payload) {
     console.log(`[Agent-Decision] ${payload.decision} - ${payload.reasoning}`);
-    this.io.emit('agent:decision', payload);
+    this.io.emit('agent:decision', { agentId: this.agentId, ...payload });
   }
 
   /**
