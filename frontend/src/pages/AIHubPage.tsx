@@ -72,12 +72,9 @@ export function AIHubPage() {
   };
 
   const fetchLogicTemplates = async () => {
-    try {
-      const r = await templateApi.getTemplates();
-      setLogicTemplates(r.logic as { id: any; name: string }[]);
-    } catch (err) {
-      console.error('Failed to fetch logic templates', err);
-    }
+    templateApi.getTemplates().then(r => {
+      if (r?.logic) setLogicTemplates(r.logic as { id: any; name: string }[]);
+    }).catch(err => console.error('Failed to load logic templates', err));
   };
 
   // On mount: fetch summary, risk templates, logic templates once
@@ -110,30 +107,34 @@ export function AIHubPage() {
 
   const handleCreate = async (data: any) => {
     try {
-      await fetch('http://localhost:3000/api/agents', {
+      const res = await fetch('http://localhost:3000/api/agents', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || 'Create failed');
       setIsCreateOpen(false);
       await fetchAgents();
     } catch (err) {
-      console.error('Failed to create agent', err);
+      alert('Failed to create agent: ' + (err as any).message);
     }
   };
 
   const handleUpdate = async (data: any) => {
     if (!selectedAgent) return;
     try {
-      await fetch(`http://localhost:3000/api/agents/${selectedAgent.id}`, {
+      const res = await fetch(`http://localhost:3000/api/agents/${selectedAgent.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || 'Update failed');
       setIsEditOpen(false);
       await fetchAgents();
     } catch (err) {
-      console.error('Failed to update agent', err);
+      alert('Failed to update agent: ' + (err as any).message);
     }
   };
 
@@ -143,27 +144,31 @@ export function AIHubPage() {
         agent.status === 'running'
           ? 'http://localhost:3000/api/agents/stop'
           : 'http://localhost:3000/api/agents/start';
-      await fetch(endpoint, {
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ agent_id: agent.id }),
       });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || 'Start/stop failed');
       await fetchAgents();
     } catch (err) {
-      console.error('Failed to start/stop agent', err);
+      alert('Failed to start/stop agent: ' + (err as any).message);
     }
   };
 
   const handleArchive = async (id: number) => {
     if (!confirm('Archive this agent? It will be stopped and moved to the archive.')) return;
     try {
-      await fetch(`http://localhost:3000/api/agents/${id}/archive`, {
+      const res = await fetch(`http://localhost:3000/api/agents/${id}/archive`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || 'Archive failed');
       await fetchAgents();
     } catch (err) {
-      console.error('Failed to archive agent', err);
+      alert('Failed to archive agent: ' + (err as any).message);
     }
   };
 
