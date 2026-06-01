@@ -44,6 +44,9 @@ export function resolveAgentParams(agent, riskProfile = {}, indicators = ['SMC']
       maxPortfolioHeatPct: normFraction(rp.max_portfolio_heat_percent) ?? Infinity,
       dailyLossLimitPct: normFraction(rp.daily_loss_limit_percent) ?? Infinity,
       dailyProfitTargetPct: normFraction(rp.daily_profit_target_percent),
+      // Frequency + R:R gates are counts/ratios, NOT percents — never normalize to fractions.
+      maxTradesPerDay: rp.max_trades_per_day ?? Infinity,
+      minRiskRewardRatio: rp.min_risk_reward_ratio ?? 0,
       portfolioValue: agent.portfolio_value || 10000,
     },
     execution: {

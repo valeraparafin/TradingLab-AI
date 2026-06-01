@@ -15,6 +15,7 @@ const profile = {
   risk_per_trade_percent: 0.02, stop_loss_percent: 0.05, take_profit_percent: 0.1,
   max_trade_size_usd: 250, max_open_positions: 3, max_portfolio_heat_percent: 10,
   daily_loss_limit_percent: 5, daily_profit_target_percent: 8,
+  max_trades_per_day: 10, min_risk_reward_ratio: 1.5,
 };
 const out = resolveAgentParams(agent, profile, ['SMC', 'FVG'], { SMC: 'd1', FVG: 'd2' });
 
@@ -32,6 +33,14 @@ assert.equal(out.guardrails.maxPortfolioHeatPct, 0.10);
 assert.equal(out.guardrails.dailyLossLimitPct, 0.05);
 assert.equal(out.guardrails.maxTradeSizeUSD, 250);
 assert.equal(out.guardrails.portfolioValue, 1000);
+// frequency + R:R gates (ratios/counts, NOT normalized to fractions)
+assert.equal(out.guardrails.maxTradesPerDay, 10);
+assert.equal(out.guardrails.minRiskRewardRatio, 1.5);
+
+// absent gate fields fall back to no-op defaults (∞ trades, 0 min R:R)
+const bare = resolveAgentParams(agent, { risk_per_trade_percent: 0.02 }, ['SMC'], {});
+assert.equal(bare.guardrails.maxTradesPerDay, Infinity);
+assert.equal(bare.guardrails.minRiskRewardRatio, 0);
 
 // execution
 assert.equal(out.execution.agentId, 7);

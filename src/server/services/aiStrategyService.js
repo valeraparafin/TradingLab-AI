@@ -42,12 +42,14 @@ export const aiStrategyService = {
                     max_open_positions: settings.maxOpenPositions,
                     daily_loss_limit_percent: settings.dailyLossLimitPercent,
                     daily_profit_target_percent: settings.dailyProfitTargetPercent,
+                    max_trades_per_day: settings.maxTradesPerDay,
+                    min_risk_reward_ratio: settings.minRiskRewardRatio,
                 };
 
                 const sql = `
                     INSERT OR REPLACE INTO ai_risk_profiles
-                    (name, is_template, risk_per_trade_percent, max_trade_size_usd, stop_loss_percent, take_profit_percent, max_portfolio_heat_percent, max_open_positions, daily_loss_limit_percent, daily_profit_target_percent)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (name, is_template, risk_per_trade_percent, max_trade_size_usd, stop_loss_percent, take_profit_percent, max_portfolio_heat_percent, max_open_positions, daily_loss_limit_percent, daily_profit_target_percent, max_trades_per_day, min_risk_reward_ratio)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `;
 
                 await db.run(sql, Object.values(values));
@@ -206,6 +208,8 @@ export const aiStrategyService = {
             maxOpenPositions: 'max_open_positions',
             dailyLossLimitPercent: 'daily_loss_limit_percent',
             dailyProfitTargetPercent: 'daily_profit_target_percent',
+            maxTradesPerDay: 'max_trades_per_day',
+            minRiskRewardRatio: 'min_risk_reward_ratio',
         };
         const cols = ['name', 'is_template'];
         const vals = [name || `agent-risk-${Date.now()}`, 0];
@@ -243,6 +247,8 @@ export const aiStrategyService = {
             maxOpenPositions: 'max_open_positions',
             dailyLossLimitPercent: 'daily_loss_limit_percent',
             dailyProfitTargetPercent: 'daily_profit_target_percent',
+            maxTradesPerDay: 'max_trades_per_day',
+            minRiskRewardRatio: 'min_risk_reward_ratio',
         };
 
         const updates = [];

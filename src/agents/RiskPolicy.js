@@ -11,12 +11,12 @@ export class RiskPolicy {
 
   /**
    * @param {{side:'BUY'|'SELL'|'HOLD', conviction:number}} proposal
-   * @param {{entryPrice:number, openPositions:number, portfolioHeatPct:number, dailyPnlPct:number}} ctx
+   * @param {{entryPrice:number, openPositions:number, portfolioHeatPct:number, dailyPnlPct:number, tradesToday:number}} ctx
    * @returns {{decision:'PERMIT'|'DENY', reason?:string, order?:object}}
    */
   evaluate(proposal, ctx) {
     const g = this.g;
-    const { entryPrice, openPositions = 0, portfolioHeatPct = 0, dailyPnlPct = 0 } = ctx || {};
+    const { entryPrice, openPositions = 0, portfolioHeatPct = 0, dailyPnlPct = 0, tradesToday = 0 } = ctx || {};
 
     if (!proposal || proposal.side === 'HOLD' || !proposal.side) {
       return { decision: 'DENY', reason: 'Proposal is HOLD/empty (no-op)' };
@@ -28,12 +28,23 @@ export class RiskPolicy {
     if (g.dailyProfitTargetPct != null && isFinite(g.dailyProfitTargetPct) && dailyPnlPct >= g.dailyProfitTargetPct) {
       return { decision: 'DENY', reason: 'Daily profit target reached' };
     }
+    // Trade-frequency circuit breaker
+    if (isFinite(g.maxTradesPerDay) && tradesToday >= g.maxTradesPerDay) {
+      return { decision: 'DENY', reason: `Max trades per day (${g.maxTradesPerDay}) reached` };
+    }
     // Hard caps
     if (openPositions >= (g.maxOpenPositions ?? Infinity)) {
       return { decision: 'DENY', reason: `Max open positions (${g.maxOpenPositions}) reached` };
     }
     if (isFinite(g.maxPortfolioHeatPct) && portfolioHeatPct >= g.maxPortfolioHeatPct) {
       return { decision: 'DENY', reason: `Portfolio heat ${portfolioHeatPct} >= limit ${g.maxPortfolioHeatPct}` };
+    }
+    // Minimum risk/reward: TP distance vs SL distance (both fractions from the profile).
+    if (g.minRiskRewardRatio > 0 && g.stopLossPct > 0 && isFinite(g.takeProfitPct)) {
+      const rr = g.takeProfitPct / g.stopLossPct;
+      if (rr < g.minRiskRewardRatio) {
+        return { decision: 'DENY', reason: `Risk/reward ${rr.toFixed(2)} below minimum ${g.minRiskRewardRatio}` };
+      }
     }
 
     // Sizing — single unit (USD)

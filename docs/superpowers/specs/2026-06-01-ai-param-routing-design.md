@@ -203,7 +203,19 @@ src/server/
 - *Existing callers of `proposal.signal`* → resolved by mapping the old field names inside
   the new contract during the refactor (search-and-update references).
 
-## 9. Future Work (out of scope here)
-- Replace the simulated council in `_consultCouncil` with a real LLM call (§6b seam).
-- Add `maxTradesPerDay` / `minRiskRewardRatio` as DB columns + RiskPolicy gates.
-- Real-exchange execution + exchange-account picker.
+## 9. Future Work
+- Replace the simulated council in `_consultCouncil` with a real LLM call (§6b seam). *(still open)*
+- ~~Add `maxTradesPerDay` / `minRiskRewardRatio` as DB columns + RiskPolicy gates.~~
+  **DONE (2026-06-02):** `ai_risk_profiles` gained `max_trades_per_day INTEGER` +
+  `min_risk_reward_ratio REAL` (idempotent migration in `db.js`); seeded from the risk
+  templates and mapped through `createRiskProfile`/`updateRiskProfile`. `paramResolver`
+  emits them in `guardrails` (counts/ratios — never normalized to fractions; absent →
+  `Infinity`/`0` = no-op). `RiskPolicy.evaluate` adds a trade-frequency circuit breaker
+  (`tradesToday >= maxTradesPerDay`) and a min-R:R gate (`takeProfitPct/stopLossPct <
+  minRiskRewardRatio`).
+- ~~`_getPortfolioState` returns real heat / PnL instead of `0` stubs.~~
+  **DONE (2026-06-02):** `portfolioHeatPct` = Σ`total_cost` of open `ai_active_positions`
+  ÷ `portfolioValue`; `dailyPnlPct` = unrealized mark-to-market (current price vs
+  `avg_entry_price`) ÷ `portfolioValue` (long-accumulation model, drawdown proxy);
+  `tradesToday` = count of today's `ai_paper_trades`.
+- Real-exchange execution + exchange-account picker. *(still open)*

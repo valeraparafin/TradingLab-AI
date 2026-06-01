@@ -196,6 +196,15 @@ export async function initDB() {
         // Column already exists, ignore error
     }
 
+    // Late-added guardrail columns on ai_risk_profiles (frequency + R:R gates).
+    const aiRiskProfileColumns = [
+        'ALTER TABLE ai_risk_profiles ADD COLUMN max_trades_per_day INTEGER',
+        'ALTER TABLE ai_risk_profiles ADD COLUMN min_risk_reward_ratio REAL',
+    ];
+    for (const stmt of aiRiskProfileColumns) {
+        try { await aiDb.exec(stmt); } catch (e) { /* column exists */ }
+    }
+
     const aiStrategyColumns = [
         'ALTER TABLE ai_strategies ADD COLUMN logic_template_id INTEGER',
         'ALTER TABLE ai_strategies ADD COLUMN watchlist TEXT',

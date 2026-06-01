@@ -36,4 +36,18 @@ assert.equal(policy.evaluate({ side: 'BUY', conviction: 1 }, { ...ctx, portfolio
 assert.equal(policy.evaluate({ side: 'BUY', conviction: 1 }, { ...ctx, dailyPnlPct: -0.05 }).decision, 'DENY');
 assert.equal(policy.evaluate({ side: 'BUY', conviction: 1 }, { ...ctx, dailyPnlPct: 0.08 }).decision, 'DENY');
 
+// (d) minRiskRewardRatio gate: rr = takeProfitPct/stopLossPct = 0.10/0.05 = 2.0
+const rrStrict = new RiskPolicy({ ...guardrails, minRiskRewardRatio: 3 });
+assert.equal(rrStrict.evaluate({ side: 'BUY', conviction: 1 }, ctx).decision, 'DENY', 'rr 2.0 < min 3 must DENY');
+const rrOk = new RiskPolicy({ ...guardrails, minRiskRewardRatio: 1.5 });
+assert.equal(rrOk.evaluate({ side: 'BUY', conviction: 1 }, ctx).decision, 'PERMIT', 'rr 2.0 >= min 1.5 must PERMIT');
+
+// (e) maxTradesPerDay gate
+const freq = new RiskPolicy({ ...guardrails, maxTradesPerDay: 5 });
+assert.equal(freq.evaluate({ side: 'BUY', conviction: 1 }, { ...ctx, tradesToday: 5 }).decision, 'DENY', 'at cap must DENY');
+assert.equal(freq.evaluate({ side: 'BUY', conviction: 1 }, { ...ctx, tradesToday: 4 }).decision, 'PERMIT', 'below cap must PERMIT');
+
+// no-config defaults: absent maxTradesPerDay / minRiskRewardRatio never block
+assert.equal(policy.evaluate({ side: 'BUY', conviction: 1 }, { ...ctx, tradesToday: 9999 }).decision, 'PERMIT', 'undefined cap is no-op');
+
 console.log('OK test_risk_policy');

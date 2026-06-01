@@ -14,6 +14,7 @@ export default class AgentOrchestrator {
     this.config = config;
     this.agentId = config.execution?.agentId ?? config.agentId ?? null;
     this.llmContext = config.llmContext || {};
+    this.guardrails = config.guardrails || {};
     this.execution = config.execution || { paperTrading: true };
     this.memory = agentMemory;
     this.analyst = new AnalystAgent(this);
@@ -92,16 +93,46 @@ export default class AgentOrchestrator {
     }
   }
 
-  /** Open-position / heat / daily-pnl snapshot for the policy. Deterministic, no mock equity. */
+  /**
+   * Real portfolio snapshot for the policy — no mock equity.
+   *  - openPositions: count of open rows in ai_active_positions
+   *  - portfolioHeatPct: deployed exposure (Σ total_cost) / portfolioValue  → FRACTION
+   *  - dailyPnlPct: unrealized mark-to-market PnL (current price vs avg entry) / portfolioValue → FRACTION
+   *    (long-accumulation model; used as the drawdown / profit circuit-breaker proxy)
+   *  - tradesToday: paper trades opened today (UTC date), for the maxTradesPerDay gate
+   */
   async _getPortfolioState() {
     try {
       const { getDB } = await import('../../db.js');
       const db = getDB('ai');
-      const row = await db.get(
-        'SELECT COUNT(*) AS c FROM ai_active_positions WHERE strategy_id = ?', [this.agentId]);
-      return { openPositions: row?.c || 0, portfolioHeatPct: 0, dailyPnlPct: 0 };
+      const portfolioValue = this.guardrails.portfolioValue || 10000;
+
+      const positions = await db.all(
+        'SELECT symbol, total_quantity, total_cost, avg_entry_price FROM ai_active_positions WHERE strategy_id = ?',
+        [this.agentId]);
+
+      const openPositions = positions.length;
+      const exposure = positions.reduce((s, p) => s + (p.total_cost || 0), 0);
+      const portfolioHeatPct = portfolioValue > 0 ? exposure / portfolioValue : 0;
+
+      // Unrealized PnL: mark each open position to the latest price.
+      let unrealized = 0;
+      for (const p of positions) {
+        const px = await this._getCurrentPrice(p.symbol);
+        if (px > 0 && p.avg_entry_price > 0) {
+          unrealized += (px - p.avg_entry_price) * (p.total_quantity || 0);
+        }
+      }
+      const dailyPnlPct = portfolioValue > 0 ? unrealized / portfolioValue : 0;
+
+      const tRow = await db.get(
+        "SELECT COUNT(*) AS c FROM ai_paper_trades WHERE strategy_id = ? AND date(timestamp) = date('now')",
+        [this.agentId]);
+      const tradesToday = tRow?.c || 0;
+
+      return { openPositions, portfolioHeatPct, dailyPnlPct, tradesToday };
     } catch (_) {
-      return { openPositions: 0, portfolioHeatPct: 0, dailyPnlPct: 0 };
+      return { openPositions: 0, portfolioHeatPct: 0, dailyPnlPct: 0, tradesToday: 0 };
     }
   }
 
