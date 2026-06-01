@@ -87,10 +87,18 @@ app.post('/api/agents/start', async (req, res) => {
     }
     // Real-mode safety: no exchange-account picker yet -> force paper trading regardless of agent.paper_trading.
     const paperTrading = true; // TODO: honor agent.paper_trading once exchange accounts exist
+
+    let indicators = ['SMC'];
+    try {
+      const resolved = await aiStrategyService.getLogicTemplateIndicators(agent.logic_template_id);
+      if (resolved?.length) indicators = resolved;
+    } catch (e) { /* keep default */ }
+
     const config = {
       ...riskProfile,
       agentId,
       logicTemplateId: agent.logic_template_id,
+      indicators,
       symbols: (agent.watchlist || 'BTCUSDT,ETHUSDT').split(',').map(s => s.trim()).filter(Boolean),
       timeframe: agent.timeframe || '1H',
       portfolioValue: agent.portfolio_value || 10000,

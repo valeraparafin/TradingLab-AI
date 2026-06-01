@@ -1,6 +1,13 @@
 import { getDB } from '../../db.js';
 import { ToolRegistry } from '../registry/ToolRegistry.js';
 
+const INDICATOR_DESCRIPTIONS = {
+    SMC: 'Smart Money Concepts — institutional order flow, BOS/CHoCH structure shifts.',
+    Breakout: 'Breakout Channels — price escaping a consolidation range.',
+    OrderBlocks: 'Order Blocks — last opposing candle before an impulsive move.',
+    FVG: 'Fair Value Gap — price imbalance / inefficiency to be filled.',
+};
+
 /**
  * AnalystAgent uses a 'Council of Experts' pattern to provide deep market analysis.
  * It employs a Reflection Loop (Thought -> Action -> Observation -> Reflection)
@@ -10,6 +17,7 @@ export class AnalystAgent {
     constructor(orchestrator) {
         this.orchestrator = orchestrator;
         this.tools = new ToolRegistry();
+        this.indicators = (orchestrator?.config?.indicators) || ['SMC'];
         this.capabilities = ['analysis', 'market-research', 'strategy-optimization'];
         this.experts = {
             macro: { weight: 0.3, name: 'Macro Analyst' },
@@ -121,6 +129,9 @@ export class AnalystAgent {
     async _consultCouncil(symbol, timeframe, hypothesis) {
         this.emitThought("Consulting Council of Experts (Macro, Quant, Order Flow)...");
 
+        const indicatorContext = this.indicators
+            .map(i => `${i}: ${INDICATOR_DESCRIPTIONS[i] || 'custom indicator'}`).join('; ');
+
         // In a real LLM-driven agent, these would be separate prompts.
         // Here we simulate the specialized reasoning of the experts.
         return {
@@ -130,7 +141,7 @@ export class AnalystAgent {
             },
             quant: {
                 focus: "Statistical indicators and volatility",
-                suggestion: `Get SMC and Breakout indicators for ${symbol} on ${timeframe}.`
+                suggestion: `Get indicators [${this.indicators.join(', ')}] for ${symbol} on ${timeframe}. Context: ${indicatorContext}`
             },
             orderFlow: {
                 focus: "Volume and execution patterns",
@@ -142,13 +153,11 @@ export class AnalystAgent {
     async _gatherEvidence(symbol, timeframe, expertAnalysis) {
         const observations = [];
 
-        // Action based on Quant Expert
-        const indicator = await this.tools.get_indicator({
-            symbol,
-            indicatorType: "SMC",
-            timeframe
-        });
-        observations.push({ source: 'quant', data: indicator });
+        // Action based on Quant Expert — loop over configured indicators
+        for (const indicatorType of this.indicators) {
+            const indicator = await this.tools.get_indicator({ symbol, indicatorType, timeframe });
+            observations.push({ source: 'quant', indicatorType, data: indicator });
+        }
 
         // Action based on Macro Expert
         const macroCandles = await this.tools.get_candles({

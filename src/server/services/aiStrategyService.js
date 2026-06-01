@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { getDB } from '../../../db.js';
+import { templateService } from './template.service.js';
 
 /**
  * AI Strategy Service handles the management of AI risk profiles
@@ -159,6 +160,33 @@ export const aiStrategyService = {
     async listRiskTemplates() {
         const db = getDB('ai');
         return await db.all('SELECT * FROM ai_risk_profiles WHERE is_template = 1 ORDER BY name');
+    },
+
+    /**
+     * Resolves the indicator list for a logic template by its ID.
+     * Logic templates live in templates/logic/<id>.json and have a `type` field
+     * (e.g. "SMC", "Breakout") that maps directly to indicator names.
+     *
+     * TODO: If a single template should map to MULTIPLE indicators (e.g. SMC + FVG),
+     * update the logic template schema to add an `indicators: string[]` array field
+     * and read that here instead of the single `type` field.
+     *
+     * @param {string|null} logicTemplateId
+     * @returns {Promise<string[]>}
+     */
+    async getLogicTemplateIndicators(logicTemplateId) {
+        if (!logicTemplateId) return ['SMC'];
+        try {
+            const template = await templateService.loadTemplate('logic', logicTemplateId);
+            if (template && template.type) {
+                // A template's `type` is the primary indicator name (e.g. "SMC", "Breakout").
+                return [template.type];
+            }
+            // Safe default if template exists but has no type field
+            return ['SMC', 'Breakout'];
+        } catch (e) {
+            return ['SMC', 'Breakout'];
+        }
     },
 
     /**
