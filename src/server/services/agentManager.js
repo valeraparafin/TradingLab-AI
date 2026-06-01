@@ -79,12 +79,18 @@ export function createAgentManager(io) {
 
     async archive(agentIdRaw) {
       const agentId = Number(agentIdRaw);
-      const o = orchestrators.get(agentId);
-      if (o) o.stop();
-      orchestrators.delete(agentId);
-      await aiStrategyService.archiveAgent(agentId);
-      io.emit('agent:status', { agentId, status: 'stopped' });
-      return { http: 200, body: { success: true } };
+      if (!agentId) return { http: 400, body: { success: false, error: 'Missing agent_id' } };
+      try {
+        const o = orchestrators.get(agentId);
+        if (o) o.stop();
+        orchestrators.delete(agentId);
+        await aiStrategyService.archiveAgent(agentId);
+        io.emit('agent:status', { agentId, status: 'stopped' });
+        return { http: 200, body: { success: true } };
+      } catch (err) {
+        console.error(`[Agent Archive Error] ${err.message}`);
+        return { http: 500, body: { success: false, error: err.message } };
+      }
     },
   };
 }
