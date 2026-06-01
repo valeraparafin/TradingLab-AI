@@ -26,7 +26,7 @@ export class ToolRegistry {
                 case 'place_order':
                     return {
                         success: false,
-                        error: 'Use TradeExecutor for order placement to ensure RiskGuard validation.'
+                        error: 'Use TradeExecutor for order placement to ensure RiskPolicy validation.'
                     };
                 default:
                     throw new Error(`Tool ${toolName} not found in registry.`);
