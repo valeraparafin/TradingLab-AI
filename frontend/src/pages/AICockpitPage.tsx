@@ -402,6 +402,7 @@ export function AICockpitPage() {
             initialConfig={agentConfig}
             onSave={saveAgentConfig}
             onCancel={() => setIsConfigOpen(false)}
+            showAgentPicker={false}
           />
         </SheetContent>
       </Sheet>
