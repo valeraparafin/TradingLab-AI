@@ -102,17 +102,21 @@ export function AICockpitPage() {
       setThoughtStream((prev) => [newThought, ...prev].slice(0, 50));
     };
 
-    socket.on('agent:thought', (data) => handleAgentThought('agent:thought', data));
-    socket.on('agent:decision', (data) => handleAgentThought('agent:decision', data));
-    socket.on('agent:status', (data: { agentId?: number; status: 'running' | 'stopped' }) => {
+    const onThought = (data: any) => handleAgentThought('agent:thought', data);
+    const onDecision = (data: any) => handleAgentThought('agent:decision', data);
+    const onStatus = (data: { agentId?: number; status: 'running' | 'stopped' }) => {
       if (data.agentId != null && Number(data.agentId) !== id) return;
       setAgentStatus(data.status);
-    });
+    };
+
+    socket.on('agent:thought', onThought);
+    socket.on('agent:decision', onDecision);
+    socket.on('agent:status', onStatus);
 
     return () => {
-      socket.off('agent:thought');
-      socket.off('agent:decision');
-      socket.off('agent:status');
+      socket.off('agent:thought', onThought);
+      socket.off('agent:decision', onDecision);
+      socket.off('agent:status', onStatus);
     };
   }, [socket, id]);
 

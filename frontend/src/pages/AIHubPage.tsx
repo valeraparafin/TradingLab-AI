@@ -72,9 +72,12 @@ export function AIHubPage() {
   };
 
   const fetchLogicTemplates = async () => {
-    templateApi.getTemplates().then(r => {
+    try {
+      const r = await templateApi.getTemplates();
       if (r?.logic) setLogicTemplates(r.logic as { id: any; name: string }[]);
-    }).catch(err => console.error('Failed to load logic templates', err));
+    } catch (err) {
+      console.error('Failed to load logic templates', err);
+    }
   };
 
   // On mount: fetch summary, risk templates, logic templates once

@@ -76,10 +76,15 @@ app.get('/api/agents/risk-templates', async (req, res) => {
 app.post('/api/agents/start', async (req, res) => {
   const agentId = Number(req.body.agent_id);
   if (!agentId) return res.status(400).json({ success: false, error: 'Missing agent_id' });
+  // Reserve the slot synchronously to prevent duplicate starts under concurrent requests.
+  if (orchestrators.has(agentId)) return res.json({ status: 'already_running' });
+  orchestrators.set(agentId, null); // null = reserved / starting
   try {
     const agent = await aiStrategyService.getAgent(agentId);
-    if (!agent) return res.status(404).json({ success: false, error: 'Agent not found' });
-    if (orchestrators.has(agentId)) return res.json({ status: 'already_running' });
+    if (!agent) {
+      orchestrators.delete(agentId);
+      return res.status(404).json({ success: false, error: 'Agent not found' });
+    }
 
     const riskProfile = agent.risk_profile_id ? await aiStrategyService.getRiskProfile(agent.risk_profile_id) : {};
     if (!agent.risk_profile_id || !riskProfile || Object.keys(riskProfile).length === 0) {
@@ -113,6 +118,7 @@ app.post('/api/agents/start', async (req, res) => {
     io.emit('agent:status', { agentId, status: 'running' });
     res.json({ status: 'started' });
   } catch (err) {
+    orchestrators.delete(agentId); // roll back reservation on failure
     console.error(`[Agent Start Error] ${err.message}`);
     res.status(500).json({ success: false, error: err.message });
   }
@@ -123,7 +129,8 @@ app.post('/api/agents/stop', async (req, res) => {
   if (!agentId) return res.status(400).json({ success: false, error: 'Missing agent_id' });
   try {
     const o = orchestrators.get(agentId);
-    if (o) { o.stop(); orchestrators.delete(agentId); }
+    if (o) o.stop();
+    orchestrators.delete(agentId);
     await aiStrategyService.updateAgent(agentId, { status: 'stopped' });
     io.emit('agent:status', { agentId, status: 'stopped' });
     res.json({ status: 'stopped' });
@@ -189,17 +196,31 @@ app.post('/api/agents/config', async (req, res) => {
   }
 
   try {
-    const agent = await aiStrategyService.getAgent(Number(agent_id));
+    const agentId = Number(agent_id);
+    const agent = await aiStrategyService.getAgent(agentId);
     if (!agent) {
       return res.status(404).json({ success: false, error: 'Agent not found' });
     }
 
-    const result = await aiStrategyService.updateRiskProfile(agent.risk_profile_id, settings);
-    res.json({
-      success: true,
-      status: result.changes > 0 ? 'updated' : 'no_changes',
-      message: result.changes > 0 ? 'Configuration updated successfully' : 'No changes detected'
-    });
+    // Load the existing profile (if any) to check whether it's a shared template.
+    const existingProfile = agent.risk_profile_id
+      ? await aiStrategyService.getRiskProfile(agent.risk_profile_id)
+      : null;
+
+    if (!existingProfile || existingProfile.is_template) {
+      // No owned profile yet, or the stored profile is a shared template —
+      // create a fresh non-template profile so we never mutate the shared template.
+      const { id: newProfileId } = await aiStrategyService.createRiskProfile(
+        settings,
+        `${agent.name}-risk`
+      );
+      await aiStrategyService.updateAgent(agentId, { risk_profile_id: newProfileId });
+    } else {
+      // The agent already owns a non-template profile — update it in place.
+      await aiStrategyService.updateRiskProfile(agent.risk_profile_id, settings);
+    }
+
+    res.json({ success: true });
   } catch (err) {
     console.error(`[Config Update Error] ${err.message}`);
     res.status(500).json({ success: false, error: err.message });
@@ -261,8 +282,10 @@ app.post('/api/agents/:id/archive', async (req, res) => {
   try {
     const id = Number(req.params.id);
     const o = orchestrators.get(id);
-    if (o) { o.stop(); orchestrators.delete(id); }
+    if (o) o.stop();
+    orchestrators.delete(id);
     await aiStrategyService.archiveAgent(id);
+    io.emit('agent:status', { agentId: id, status: 'stopped' });
     res.json({ success: true });
   } catch (err) {
     console.error(`[Agent Archive Error] ${err.message}`);

@@ -190,6 +190,41 @@ export const aiStrategyService = {
     },
 
     /**
+     * Creates a new non-template risk profile owned by a single agent.
+     * @param {object} settings - camelCase risk settings from the frontend.
+     * @param {string} [name] - Optional profile name.
+     * @returns {{ id: number }}
+     */
+    async createRiskProfile(settings, name) {
+        const db = getDB('ai');
+        const map = {
+            riskPerTradePercent: 'risk_per_trade_percent',
+            maxTradeSizeUSD: 'max_trade_size_usd',
+            stopLossPercent: 'stop_loss_percent',
+            takeProfitPercent: 'take_profit_percent',
+            maxPortfolioHeatPercent: 'max_portfolio_heat_percent',
+            maxOpenPositions: 'max_open_positions',
+            dailyLossLimitPercent: 'daily_loss_limit_percent',
+            dailyProfitTargetPercent: 'daily_profit_target_percent',
+        };
+        const cols = ['name', 'is_template'];
+        const vals = [name || `agent-risk-${Date.now()}`, 0];
+        const ph = ['?', '?'];
+        for (const [camel, snake] of Object.entries(map)) {
+            if (settings[camel] !== undefined) {
+                cols.push(snake);
+                vals.push(settings[camel]);
+                ph.push('?');
+            }
+        }
+        const r = await db.run(
+            `INSERT INTO ai_risk_profiles (${cols.join(',')}) VALUES (${ph.join(',')})`,
+            vals
+        );
+        return { id: r.lastID };
+    },
+
+    /**
      * Updates a specific risk profile's values.
      * Expects settings in camelCase to match frontend/JSON.
      * @param {number} id
