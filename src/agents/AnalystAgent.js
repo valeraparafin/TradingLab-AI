@@ -211,17 +211,20 @@ export class AnalystAgent {
         const finalIteration = evidence[evidence.length - 1];
         const fq = (finalIteration?.state || []).filter(s => s.source === 'quant');
         const fScore = fq.length ? fq.map(q => Number(q.value?.result) || 0).reduce((a, b) => a + b, 0) / fq.length : 0;
-        const signal = fScore > 0 ? "BUY" : "SELL";
 
-        const decision = {
-            symbol,
-            signal,
-            confidence: Math.min(0.95, 0.5 + (evidence.length * 0.1)),
-            reasoning: evidence.map(e => e.reflection.newHypothesis).join(" -> "),
-            thoughts: evidence.map(e => e.reflection.source)
+        const side = fScore > 0 ? 'BUY' : fScore < 0 ? 'SELL' : 'HOLD';
+        const conviction = Math.min(0.95, 0.5 + (evidence.length * 0.1));
+        const rationale = evidence.map(e => e.reflection.newHypothesis).join(' -> ');
+
+        // QualitativeProposal contract — NO money numbers. (Future LLM returns this exact shape.)
+        const proposal = {
+            side,
+            conviction,
+            rationale,
+            invalidationIdea: side === 'HOLD' ? null : `Invalidate if structure flips against ${side}.`,
         };
 
-        this.emitThought(`Final Decision: ${signal} for ${symbol} with confidence ${decision.confidence.toFixed(2)}`);
-        return decision;
+        this.emitThought(`Final Proposal: ${side} for ${symbol} (conviction ${conviction.toFixed(2)})`);
+        return proposal;
     }
 }
