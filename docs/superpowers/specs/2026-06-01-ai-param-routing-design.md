@@ -45,6 +45,8 @@ be enforced deterministically in code?**
    evaluated **at the point of action** (right before the trade executes).
 5. Fix the five defects above as a natural consequence of the above.
 6. Leave a **single, clearly-marked seam** where the real LLM request slots in later.
+7. **Extract AI orchestration out of `server.js`** into a router + `agentManager` service,
+   isolating the AI contour and shrinking `server.js` to infrastructure.
 
 ## 3. Non-Goals (explicitly deferred)
 
@@ -150,6 +152,35 @@ for drawdown state but no longer owns sizing/veto math.
 `TradeExecutor` is instantiated **per agent** (or given `execution` per call), writes to
 **`ai_paper_trades` via `getDB('ai')`** with `agent_id`, and honors `paperTrading`.
 
+### 6e. Extraction of AI orchestration from `server.js`
+Today ~250 of `server.js`'s 372 lines are AI concerns: 12 `/api/agents/*` routes (lines
+44–290) plus the `orchestrators` Map and the start/stop/config orchestration inline in the
+route handlers. This is extracted so `server.js` becomes neutral infrastructure and the AI
+contour is fully isolated (answers the manual-vs-AI separation concern).
+
+New layout:
+```
+server.js                       ← create app/io, mount routers, boot (~120 lines)
+src/server/
+  routes/agents.routes.js       ← Express Router: the 12 /api/agents endpoints (thin HTTP layer only)
+  services/agentManager.js (new)← owns the orchestrators Map + start/stop/archive logic;
+                                   builds config via paramResolver; emits agent:status
+  services/aiStrategyService.js ← unchanged (DB CRUD)
+  agents/paramResolver.js (new) ← §6a
+  agents/RiskPolicy.js   (new)  ← §6c
+```
+
+- **`agents.routes.js`**: parses request → calls `agentManager`/`aiStrategyService` →
+  returns JSON. No business logic. Preserves existing route ordering (static
+  `/api/agents/<word>` before `/api/agents/:id`).
+- **`agentManager.js`**: owns the `Map`, the race-guard reservation, real-mode→paper
+  safety, and `agent:status` emission. **`io` is injected** at init (constructor/factory) —
+  the manager never imports `server.js`; the dependency is one-directional.
+- **`server.js`**: imports and mounts the router, passes `io` into `agentManager`, runs
+  boot (seedTemplates + reset stale running statuses).
+- **No behavior change** to the HTTP contract — same paths, payloads, responses. This is a
+  move + dependency-injection refactor, verified by the existing AI tests still passing.
+
 ## 7. Testing
 
 - **`paramResolver` unit test:** given a known agent+profile row, asserts the three blocks
@@ -162,6 +193,9 @@ for drawdown state but no longer owns sizing/veto math.
   `agent_id` (not `paper_trades`).
 - **Contract test:** `AnalystAgent.process` returns the `QualitativeProposal` shape with no
   numeric money fields.
+- **Extraction regression:** the existing `test_ai_agents` / `test_concurrency` suites pass
+  unchanged after the `server.js` → `agentManager`/router split (proves no HTTP-contract
+  drift). `agentManager` gets a direct unit test for start/stop registry behavior (no HTTP).
 
 ## 8. Risks & Mitigations
 - *Behavioral change to live gating logic* → covered by the RiskPolicy unit tests above;
