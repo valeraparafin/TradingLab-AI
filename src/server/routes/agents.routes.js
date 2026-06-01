@@ -175,6 +175,17 @@ export function createAgentsRouter(manager) {
     }
   });
 
+  r.get('/:id/equity', async (req, res) => {
+    try {
+      const interval = ['day', 'week', 'month'].includes(req.query.interval) ? req.query.interval : 'day';
+      const snapshots = await aiStrategyService.getEquitySnapshots(Number(req.params.id), interval);
+      res.json({ success: true, data: { snapshots } });
+    } catch (err) {
+      console.error(`[Agent Equity Error] ${err.message}`);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   r.put('/:id', async (req, res) => {
     try {
       const id = Number(req.params.id);

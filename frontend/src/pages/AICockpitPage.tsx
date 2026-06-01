@@ -45,23 +45,31 @@ export function AICockpitPage() {
   const [thoughtStream, setThoughtStream] = useState<AgentThought[]>([]);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [interval, setIntervalValue] = useState<'day' | 'week' | 'month'>('day');
-  const [confidence] = useState({
-    analyst: 0.5,
-    risk: 0.5,
-    optimizer: 0.5,
+  // Analyst = real proposal conviction; Risk = headroom derived from risk state.
+  // (Optimizer is a planned agent — rendered as a placeholder, not a fake number.)
+  const [confidence, setConfidence] = useState<{ analyst: number; risk: number }>({
+    analyst: 0,
+    risk: 0,
   });
-  const [riskState] = useState({
-    heat: 12.5,
-    state: 'NORMAL' as 'NORMAL' | 'CAUTION' | 'PANIC',
-    trend: [2, -1, 3, 1, -2, 4, 1, 0, 2, 3, -1, 2]
+  const [riskState, setRiskState] = useState<{
+    heat: number;
+    state: 'NORMAL' | 'CAUTION' | 'PANIC';
+    trend: number[];
+  }>({
+    heat: 0,
+    state: 'NORMAL',
+    trend: [],
   });
-  const [councilData] = useState({
-    consensus: 0.65,
+  const [councilData, setCouncilData] = useState<{
+    consensus: number;
+    lenses: { lens: string; sentiment: 'bullish' | 'bearish' | 'neutral'; confidence: number }[];
+  }>({
+    consensus: 0,
     lenses: [
-      { lens: 'Macro', sentiment: 'bullish' as const, confidence: 0.8 },
-      { lens: 'Order Flow', sentiment: 'bullish' as const, confidence: 0.6 },
-      { lens: 'Quant', sentiment: 'neutral' as const, confidence: 0.4 },
-    ]
+      { lens: 'Macro', sentiment: 'neutral', confidence: 0 },
+      { lens: 'Quant', sentiment: 'neutral', confidence: 0 },
+      { lens: 'Order Flow', sentiment: 'neutral', confidence: 0 },
+    ],
   });
 
   // AI risk config panel state
@@ -109,14 +117,32 @@ export function AICockpitPage() {
       setAgentStatus(data.status);
     };
 
+    // Live pulse: heat / risk state / conviction / council, scoped to this agent.
+    const riskToConfidence = (s: string) => (s === 'NORMAL' ? 0.9 : s === 'CAUTION' ? 0.5 : 0.2);
+    const onTelemetry = (data: any) => {
+      if (data.agentId != null && Number(data.agentId) !== id) return;
+      setRiskState((prev) => ({
+        ...prev,
+        heat: data.heatPct ?? prev.heat,
+        state: data.riskState ?? prev.state,
+      }));
+      setConfidence({
+        analyst: data.analystConviction ?? 0,
+        risk: riskToConfidence(data.riskState),
+      });
+      if (data.council) setCouncilData(data.council);
+    };
+
     socket.on('agent:thought', onThought);
     socket.on('agent:decision', onDecision);
     socket.on('agent:status', onStatus);
+    socket.on('agent:telemetry', onTelemetry);
 
     return () => {
       socket.off('agent:thought', onThought);
       socket.off('agent:decision', onDecision);
       socket.off('agent:status', onStatus);
+      socket.off('agent:telemetry', onTelemetry);
     };
   }, [socket, id]);
 
@@ -136,6 +162,30 @@ export function AICockpitPage() {
     const timer = setInterval(fetchTrades, 10000);
     return () => clearInterval(timer);
   }, [fetchTrades]);
+
+  // Equity Curve + current Heat from persisted snapshots (survives reload; server is the truth).
+  const fetchEquity = useCallback(async () => {
+    try {
+      const res = await fetch(`http://localhost:3000/api/agents/${id}/equity?interval=${interval}`);
+      const data = await res.json();
+      if (data.success && Array.isArray(data.data.snapshots) && data.data.snapshots.length) {
+        const snaps = data.data.snapshots as { heat_pct: number; daily_pnl_pct: number }[];
+        setRiskState((prev) => ({
+          ...prev,
+          heat: snaps[snaps.length - 1].heat_pct ?? prev.heat,
+          trend: snaps.map((s) => s.daily_pnl_pct ?? 0),
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to fetch equity snapshots', err);
+    }
+  }, [id, interval]);
+
+  useEffect(() => {
+    fetchEquity();
+    const timer = setInterval(fetchEquity, 10000);
+    return () => clearInterval(timer);
+  }, [fetchEquity]);
 
   // Load risk templates + agent config for the configure panel
   useEffect(() => {
@@ -271,6 +321,18 @@ export function AICockpitPage() {
                   </div>
                 </div>
               ))}
+              {/* Optimizer — planned agent (snapshot → optimize → backtest), not yet built */}
+              <div className="space-y-2 opacity-50">
+                <div className="flex justify-between text-sm uppercase font-medium">
+                  <span>optimizer</span>
+                  <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+                    PLANNED
+                  </span>
+                </div>
+                <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+                  <div className="h-full w-full bg-[repeating-linear-gradient(45deg,transparent,transparent_4px,hsl(var(--muted-foreground)/0.25)_4px,hsl(var(--muted-foreground)/0.25)_8px)]" />
+                </div>
+              </div>
             </div>
           </Card>
 

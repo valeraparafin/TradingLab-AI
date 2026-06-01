@@ -90,6 +90,26 @@ export const aiStrategyService = {
     },
 
     /**
+     * Returns equity/heat/PnL snapshots for an agent over an interval, oldest→newest.
+     * Source of truth for the cockpit's Equity Curve and current Portfolio Heat.
+     * @param {number} agentId
+     * @param {'day'|'week'|'month'} interval
+     */
+    async getEquitySnapshots(agentId, interval = 'day') {
+        const db = getDB('ai');
+        let since = "datetime('now', '-1 day')";
+        if (interval === 'week') since = "datetime('now', '-7 days')";
+        if (interval === 'month') since = "datetime('now', '-30 days')";
+        return await db.all(
+            `SELECT timestamp, equity_usd, heat_pct, daily_pnl_pct, open_positions, trades_today
+               FROM ai_equity_snapshots
+              WHERE strategy_id = ? AND timestamp >= ${since}
+              ORDER BY timestamp ASC`,
+            [Number(agentId)]
+        );
+    },
+
+    /**
      * Creates a new AI agent (ai_strategies row).
      * @param {object} a - Agent fields.
      * @returns {{ id: number }}

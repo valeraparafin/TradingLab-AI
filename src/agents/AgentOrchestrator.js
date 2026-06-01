@@ -3,6 +3,7 @@ import { agentMemory } from './AgentMemory.js';
 import { toolRegistry } from '../registry/ToolRegistry.js';
 import { TradeExecutor } from './TradeExecutor.js';
 import { RiskPolicy } from './RiskPolicy.js';
+import { deriveRiskState } from './riskState.js';
 
 /**
  * AgentOrchestrator manages the loop: Analyst (qualitative proposal) ->
@@ -50,10 +51,14 @@ export default class AgentOrchestrator {
    */
   async runCycle() {
     if (!this.isRunning) return;
+    // Portfolio state is per-agent, not per-symbol — compute once per cycle.
+    const portfolioState = await this._getPortfolioState();
+    let lastProposal = null;
     for (const symbol of this.symbolsToWatch) {
       try {
         // 1. Analyst proposes (qualitative — no numbers)
         const proposal = await this.analyst.process({ symbol, timeframe: this.llmContext.timeframe });
+        lastProposal = proposal;
         await this.memory.saveEpisode({
           agent_id: 'AnalystAgent', input: { symbol }, reasoning: proposal.rationale,
           action: 'PROPOSE_TRADE', observation: 'analysis complete', result: JSON.stringify(proposal),
@@ -61,7 +66,6 @@ export default class AgentOrchestrator {
 
         // 2. Deterministic policy decides size/SL/TP and gates
         const entryPrice = await this._getCurrentPrice(symbol);
-        const portfolioState = await this._getPortfolioState();
         const verdict = this.riskPolicy.evaluate(proposal, { entryPrice, ...portfolioState });
 
         await this.memory.saveEpisode({
@@ -91,6 +95,61 @@ export default class AgentOrchestrator {
         console.error(`Error in cycle for ${symbol}:`, error);
       }
     }
+    // One telemetry tick + equity snapshot per cycle (drives the live cockpit).
+    await this._recordTelemetry(portfolioState, lastProposal);
+  }
+
+  /**
+   * Persists one equity snapshot and pushes a live telemetry tick to the UI.
+   * History lives in ai_equity_snapshots (source of truth); the socket event is
+   * just the instant pulse so the cockpit updates without waiting for a poll.
+   */
+  async _recordTelemetry(portfolioState, lastProposal) {
+    try {
+      const { getDB } = await import('../../db.js');
+      const db = getDB('ai');
+      const portfolioValue = this.guardrails.portfolioValue || 10000;
+      const { openPositions = 0, portfolioHeatPct = 0, dailyPnlPct = 0, tradesToday = 0 } = portfolioState || {};
+
+      const equityUsd = portfolioValue * (1 + dailyPnlPct);
+      const heatPct = portfolioHeatPct * 100;
+      const pnlPct = dailyPnlPct * 100;
+      const riskState = deriveRiskState(portfolioHeatPct, dailyPnlPct, this.guardrails);
+
+      await db.run(
+        `INSERT INTO ai_equity_snapshots
+           (strategy_id, equity_usd, heat_pct, daily_pnl_pct, open_positions, trades_today)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [this.agentId, equityUsd, heatPct, pnlPct, openPositions, tradesToday]
+      );
+
+      this.io.emit('agent:telemetry', {
+        agentId: this.agentId,
+        heatPct, dailyPnlPct: pnlPct, equityUsd, riskState,
+        openPositions, tradesToday,
+        analystConviction: lastProposal?.conviction ?? null,
+        council: this._buildCouncil(lastProposal),
+      });
+    } catch (e) {
+      console.error(`[Telemetry] ${e.message}`);
+    }
+  }
+
+  /**
+   * Derives the "Expert Council" view from the latest qualitative proposal.
+   * Simulated (mirrors the Analyst's simulated council) until a real LLM supplies
+   * per-lens detail; sentiment + consensus track the agent's actual output.
+   */
+  _buildCouncil(proposal) {
+    const conviction = proposal?.conviction ?? 0;
+    const side = proposal?.side ?? 'HOLD';
+    const sentiment = side === 'BUY' ? 'bullish' : side === 'SELL' ? 'bearish' : 'neutral';
+    const clamp = (n) => Math.max(0, Math.min(1, n));
+    const lens = (name, weight) => ({ lens: name, sentiment, confidence: clamp(conviction * (0.7 + weight)) });
+    return {
+      consensus: conviction,
+      lenses: [lens('Macro', 0.3), lens('Quant', 0.4), lens('Order Flow', 0.3)],
+    };
   }
 
   /**

@@ -182,6 +182,20 @@ export async function initDB() {
             last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (symbol, strategy_id)
         );
+
+        CREATE TABLE IF NOT EXISTS ai_equity_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            strategy_id INTEGER NOT NULL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            equity_usd REAL,
+            heat_pct REAL,
+            daily_pnl_pct REAL,
+            open_positions INTEGER,
+            trades_today INTEGER
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_ai_equity_snap_agent_time
+            ON ai_equity_snapshots (strategy_id, timestamp);
     `);
 
     try {
