@@ -183,9 +183,9 @@ export const aiStrategyService = {
                 return [template.type];
             }
             // Safe default if template exists but has no type field
-            return ['SMC', 'Breakout'];
+            return ['SMC'];
         } catch (e) {
-            return ['SMC', 'Breakout'];
+            return ['SMC'];
         }
     },
 

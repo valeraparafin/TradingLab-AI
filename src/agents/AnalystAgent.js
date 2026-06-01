@@ -156,7 +156,7 @@ export class AnalystAgent {
         // Action based on Quant Expert — loop over configured indicators
         for (const indicatorType of this.indicators) {
             const indicator = await this.tools.get_indicator({ symbol, indicatorType, timeframe });
-            observations.push({ source: 'quant', indicatorType, data: indicator });
+            observations.push({ source: 'quant', data: indicator });
         }
 
         // Action based on Macro Expert
@@ -180,20 +180,23 @@ export class AnalystAgent {
 
     _reflect(hypothesis, state, expertAnalysis) {
         // Simplified reflection logic simulating Agentic Engineering (Hypothesis -> Evidence -> Correction)
-        const quantData = state.find(s => s.source === 'quant');
+        const quantObs = state.filter(s => s.source === 'quant');
+        const quantResults = quantObs.map(q => Number(q.value?.result) || 0);
+        const quantScore = quantResults.length ? quantResults.reduce((a, b) => a + b, 0) / quantResults.length : 0;
+        const quantSuccess = quantObs.length > 0 && quantObs.every(q => q.success);
         const macroData = state.find(s => s.source === 'macro');
 
         let confirmed = false;
         let newHypothesis = hypothesis;
 
-        if (quantData?.success && macroData?.success) {
+        if (quantSuccess && macroData?.success) {
             // Simulate a simple check: if indicators are positive and trend is up, confirm bullish hypothesis
-            if (hypothesis.includes("bullish") && quantData.value?.result > 0) {
+            if (hypothesis.includes("bullish") && quantScore > 0) {
                 confirmed = true;
-            } else if (hypothesis.includes("bearish") && quantData.value?.result < 0) {
+            } else if (hypothesis.includes("bearish") && quantScore < 0) {
                 confirmed = true;
             } else {
-                newHypothesis = quantData.value?.result > 0 ? "Market is turning bullish." : "Market is turning bearish.";
+                newHypothesis = quantScore > 0 ? "Market is turning bullish." : "Market is turning bearish.";
             }
         }
 
@@ -206,7 +209,9 @@ export class AnalystAgent {
 
     _finalizeDecision(symbol, evidence) {
         const finalIteration = evidence[evidence.length - 1];
-        const signal = finalIteration?.state.find(s => s.source === 'quant')?.value?.result > 0 ? "BUY" : "SELL";
+        const fq = (finalIteration?.state || []).filter(s => s.source === 'quant');
+        const fScore = fq.length ? fq.map(q => Number(q.value?.result) || 0).reduce((a, b) => a + b, 0) / fq.length : 0;
+        const signal = fScore > 0 ? "BUY" : "SELL";
 
         const decision = {
             symbol,
