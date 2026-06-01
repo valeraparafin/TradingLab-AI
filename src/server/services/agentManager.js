@@ -1,6 +1,7 @@
 // src/server/services/agentManager.js
 import AgentOrchestrator from '../../agents/AgentOrchestrator.js';
 import { aiStrategyService } from './aiStrategyService.js';
+import { resolveAgentParams } from '../../agents/paramResolver.js';
 
 /**
  * Owns the live orchestrator registry and start/stop/archive lifecycle.
@@ -29,26 +30,17 @@ export function createAgentManager(io) {
         if (!agent.risk_profile_id || !riskProfile || Object.keys(riskProfile).length === 0) {
           console.warn(`[Agent Start] Agent ${agentId} starting WITHOUT risk constraints.`);
         }
-        const paperTrading = true; // real-mode safety until exchange accounts exist
         let indicators = ['SMC'];
         try {
           const resolved = await aiStrategyService.getLogicTemplateIndicators(agent.logic_template_id);
           if (resolved?.length) indicators = resolved;
         } catch (_) { /* keep default */ }
 
-        const config = {
-          ...riskProfile,
-          agentId,
-          logicTemplateId: agent.logic_template_id,
-          indicators,
-          symbols: (agent.watchlist || 'BTCUSDT,ETHUSDT').split(',').map(s => s.trim()).filter(Boolean),
-          timeframe: agent.timeframe || '1H',
-          portfolioValue: agent.portfolio_value || 10000,
-          cycleInterval: agent.cycle_interval_ms || 300000,
-          paperTrading,
-        };
+        const indicatorDescriptions = {}; // descriptions injected later when the LLM lands
+        const { llmContext, guardrails, execution } =
+          resolveAgentParams(agent, riskProfile, indicators, indicatorDescriptions);
 
-        const o = new AgentOrchestrator(io, config);
+        const o = new AgentOrchestrator(io, { llmContext, guardrails, execution, indicators });
         o.start();
         orchestrators.set(agentId, o);
         await aiStrategyService.updateAgent(agentId, { status: 'running', last_run: new Date().toISOString() });
