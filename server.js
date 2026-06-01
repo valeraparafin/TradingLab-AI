@@ -39,6 +39,26 @@ app.use('/api/assets', assetRouter);
 
 let orchestrator = null;
 
+app.get('/api/agents', async (req, res) => {
+  try {
+    const agents = await aiStrategyService.listAgents();
+    res.json({ success: true, data: agents });
+  } catch (err) {
+    console.error(`[Agents List Error] ${err.message}`);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/agents/risk-templates', async (req, res) => {
+  try {
+    const templates = await aiStrategyService.listRiskTemplates();
+    res.json({ success: true, data: templates });
+  } catch (err) {
+    console.error(`[Risk Templates Error] ${err.message}`);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 app.post('/api/agents/start', async (req, res) => {
   const { agent_id } = req.body;
 
@@ -177,7 +197,12 @@ app.get('/api/agents/config/:agent_id', async (req, res) => {
   const { agent_id } = req.params;
   try {
     const db = getDB();
-    const config = await db.get('SELECT * FROM strategy_risk_settings WHERE strategy_id = ?', [agent_id]);
+    const config = await db.get(
+      `SELECT p.* FROM ai_risk_profiles p
+       JOIN ai_strategies s ON s.risk_profile_id = p.id
+       WHERE s.id = ?`,
+      [agent_id]
+    );
 
     if (!config) {
       return res.status(404).json({ success: false, error: 'Configuration not found for this agent' });

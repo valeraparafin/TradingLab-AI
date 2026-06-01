@@ -63,6 +63,22 @@ export const aiStrategyService = {
     },
 
     /**
+     * Lists all AI agents (ai_strategies) for the config panel dropdown.
+     */
+    async listAgents() {
+        const db = getDB('ai');
+        return await db.all('SELECT id, name, status, risk_profile_id FROM ai_strategies ORDER BY name');
+    },
+
+    /**
+     * Lists reusable risk templates (is_template = 1) for the config panel dropdown.
+     */
+    async listRiskTemplates() {
+        const db = getDB('ai');
+        return await db.all('SELECT * FROM ai_risk_profiles WHERE is_template = 1 ORDER BY name');
+    },
+
+    /**
      * Updates a specific risk profile's values.
      * Expects settings in camelCase to match frontend/JSON.
      * @param {number} id

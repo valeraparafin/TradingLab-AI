@@ -12,12 +12,12 @@ export class BitGetService extends BaseExchange {
    * @param {string} config.passphrase - Passphrase.
    * @param {string} config.baseUrl - Base URL of the API.
    */
-  constructor(config) {
+  constructor(config = {}) {
     super();
-    this.apiKey = config.apiKey;
-    this.secretKey = config.secretKey;
-    this.passphrase = config.passphrase;
-    this.baseUrl = config.baseUrl;
+    this.apiKey = config?.apiKey;
+    this.secretKey = config?.secretKey;
+    this.passphrase = config?.passphrase;
+    this.baseUrl = config?.baseUrl;
   }
 
   /**

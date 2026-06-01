@@ -121,7 +121,7 @@ class StrategyService {
   async getPositions(id) {
     const db = getDB();
     const positions = await db.all(
-      'SELECT *, COALESCE(current_price, entry_price) as currentPrice, COALESCE(current_pnl, 0) as currentPnl, COALESCE(current_pnl_percent, 0) as currentPnlPercent, stop_loss as stopLoss, take_profit as takeProfit FROM active_positions WHERE strategy_id = ? AND status = "OPEN"',
+      'SELECT *, COALESCE(current_price, avg_entry_price) as currentPrice, COALESCE(current_pnl, 0) as currentPnl, COALESCE(current_pnl_percent, 0) as currentPnlPercent, stop_loss as stopLoss, take_profit as takeProfit FROM active_positions WHERE strategy_id = ? AND status = "OPEN"',
       [id]
     );
 

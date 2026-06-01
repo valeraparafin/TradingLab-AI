@@ -6,6 +6,7 @@ import { TemplateManager } from './components/TemplateManager';
 import { StrategyDetails } from './components/StrategyDetails';
 import { StrategyEditor } from './pages/StrategyEditor';
 import { AssetsPage } from './pages/AssetsPage';
+import { AITradingPage } from './pages/AITradingPage';
 import { Card } from './components/ui/components';
 import { cn } from './lib/utils';
 import { strategyApi } from './lib/api';
@@ -28,7 +29,7 @@ function App() {
       console.error('Failed to fetch analytics', err);
     }
   };
-  
+
   useEffect(() => {
     fetchAnalytics();
     const interval = setInterval(fetchAnalytics, 10000);
@@ -44,9 +45,10 @@ function App() {
               <h1 className="text-3xl font-extrabold tracking-tight">Trading Lab</h1>
               <p className="text-muted-foreground">Multi-strategy Orchestration Dashboard</p>
             </div>
-            <div className="flex gap-4">
+            <div className="flex items-center gap-4">
               <nav className="flex gap-4 mr-4">
                 <Link to="/" className="text-sm font-medium hover:text-primary transition-colors">Dashboard</Link>
+                <Link to="/ai-trading" className="text-sm font-medium text-primary font-bold hover:text-primary-foreground transition-colors">AI Trading</Link>
                 <Link to="/templates" className="text-sm font-medium hover:text-primary transition-colors">Templates</Link>
                 <Link to="/assets" className="text-sm font-medium hover:text-primary transition-colors">Assets</Link>
               </nav>
@@ -94,6 +96,7 @@ function App() {
                 </div>
               </div>
             } />
+            <Route path="/ai-trading" element={<AITradingPage />} />
             <Route path="/templates" element={<TemplateManager />} />
             <Route path="/assets" element={<AssetsPage />} />
             <Route path="/strategy/:id" element={<StrategyDetails />} />
