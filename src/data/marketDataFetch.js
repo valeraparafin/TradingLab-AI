@@ -48,6 +48,8 @@ export async function downloadCandles(repo, { symbol, timeframe, from, to = Date
   while (cursor <= to) {
     const page = await fetchCandlesPage({ symbol, timeframe, startTime: cursor, limit: pageLimit }, fetchImpl);
     if (!page.length) break;
+    // trim to [from, to]: the upper bound discards candles Binance returns past `to`;
+    // the lower `from` bound is a defensive guard (cursor >= from always holds).
     const inRange = page.filter(c => c.time >= from && c.time <= to);
     total += await repo.upsertCandles(symbol, timeframe, inRange);
     const maxTs = page[page.length - 1].time;
