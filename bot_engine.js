@@ -93,7 +93,7 @@ async function updateActivePosition(strategyId, positionData) {
   const snakePos = toSnake(positionData);
   if (snakePos.action === "open") {
     await db.run(
-      "INSERT INTO active_positions (strategy_id, symbol, side, entry_price, size_usd, stop_loss, take_profit, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'OPEN')",
+      "INSERT OR REPLACE INTO active_positions (strategy_id, symbol, side, entry_price, size_usd, stop_loss, take_profit, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'OPEN')",
       [
         strategyId,
         snakePos.symbol,
