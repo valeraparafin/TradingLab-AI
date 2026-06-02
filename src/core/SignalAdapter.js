@@ -31,6 +31,22 @@ function fromWaveTrend(raw) {
   return { side, conviction: clamp(conviction), reason: `WaveTrend cross ${side}`, invalidation: null };
 }
 
+/** Breakout: needs the latest price to decide direction relative to the channel. */
+function fromBreakout(raw, ctx) {
+  const ch = raw?.channel;
+  if (!ch || !ch.active) return hold('Breakout: channel inactive');
+  const price = ctx.price;
+  let side = SIDE.HOLD;
+  if (price > ch.top) side = SIDE.BUY;
+  else if (price < ch.bottom) side = SIDE.SELL;
+  if (side === SIDE.HOLD) return hold('Breakout: price inside channel');
+  const width = ch.top - ch.bottom;
+  const dist = side === SIDE.BUY ? price - ch.top : ch.bottom - price;
+  const conviction = clamp(0.55 + (width > 0 ? dist / width : 0), 0, 0.9);
+  const invalidation = side === SIDE.BUY ? ch.bottom : ch.top;
+  return { side, conviction, reason: `Breakout ${side}`, invalidation };
+}
+
 /**
  * Dispatch raw indicator output to the matching pure mapper.
  * @param {string} logicType @param {object} raw @param {{price:number, candles:object[]}} ctx
@@ -40,6 +56,7 @@ export function deriveSignal(logicType, raw, ctx) {
   switch (String(logicType).toUpperCase()) {
     case 'SMC': return fromSMC(raw);
     case 'VMC_CIPHERB': return fromWaveTrend(raw);
+    case 'BREAKOUT': return fromBreakout(raw, ctx);
     default: throw new Error(`Unsupported logicType: ${logicType}`);
   }
 }

@@ -56,6 +56,27 @@ add('WaveTrend no cross → HOLD', () => {
   assert.strictEqual(s.side, SIDE.HOLD);
 });
 
+// ---- Breakout ----
+add('Breakout above active channel → BUY (capped conviction)', () => {
+  const raw = { channel: { top: 100, bottom: 90, active: true } };
+  const s = deriveSignal('BREAKOUT', raw, { price: 105, candles: [] });
+  assert.strictEqual(s.side, SIDE.BUY);
+  assert.ok(Math.abs(s.conviction - 0.9) < 1e-9, `conviction ${s.conviction}`);
+  assert.strictEqual(s.invalidation, 90);
+});
+
+add('Breakout inactive channel → HOLD', () => {
+  const raw = { channel: { top: null, bottom: null, active: false } };
+  const s = deriveSignal('BREAKOUT', raw, { price: 105, candles: [] });
+  assert.strictEqual(s.side, SIDE.HOLD);
+});
+
+add('Breakout price inside channel → HOLD', () => {
+  const raw = { channel: { top: 100, bottom: 90, active: true } };
+  const s = deriveSignal('BREAKOUT', raw, { price: 95, candles: [] });
+  assert.strictEqual(s.side, SIDE.HOLD);
+});
+
 // ===== runner (do not edit below) =====
 let failed = 0;
 for (const t of tests) {
