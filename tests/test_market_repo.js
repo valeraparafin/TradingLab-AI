@@ -30,6 +30,27 @@ const run = async () => {
   const gaps = await repo.findGaps('BTCUSDT', '1H', 1000);
   assert.deepStrictEqual(gaps, [5000], `gaps ${JSON.stringify(gaps)}`);
 
+  // ---- funding ----
+  const fn1 = await repo.upsertFunding('BTCUSDT', [{ time: 8000, rate: 0.0001 }, { time: 16000, rate: -0.0002 }]);
+  assert.strictEqual(fn1, 2, 'inserted 2 funding rows');
+  const fn2 = await repo.upsertFunding('BTCUSDT', [{ time: 16000, rate: -0.0002 }]);
+  assert.strictEqual(fn2, 0, 'duplicate funding inserts 0');
+  const fund = await repo.getFunding('BTCUSDT', 0, 20000);
+  assert.strictEqual(fund.length, 2);
+  assert.strictEqual(fund[0].time, 8000);
+  assert.ok(Math.abs(fund[1].rate - -0.0002) < 1e-12);
+
+  // ---- contract specs ----
+  await repo.upsertContractSpec({ symbol: 'BTCUSDT', mmr: 0.005, max_leverage: 150, min_leverage: 1, taker_fee: 0.0006, maker_fee: 0.0002, fund_interval_h: 8, tick_size: 0.1, qty_step: 0.0001, price_precision: 1, qty_precision: 4, min_trade_num: 0.0001, min_trade_usdt: 5 });
+  const spec = await repo.getContractSpec('BTCUSDT');
+  assert.strictEqual(spec.max_leverage, 150);
+  assert.strictEqual(spec.taker_fee, 0.0006);
+  assert.strictEqual(spec.mmr, 0.005);
+  await repo.upsertContractSpec({ symbol: 'BTCUSDT', mmr: 0.01, max_leverage: 125, min_leverage: 1, taker_fee: 0.0006, maker_fee: 0.0002, fund_interval_h: 8, tick_size: 0.1, qty_step: 0.0001, price_precision: 1, qty_precision: 4, min_trade_num: 0.0001, min_trade_usdt: 5 });
+  const spec2 = await repo.getContractSpec('BTCUSDT');
+  assert.strictEqual(spec2.max_leverage, 125, 'spec overwritten (INSERT OR REPLACE)');
+  assert.strictEqual(await repo.getContractSpec('NOPEUSDT'), undefined);
+
   await db.close();
   fs.unlinkSync(tmp);
   console.log('✅ market repo (candles) tests passed');
