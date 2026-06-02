@@ -77,6 +77,14 @@ add('Breakout price inside channel → HOLD', () => {
   assert.strictEqual(s.side, SIDE.HOLD);
 });
 
+add('Breakout below active channel → SELL (capped conviction)', () => {
+  const raw = { channel: { top: 100, bottom: 90, active: true } };
+  const s = deriveSignal('BREAKOUT', raw, { price: 85, candles: [] });
+  assert.strictEqual(s.side, SIDE.SELL);
+  assert.ok(Math.abs(s.conviction - 0.9) < 1e-9, `conviction ${s.conviction}`);
+  assert.strictEqual(s.invalidation, 100);
+});
+
 // ===== runner (do not edit below) =====
 let failed = 0;
 for (const t of tests) {
