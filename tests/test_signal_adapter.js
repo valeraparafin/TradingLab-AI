@@ -35,6 +35,27 @@ add('unknown logicType throws', () => {
   assert.throws(() => deriveSignal('NOPE', {}, { price: 1, candles: [] }), /Unsupported/);
 });
 
+// ---- WaveTrend (VMC_CipherB) ----
+add('WaveTrend cross up + full confluence → BUY', () => {
+  const raw = { wtCrossUp: true, wtCrossDown: false, mfi: 60, stochRsi: { k: 50, d: 50 }, stc: 60 };
+  const s = deriveSignal('VMC_CIPHERB', raw, { price: 100, candles: [] });
+  assert.strictEqual(s.side, SIDE.BUY);
+  assert.ok(Math.abs(s.conviction - 1.0) < 1e-9, `conviction ${s.conviction}`);
+});
+
+add('WaveTrend cross down → SELL', () => {
+  const raw = { wtCrossUp: false, wtCrossDown: true, mfi: 40, stochRsi: { k: 50, d: 50 }, stc: 40 };
+  const s = deriveSignal('VMC_CIPHERB', raw, { price: 100, candles: [] });
+  assert.strictEqual(s.side, SIDE.SELL);
+  assert.ok(Math.abs(s.conviction - 1.0) < 1e-9, `conviction ${s.conviction}`);
+});
+
+add('WaveTrend no cross → HOLD', () => {
+  const raw = { wtCrossUp: false, wtCrossDown: false, mfi: 50, stochRsi: { k: 50, d: 50 }, stc: 50 };
+  const s = deriveSignal('VMC_CIPHERB', raw, { price: 100, candles: [] });
+  assert.strictEqual(s.side, SIDE.HOLD);
+});
+
 // ===== runner (do not edit below) =====
 let failed = 0;
 for (const t of tests) {
