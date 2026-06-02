@@ -15,18 +15,20 @@ export class MarketDataRepo {
     if (!candles.length) return 0;
     let inserted = 0;
     await this.db.run('BEGIN');
+    let stmt;
     try {
-      const stmt = await this.db.prepare(
+      stmt = await this.db.prepare(
         `INSERT OR IGNORE INTO candles (symbol, timeframe, time, open, high, low, close, volume)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       );
-      for (const k of candles) {
-        const r = await stmt.run(symbol, timeframe, k.time, k.open, k.high, k.low, k.close, k.volume);
+      for (const candle of candles) {
+        const r = await stmt.run(symbol, timeframe, candle.time, candle.open, candle.high, candle.low, candle.close, candle.volume);
         inserted += r.changes || 0;
       }
       await stmt.finalize();
       await this.db.run('COMMIT');
     } catch (e) {
+      if (stmt) { try { await stmt.finalize(); } catch (_) {} }
       await this.db.run('ROLLBACK');
       throw e;
     }
