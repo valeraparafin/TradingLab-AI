@@ -47,6 +47,21 @@ function fromBreakout(raw, ctx) {
   return { side, conviction, reason: `Breakout ${side}`, invalidation };
 }
 
+/** Reversal: rejection (pin bar) drives side; aligned recent FVG adds conviction. */
+function fromReversal(raw) {
+  const rej = raw?.rejection;
+  const side = rej?.type === 'bullish' ? SIDE.BUY : rej?.type === 'bearish' ? SIDE.SELL : SIDE.HOLD;
+  if (side === SIDE.HOLD) return hold('Reversal: no rejection');
+  let conviction = 0.5;
+  const fvg = raw?.recentFVG;
+  if (fvg && ((side === SIDE.BUY && fvg.type === 'bullish') || (side === SIDE.SELL && fvg.type === 'bearish'))) {
+    conviction += 0.25;
+  }
+  conviction += 0.15; // rejection already passed the wick>2*body filter upstream
+  const invalidation = side === SIDE.BUY ? rej.low : rej.high;
+  return { side, conviction: clamp(conviction), reason: `Reversal ${side}`, invalidation };
+}
+
 /**
  * Dispatch raw indicator output to the matching pure mapper.
  * @param {string} logicType @param {object} raw @param {{price:number, candles:object[]}} ctx
@@ -57,6 +72,7 @@ export function deriveSignal(logicType, raw, ctx) {
     case 'SMC': return fromSMC(raw);
     case 'VMC_CIPHERB': return fromWaveTrend(raw);
     case 'BREAKOUT': return fromBreakout(raw, ctx);
+    case 'REVERSAL': return fromReversal(raw);
     default: throw new Error(`Unsupported logicType: ${logicType}`);
   }
 }

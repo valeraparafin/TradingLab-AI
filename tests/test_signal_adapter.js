@@ -85,6 +85,29 @@ add('Breakout below active channel → SELL (capped conviction)', () => {
   assert.strictEqual(s.invalidation, 100);
 });
 
+// ---- Reversal ----
+add('Reversal bullish rejection + aligned FVG → BUY', () => {
+  const raw = { structure: { trend: 0 }, recentFVG: { type: 'bullish' }, rejection: { type: 'bullish', high: 100, low: 90 } };
+  const s = deriveSignal('REVERSAL', raw, { price: 95, candles: [] });
+  assert.strictEqual(s.side, SIDE.BUY);
+  assert.ok(Math.abs(s.conviction - 0.9) < 1e-9, `conviction ${s.conviction}`);
+  assert.strictEqual(s.invalidation, 90);
+});
+
+add('Reversal bearish rejection, no FVG → SELL', () => {
+  const raw = { structure: { trend: 0 }, recentFVG: null, rejection: { type: 'bearish', high: 100, low: 90 } };
+  const s = deriveSignal('REVERSAL', raw, { price: 99, candles: [] });
+  assert.strictEqual(s.side, SIDE.SELL);
+  assert.ok(Math.abs(s.conviction - 0.65) < 1e-9, `conviction ${s.conviction}`);
+  assert.strictEqual(s.invalidation, 100);
+});
+
+add('Reversal no rejection → HOLD', () => {
+  const raw = { structure: { trend: 1 }, recentFVG: { type: 'bullish' }, rejection: null };
+  const s = deriveSignal('REVERSAL', raw, { price: 100, candles: [] });
+  assert.strictEqual(s.side, SIDE.HOLD);
+});
+
 // ===== runner (do not edit below) =====
 let failed = 0;
 for (const t of tests) {
