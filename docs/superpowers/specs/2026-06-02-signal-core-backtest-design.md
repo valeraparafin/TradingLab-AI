@@ -197,13 +197,22 @@ where it belongs.
 
 ## 8. Data layer
 
-Three datasets, all from BitGet (we backtest on the venue we trade):
+Three datasets, from a mix of sources (see amendment):
 
 | Dataset | What | Source |
 |---|---|---|
-| Candles OHLCV | per symbol × timeframe | BitGet futures klines (Binance fallback / cross-check) |
+| Candles OHLCV | per symbol × timeframe | **Binance spot klines** (`/api/v3/klines`) |
 | Funding history | rate every 8h per symbol | BitGet historical funding |
 | Contract specs | MMR, max leverage, tick/step, precision | BitGet contract config |
+
+> **Amendment (2026-06-02) — OHLC source = Binance.** Original draft sourced candles
+> from BitGet "to backtest on the venue we trade." Revised: candles come from **Binance
+> spot klines**. Rationale: the project already fetches Binance bars (and uses
+> TradingView MCP for live), the price difference vs BitGet for liquid pairs is
+> negligible, and the spike already proved Binance klines work (deep history, `limit`
+> 1000/call). **Funding and contract specs stay on BitGet** — they are venue-specific
+> and have no equivalent on Binance spot. So the data layer is intentionally
+> mixed-source: Binance for OHLC, BitGet for funding + specs.
 
 **Storage:** dedicated `market_data.db` (SQLite), separate from `trading_lab.db` /
 `ai_trading.db`. Market data is large, append-only, analytical; keeping it out of the
@@ -222,8 +231,8 @@ contract_specs(symbol PRIMARY KEY, mmr, max_leverage, tick_size, qty_step,
 borrow):
 `node backtest/download-data.js --symbol BTCUSDT,ETHUSDT,... --tf 1h --from 2024-01-01`
 - incremental + idempotent (`INSERT OR IGNORE`), paginated, multi-symbol;
-- pagination logic graduates from the spike, on BitGet via existing `BitGetService` +
-  `node-fetch` (no new deps);
+- candle pagination graduates from the spike, against **Binance** `/api/v3/klines`;
+  funding + specs fetched from BitGet public endpoints (no new deps);
 - `--verify`: gap detection, dedup, validation (no zero/negative prices). Honest
   backtests require clean data.
 

@@ -2,35 +2,43 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build an isolated market-data layer — a dedicated `market_data.db` (SQLite) with candles / funding / contract specs, a `MarketDataRepo` behind which the storage backend is swappable, pure BitGet response parsers, and an incremental idempotent `download-data` CLI with a `--verify` integrity check.
+**Goal:** Build an isolated market-data layer — a dedicated `market_data.db` (SQLite) with candles / funding / contract specs, a `MarketDataRepo` behind which the storage backend is swappable, pure response parsers, and an incremental idempotent `download-data` CLI with a `--verify` integrity check.
 
-**Architecture:** Everything lives in a new `src/data/` module + a `backtest/` CLI, fully additive — it does NOT touch `db.js` or any live trading path. Pure parsers and pagination/gap logic are unit-tested offline; network fetching is isolated behind a thin, injectable `fetchImpl` so the download loop is testable without the network. A separate manual smoke task confirms the real BitGet endpoints.
+**Architecture:** Everything lives in a new `src/data/` module + a `backtest/` CLI, fully additive — it does NOT touch `db.js` or any live trading path. **Mixed data sources (per spec §8 amendment): OHLC candles come from Binance spot klines; funding rates and contract specs come from BitGet public endpoints.** Pure parsers and pagination/gap logic are unit-tested offline; network fetching is isolated behind a thin, injectable `fetchImpl` so the download loop is testable without the network. A separate manual smoke task confirms the real endpoints.
 
-**Tech Stack:** Node 18+ ESM, global `fetch` (no new deps), `sqlite`/`sqlite3` (already project deps), plain `node:assert` tests run via `node tests/<file>.js`. BitGet v2 public market-data endpoints (no auth).
+**Tech Stack:** Node 18+ ESM, global `fetch` (no new deps), `sqlite`/`sqlite3` (already project deps), plain `node:assert` tests run via `node tests/<file>.js`. Binance v3 public klines + BitGet v2 public market-data endpoints (no auth).
 
 ---
 
-## Grounded BitGet API facts (verified empirically against the live public API)
+## Grounded API facts
 
-- **Candles:** `GET https://api.bitget.com/api/v2/mix/market/history-candles?symbol=<S>&productType=USDT-FUTURES&granularity=<G>&limit=<N>` (also accepts `startTime`/`endTime` in ms). Response `data` = array of arrays, each `[ts, open, high, low, close, baseVolume, quoteVolume]` — **all strings**, `ts` in ms. `limit` max 200.
-- **Granularity** values: `1m,5m,15m,30m,1H,4H,1D,1W` (minutes lowercase `m`, hour/day/week uppercase). We store the timeframe as the BitGet granularity string verbatim (no mapping).
-- **Funding:** `GET https://api.bitget.com/api/v2/mix/market/history-fund-rate?symbol=<S>&productType=USDT-FUTURES&pageSize=<N>&pageNo=<P>`. Response `data` = array of `{symbol, fundingRate, fundingTime}` (strings; `fundingTime` ms).
-- **Contracts:** `GET https://api.bitget.com/api/v2/mix/market/contracts?productType=USDT-FUTURES&symbol=<S>`. Response `data[0]` includes (strings): `takerFeeRate`, `makerFeeRate`, `maxLever`, `minLever`, `fundInterval` (hours, e.g. "8"), `pricePlace`, `volumePlace`, `sizeMultiplier`, `minTradeNum`, `minTradeUSDT`, `priceEndStep`. **No maintenance-margin-rate field exists** → `mmr` is stored as a configurable default (the spec's single-tier MMR approximation), not from the API.
-- All responses wrap as `{code:"00000", msg:"success", data:...}`; `code !== "00000"` means error.
+### Binance — candles (verified by the working spike + existing `ToolRegistry.get_candles`)
+- `GET https://api.binance.com/api/v3/klines?symbol=<S>&interval=<I>&limit=<N>&startTime=<ms>` (also `endTime`). `limit` max **1000**.
+- `interval` strings: `1m,5m,15m,30m,1h,4h,1d,1w` (**all lowercase** — note `1h`/`1d`, unlike BitGet).
+- Response is a **bare JSON array** of arrays (NOT wrapped in `{code,data}`). Each: `[openTime, open, high, low, close, volume, closeTime, quoteAssetVolume, trades, ...]` — open/high/low/close/volume are **strings**, `openTime` a number (ms). Returned **ascending** by openTime.
+- Error response is an object `{code:<negative>, msg:"..."}` instead of an array.
 
-Timeframe→milliseconds map (used for pagination + gap detection):
+### BitGet — funding + contract specs (verified empirically against the live public API)
+- **Funding:** `GET https://api.bitget.com/api/v2/mix/market/history-fund-rate?symbol=<S>&productType=USDT-FUTURES&pageSize=<N>&pageNo=<P>`. Wrapped `{code:"00000", data:[{symbol, fundingRate, fundingTime}]}` (strings; `fundingTime` ms).
+- **Contracts:** `GET https://api.bitget.com/api/v2/mix/market/contracts?productType=USDT-FUTURES&symbol=<S>`. `data[0]` includes (strings): `takerFeeRate` ("0.0006"), `makerFeeRate` ("0.0002"), `maxLever` ("150"), `minLever`, `fundInterval` ("8" hours), `pricePlace`, `volumePlace`, `sizeMultiplier`, `minTradeNum`, `minTradeUSDT`, `priceEndStep`. **No maintenance-margin-rate field** → `mmr` is a configurable default (the spec's single-tier MMR approximation), not from the API.
+- BitGet wraps as `{code:"00000", msg, data}`; `code !== "00000"` is an error.
+
+### Internal timeframe convention
+We store the timeframe in the project's existing form (`1m,5m,15m,30m,1H,4H,1D,1W` — uppercase H/D/W, matching `ai_strategies.timeframe` and `ToolRegistry`'s `intervalMap`). The Binance URL builder maps it to Binance's lowercase `interval`.
+
+Timeframe→milliseconds (pagination + gap detection):
 `{ '1m':60000, '5m':300000, '15m':900000, '30m':1800000, '1H':3600000, '4H':14400000, '1D':86400000, '1W':604800000 }`
 
 ---
 
 ## File Structure
 
-- `src/data/marketDataSchema.js` — **Create.** `openMarketDb(filename)` → opens SQLite, creates `candles` / `funding_rates` / `contract_specs` tables + indexes. Mirrors `db.js` open patterns but for the separate `market_data.db`.
-- `src/data/bitgetParse.js` — **Create.** Pure functions: `TF_MS`, `parseCandle(arr)`, `parseFunding(obj)`, `parseContract(obj, mmr)`, and URL builders `candlesUrl/fundingUrl/contractsUrl`. No I/O — unit-tested with real fixtures.
-- `src/data/MarketDataRepo.js` — **Create.** Class wrapping a db handle: candle upsert/get/lastTime/gaps + funding upsert/get + contract-spec upsert/get. All SQL, no network.
-- `src/data/bitgetMarketData.js` — **Create.** Thin network wrappers taking an injectable `fetchImpl`: `fetchCandlesPage`, `fetchFundingPage`, `fetchContract`. Plus `downloadCandles(repo, opts, fetchImpl)` incremental loop (idempotent, order-agnostic).
-- `backtest/download-data.js` — **Create.** CLI: parse args, open db, run downloads, `--verify`.
-- Tests: `tests/test_bitget_parse.js`, `tests/test_market_repo.js`, `tests/test_download_loop.js`.
+- `src/data/marketDataSchema.js` — **Create.** `openMarketDb(filename)` → opens SQLite, creates `candles`/`funding_rates`/`contract_specs` + indexes. (Source-agnostic.)
+- `src/data/marketParse.js` — **Create.** Pure: `TF_MS`, `BINANCE_INTERVAL`, `parseCandle` (Binance), `candlesUrl` (Binance), `parseFunding`/`parseContract`/`fundingUrl`/`contractsUrl` (BitGet). No I/O.
+- `src/data/MarketDataRepo.js` — **Create.** Class over a db handle: candles upsert/get/lastTime/gaps + funding upsert/get + contract-spec upsert/get. (Source-agnostic.)
+- `src/data/marketDataFetch.js` — **Create.** Thin network wrappers with injectable `fetchImpl`: `fetchCandlesPage` (Binance), `fetchFundingPage`/`fetchContract` (BitGet), and `downloadCandles` (incremental Binance loop).
+- `backtest/download-data.js` — **Create.** CLI: parse args, open db, download candles (Binance) + funding/specs (BitGet), `--verify`.
+- Tests: `tests/test_market_schema.js`, `tests/test_market_parse.js`, `tests/test_market_repo.js`, `tests/test_download_loop.js`, `tests/test_verify.js`.
 
 **Isolation rule:** Do NOT modify `db.js`, `src/agents/**`, `src/core/**`, `bot_engine.js`, or any indicator. This layer is purely additive.
 
@@ -59,16 +67,13 @@ const tmp = path.join(os.tmpdir(), `mdtest_${Date.now()}.db`);
 
 const run = async () => {
   const db = await openMarketDb(tmp);
-  const tables = await db.all(
-    "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-  );
+  const tables = await db.all("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name");
   const names = tables.map(t => t.name);
   assert.ok(names.includes('candles'), 'candles table exists');
   assert.ok(names.includes('funding_rates'), 'funding_rates table exists');
   assert.ok(names.includes('contract_specs'), 'contract_specs table exists');
 
-  // Idempotent: opening again must not throw.
-  const db2 = await openMarketDb(tmp);
+  const db2 = await openMarketDb(tmp); // idempotent: second open must not throw
   assert.ok(db2, 'second open succeeds');
 
   await db.close();
@@ -159,19 +164,19 @@ git commit -m "feat(data): market_data.db schema + opener"
 
 ---
 
-## Task 2: Pure BitGet parsers + URL builders
+## Task 2: Pure parsers + URL builders (Binance candles + BitGet funding/specs)
 
 **Files:**
-- Create: `src/data/bitgetParse.js`
-- Test: `tests/test_bitget_parse.js`
+- Create: `src/data/marketParse.js`
+- Test: `tests/test_market_parse.js`
 
 - [ ] **Step 1: Write the failing test**
 
-Create `tests/test_bitget_parse.js` (fixtures are the REAL shapes returned by the live API):
+Create `tests/test_market_parse.js` (candle fixture = real Binance kline shape; funding/contract fixtures = real BitGet shapes):
 
 ```js
 import assert from 'assert';
-import { TF_MS, parseCandle, parseFunding, parseContract, candlesUrl, fundingUrl, contractsUrl } from '../src/data/bitgetParse.js';
+import { TF_MS, BINANCE_INTERVAL, parseCandle, candlesUrl, parseFunding, parseContract, fundingUrl, contractsUrl } from '../src/data/marketParse.js';
 
 const tests = [];
 const add = (n, fn) => tests.push({ n, fn });
@@ -182,17 +187,34 @@ add('TF_MS maps known timeframes', () => {
   assert.strictEqual(TF_MS['1D'], 86400000);
 });
 
-add('parseCandle: string array → numeric Candle (volume = baseVolume idx5)', () => {
-  const c = parseCandle(['1780394400000', '69404.9', '69739.8', '69330.4', '69630', '1997.1068', '138929683.29']);
-  assert.deepStrictEqual(c, { time: 1780394400000, open: 69404.9, high: 69739.8, low: 69330.4, close: 69630, volume: 1997.1068 });
+add('BINANCE_INTERVAL maps internal tf → binance interval (lowercase)', () => {
+  assert.strictEqual(BINANCE_INTERVAL['1H'], '1h');
+  assert.strictEqual(BINANCE_INTERVAL['4H'], '4h');
+  assert.strictEqual(BINANCE_INTERVAL['1D'], '1d');
+  assert.strictEqual(BINANCE_INTERVAL['5m'], '5m');
 });
 
-add('parseFunding: object → {time, rate}', () => {
+add('parseCandle: Binance kline array → numeric Candle (volume = idx5)', () => {
+  const k = ['1499040000000', '0.01634790', '0.80000000', '0.01575800', '0.01577100', '148976.11427815', '1499644799999', '2434.19', 308];
+  const c = parseCandle(k);
+  assert.deepStrictEqual(c, { time: 1499040000000, open: 0.0163479, high: 0.8, low: 0.015758, close: 0.015771, volume: 148976.11427815 });
+});
+
+add('candlesUrl builds Binance klines query (interval mapped to lowercase)', () => {
+  const u = candlesUrl({ symbol: 'BTCUSDT', timeframe: '1H', limit: 1000, startTime: 123 });
+  assert.ok(u.startsWith('https://api.binance.com/api/v3/klines?'), u);
+  assert.ok(u.includes('symbol=BTCUSDT'));
+  assert.ok(u.includes('interval=1h'));
+  assert.ok(u.includes('limit=1000'));
+  assert.ok(u.includes('startTime=123'));
+});
+
+add('parseFunding: BitGet object → {time, rate}', () => {
   const f = parseFunding({ symbol: 'BTCUSDT', fundingRate: '0.0001', fundingTime: '1780387200000' });
   assert.deepStrictEqual(f, { time: 1780387200000, rate: 0.0001 });
 });
 
-add('parseContract: object + mmr default → spec row', () => {
+add('parseContract: BitGet object + mmr default → spec row', () => {
   const raw = { symbol: 'BTCUSDT', takerFeeRate: '0.0006', makerFeeRate: '0.0002', maxLever: '150', minLever: '1', fundInterval: '8', pricePlace: '1', volumePlace: '4', sizeMultiplier: '0.0001', minTradeNum: '0.0001', minTradeUSDT: '5', priceEndStep: '1' };
   const s = parseContract(raw, 0.005);
   assert.strictEqual(s.symbol, 'BTCUSDT');
@@ -205,22 +227,11 @@ add('parseContract: object + mmr default → spec row', () => {
   assert.strictEqual(s.qty_precision, 4);
   assert.strictEqual(s.min_trade_num, 0.0001);
   assert.strictEqual(s.min_trade_usdt, 5);
-  // tick = priceEndStep * 10^-pricePlace = 1 * 10^-1 = 0.1
-  assert.ok(Math.abs(s.tick_size - 0.1) < 1e-12, `tick ${s.tick_size}`);
+  assert.ok(Math.abs(s.tick_size - 0.1) < 1e-12, `tick ${s.tick_size}`); // priceEndStep * 10^-pricePlace = 1 * 10^-1
   assert.strictEqual(s.qty_step, 0.0001);
 });
 
-add('candlesUrl builds expected query', () => {
-  const u = candlesUrl({ symbol: 'BTCUSDT', granularity: '1H', limit: 200, endTime: 123 });
-  assert.ok(u.startsWith('https://api.bitget.com/api/v2/mix/market/history-candles?'));
-  assert.ok(u.includes('symbol=BTCUSDT'));
-  assert.ok(u.includes('productType=USDT-FUTURES'));
-  assert.ok(u.includes('granularity=1H'));
-  assert.ok(u.includes('limit=200'));
-  assert.ok(u.includes('endTime=123'));
-});
-
-add('fundingUrl + contractsUrl build expected paths', () => {
+add('fundingUrl + contractsUrl build expected BitGet paths', () => {
   assert.ok(fundingUrl({ symbol: 'BTCUSDT', pageSize: 100, pageNo: 1 }).includes('/api/v2/mix/market/history-fund-rate?'));
   assert.ok(contractsUrl({ symbol: 'BTCUSDT' }).includes('/api/v2/mix/market/contracts?'));
 });
@@ -228,29 +239,38 @@ add('fundingUrl + contractsUrl build expected paths', () => {
 let failed = 0;
 for (const t of tests) { try { t.fn(); console.log(`✅ ${t.n}`); } catch (e) { failed++; console.error(`❌ ${t.n}\n   ${e.message}`); } }
 if (failed) { console.error(`\n${failed} failed`); process.exit(1); }
-console.log('\nAll bitgetParse tests passed!');
+console.log('\nAll marketParse tests passed!');
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `node tests/test_bitget_parse.js`
-Expected: FAIL — cannot find `src/data/bitgetParse.js`.
+Run: `node tests/test_market_parse.js`
+Expected: FAIL — cannot find `src/data/marketParse.js`.
 
 - [ ] **Step 3: Write minimal implementation**
 
-Create `src/data/bitgetParse.js`:
+Create `src/data/marketParse.js`:
 
 ```js
-const BASE = 'https://api.bitget.com';
+const BINANCE_BASE = 'https://api.binance.com';
+const BITGET_BASE = 'https://api.bitget.com';
 const PRODUCT = 'USDT-FUTURES';
 
-/** Timeframe (BitGet granularity string) → milliseconds. */
+/** Internal timeframe → milliseconds. */
 export const TF_MS = Object.freeze({
   '1m': 60000, '5m': 300000, '15m': 900000, '30m': 1800000,
   '1H': 3600000, '4H': 14400000, '1D': 86400000, '1W': 604800000,
 });
 
-/** BitGet candle array [ts,o,h,l,c,baseVol,quoteVol] (strings) → numeric Candle. */
+/** Internal timeframe → Binance `interval` string (Binance is lowercase). */
+export const BINANCE_INTERVAL = Object.freeze({
+  '1m': '1m', '5m': '5m', '15m': '15m', '30m': '30m',
+  '1H': '1h', '4H': '4h', '1D': '1d', '1W': '1w',
+});
+
+// ---- Binance candles ----
+
+/** Binance kline array [openTime,o,h,l,c,volume,closeTime,...] → numeric Candle. */
 export function parseCandle(arr) {
   return {
     time: Number(arr[0]),
@@ -261,6 +281,17 @@ export function parseCandle(arr) {
     volume: Number(arr[5]),
   };
 }
+
+export function candlesUrl({ symbol, timeframe, limit = 1000, startTime, endTime }) {
+  const interval = BINANCE_INTERVAL[timeframe];
+  if (!interval) throw new Error(`Unknown timeframe: ${timeframe}`);
+  const p = new URLSearchParams({ symbol, interval, limit: String(limit) });
+  if (startTime != null) p.set('startTime', String(startTime));
+  if (endTime != null) p.set('endTime', String(endTime));
+  return `${BINANCE_BASE}/api/v3/klines?${p.toString()}`;
+}
+
+// ---- BitGet funding + contracts ----
 
 /** BitGet funding row {fundingTime, fundingRate} → {time, rate}. */
 export function parseFunding(obj) {
@@ -290,34 +321,27 @@ export function parseContract(obj, mmr) {
   };
 }
 
-export function candlesUrl({ symbol, granularity, limit = 200, startTime, endTime }) {
-  const p = new URLSearchParams({ symbol, productType: PRODUCT, granularity, limit: String(limit) });
-  if (startTime != null) p.set('startTime', String(startTime));
-  if (endTime != null) p.set('endTime', String(endTime));
-  return `${BASE}/api/v2/mix/market/history-candles?${p.toString()}`;
-}
-
 export function fundingUrl({ symbol, pageSize = 100, pageNo = 1 }) {
   const p = new URLSearchParams({ symbol, productType: PRODUCT, pageSize: String(pageSize), pageNo: String(pageNo) });
-  return `${BASE}/api/v2/mix/market/history-fund-rate?${p.toString()}`;
+  return `${BITGET_BASE}/api/v2/mix/market/history-fund-rate?${p.toString()}`;
 }
 
 export function contractsUrl({ symbol }) {
   const p = new URLSearchParams({ symbol, productType: PRODUCT });
-  return `${BASE}/api/v2/mix/market/contracts?${p.toString()}`;
+  return `${BITGET_BASE}/api/v2/mix/market/contracts?${p.toString()}`;
 }
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `node tests/test_bitget_parse.js`
-Expected: PASS — `All bitgetParse tests passed!`.
+Run: `node tests/test_market_parse.js`
+Expected: PASS — `All marketParse tests passed!`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/data/bitgetParse.js tests/test_bitget_parse.js
-git commit -m "feat(data): pure BitGet response parsers + URL builders"
+git add src/data/marketParse.js tests/test_market_parse.js
+git commit -m "feat(data): pure parsers + URL builders (Binance candles, BitGet funding/specs)"
 ```
 
 ---
@@ -345,29 +369,24 @@ const tmp = path.join(os.tmpdir(), `mdrepo_${Date.now()}.db`);
 const run = async () => {
   const db = await openMarketDb(tmp);
   const repo = new MarketDataRepo(db);
-
   const c = (time, close) => ({ time, open: close, high: close, low: close, close, volume: 1 });
 
-  // upsert is idempotent (INSERT OR IGNORE on PK symbol,timeframe,time)
   const n1 = await repo.upsertCandles('BTCUSDT', '1H', [c(1000, 10), c(2000, 11), c(3000, 12)]);
   assert.strictEqual(n1, 3, 'inserted 3');
   const n2 = await repo.upsertCandles('BTCUSDT', '1H', [c(2000, 11), c(3000, 12)]);
   assert.strictEqual(n2, 0, 're-inserting duplicates inserts 0');
 
-  // getCandles returns ascending within range
   const got = await repo.getCandles('BTCUSDT', '1H', 1000, 3000);
   assert.strictEqual(got.length, 3);
   assert.strictEqual(got[0].time, 1000);
   assert.strictEqual(got[2].close, 12);
 
-  // lastCandleTime
   assert.strictEqual(await repo.lastCandleTime('BTCUSDT', '1H'), 3000);
   assert.strictEqual(await repo.lastCandleTime('ETHUSDT', '1H'), null);
 
-  // findGaps: insert a hole (missing time=5000 between 4000 and 6000, step 1000)
+  // gap: missing 5000 between 4000 and 6000 (step 1000); 3000->4000 contiguous
   await repo.upsertCandles('BTCUSDT', '1H', [c(4000, 13), c(6000, 15)]);
   const gaps = await repo.findGaps('BTCUSDT', '1H', 1000);
-  // expected missing slots: 5000 (between 4000 and 6000). 3000->4000 is contiguous.
   assert.deepStrictEqual(gaps, [5000], `gaps ${JSON.stringify(gaps)}`);
 
   await db.close();
@@ -500,10 +519,9 @@ In `tests/test_market_repo.js`, insert these assertions immediately BEFORE the l
   assert.strictEqual(spec.max_leverage, 150);
   assert.strictEqual(spec.taker_fee, 0.0006);
   assert.strictEqual(spec.mmr, 0.005);
-  // upsert overwrites (INSERT OR REPLACE)
   await repo.upsertContractSpec({ symbol: 'BTCUSDT', mmr: 0.01, max_leverage: 125, min_leverage: 1, taker_fee: 0.0006, maker_fee: 0.0002, fund_interval_h: 8, tick_size: 0.1, qty_step: 0.0001, price_precision: 1, qty_precision: 4, min_trade_num: 0.0001, min_trade_usdt: 5 });
   const spec2 = await repo.getContractSpec('BTCUSDT');
-  assert.strictEqual(spec2.max_leverage, 125, 'spec overwritten');
+  assert.strictEqual(spec2.max_leverage, 125, 'spec overwritten (INSERT OR REPLACE)');
   assert.strictEqual(await repo.getContractSpec('NOPEUSDT'), undefined);
 ```
 
@@ -514,7 +532,7 @@ Expected: FAIL — `repo.upsertFunding is not a function`.
 
 - [ ] **Step 3: Write minimal implementation**
 
-In `src/data/MarketDataRepo.js`, add these methods inside the class (e.g. after `findGaps`):
+In `src/data/MarketDataRepo.js`, add these methods inside the class (after `findGaps`):
 
 ```js
   /** Idempotently insert funding rows [{time, rate}]. Returns rows inserted. */
@@ -579,12 +597,12 @@ git commit -m "feat(data): MarketDataRepo funding + contract spec storage"
 
 ---
 
-## Task 5: BitGet fetch wrappers + incremental candle download loop
+## Task 5: Fetch wrappers + incremental Binance candle download loop
 
-The download loop is **order-agnostic and idempotent**: it normalizes each page, upserts (duplicates ignored), and advances the cursor by the max timestamp seen, stopping when a page yields no NEW rows or the cursor passes `now`. This is robust regardless of asc/desc page ordering. `fetchImpl` is injectable so the loop is unit-tested with fixture pages (no network).
+The candle download loop is **idempotent**: it forward-paginates Binance (ascending) from the last stored candle, upserts (duplicates ignored), advances by the max timestamp seen, and stops on no forward progress or past `to`. `fetchImpl` is injectable so the loop is unit-tested with fixture pages (no network).
 
 **Files:**
-- Create: `src/data/bitgetMarketData.js`
+- Create: `src/data/marketDataFetch.js`
 - Test: `tests/test_download_loop.js`
 
 - [ ] **Step 1: Write the failing test**
@@ -598,11 +616,11 @@ import path from 'path';
 import os from 'os';
 import { openMarketDb } from '../src/data/marketDataSchema.js';
 import { MarketDataRepo } from '../src/data/MarketDataRepo.js';
-import { downloadCandles } from '../src/data/bitgetMarketData.js';
+import { downloadCandles } from '../src/data/marketDataFetch.js';
 
 const tmp = path.join(os.tmpdir(), `mddl_${Date.now()}.db`);
 
-// Fake BitGet: serves 1H candles from startTime, 2 per page, up to a fixed ceiling.
+// Fake Binance: bare array of klines from startTime, 2 per page, up to a ceiling.
 function makeFakeFetch(maxTime) {
   const TF = 3600000;
   return async (url) => {
@@ -610,9 +628,9 @@ function makeFakeFetch(maxTime) {
     const start = Number(u.searchParams.get('startTime'));
     const out = [];
     for (let t = start; t < start + TF * 2 && t <= maxTime; t += TF) {
-      out.push([String(t), '10', '11', '9', '10.5', '100', '1000']); // [ts,o,h,l,c,baseVol,quoteVol]
+      out.push([t, '10', '11', '9', '10.5', '100', t + TF - 1, '1000', 5]); // Binance kline shape
     }
-    return { ok: true, json: async () => ({ code: '00000', msg: 'success', data: out }) };
+    return { ok: true, json: async () => out }; // Binance returns a bare array
   };
 }
 
@@ -620,14 +638,13 @@ const run = async () => {
   const db = await openMarketDb(tmp);
   const repo = new MarketDataRepo(db);
   const TF = 3600000;
-  const from = 1000000 * TF; // arbitrary aligned start
-  const maxTime = from + TF * 5; // 6 candles available (from .. from+5*TF)
+  const from = 1000000 * TF;
+  const maxTime = from + TF * 5; // 6 candles available
 
-  const inserted = await downloadCandles(repo, { symbol: 'BTCUSDT', granularity: '1H', from, to: maxTime, pageLimit: 2 }, makeFakeFetch(maxTime));
+  const inserted = await downloadCandles(repo, { symbol: 'BTCUSDT', timeframe: '1H', from, to: maxTime, pageLimit: 2 }, makeFakeFetch(maxTime));
   assert.strictEqual(inserted, 6, `inserted ${inserted}`);
 
-  // Re-run is idempotent → 0 new rows.
-  const again = await downloadCandles(repo, { symbol: 'BTCUSDT', granularity: '1H', from, to: maxTime, pageLimit: 2 }, makeFakeFetch(maxTime));
+  const again = await downloadCandles(repo, { symbol: 'BTCUSDT', timeframe: '1H', from, to: maxTime, pageLimit: 2 }, makeFakeFetch(maxTime));
   assert.strictEqual(again, 0, 'idempotent re-run inserts 0');
 
   const stored = await repo.getCandles('BTCUSDT', '1H', from, maxTime);
@@ -646,17 +663,17 @@ run().catch(e => { console.error('❌', e); process.exit(1); });
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `node tests/test_download_loop.js`
-Expected: FAIL — cannot find `src/data/bitgetMarketData.js`.
+Expected: FAIL — cannot find `src/data/marketDataFetch.js`.
 
 - [ ] **Step 3: Write minimal implementation**
 
-Create `src/data/bitgetMarketData.js`:
+Create `src/data/marketDataFetch.js`:
 
 ```js
-import { TF_MS, parseCandle, parseFunding, parseContract, candlesUrl, fundingUrl, contractsUrl } from './bitgetParse.js';
+import { TF_MS, parseCandle, candlesUrl, parseFunding, parseContract, fundingUrl, contractsUrl } from './marketParse.js';
 
 /** Internal: GET a BitGet public endpoint and return parsed `data` (throws on API error). */
-async function getData(url, fetchImpl) {
+async function getBitget(url, fetchImpl) {
   const res = await fetchImpl(url);
   if (!res.ok) throw new Error(`BitGet HTTP ${res.status}`);
   const json = await res.json();
@@ -664,49 +681,50 @@ async function getData(url, fetchImpl) {
   return json.data || [];
 }
 
-/** Fetch one page of candles starting at `startTime`. Returns parsed Candle[] (ascending). */
-export async function fetchCandlesPage({ symbol, granularity, startTime, limit = 200 }, fetchImpl = fetch) {
-  const data = await getData(candlesUrl({ symbol, granularity, startTime, limit }), fetchImpl);
-  return data.map(parseCandle).sort((a, b) => a.time - b.time);
+/** Fetch one page of Binance candles from `startTime`. Returns parsed Candle[] (ascending). */
+export async function fetchCandlesPage({ symbol, timeframe, startTime, limit = 1000 }, fetchImpl = fetch) {
+  const res = await fetchImpl(candlesUrl({ symbol, timeframe, startTime, limit }));
+  if (!res.ok) throw new Error(`Binance HTTP ${res.status}`);
+  const json = await res.json();
+  if (!Array.isArray(json)) throw new Error(`Binance error: ${json.msg || JSON.stringify(json)}`);
+  return json.map(parseCandle).sort((a, b) => a.time - b.time);
 }
 
-/** Fetch one page of funding rows. Returns parsed [{time, rate}] (ascending). */
+/** Fetch one page of BitGet funding rows. Returns parsed [{time, rate}] (ascending). */
 export async function fetchFundingPage({ symbol, pageSize = 100, pageNo = 1 }, fetchImpl = fetch) {
-  const data = await getData(fundingUrl({ symbol, pageSize, pageNo }), fetchImpl);
+  const data = await getBitget(fundingUrl({ symbol, pageSize, pageNo }), fetchImpl);
   return data.map(parseFunding).sort((a, b) => a.time - b.time);
 }
 
-/** Fetch a single contract spec (mmr injected — not provided by the API). */
+/** Fetch a single BitGet contract spec (mmr injected — not provided by the API). */
 export async function fetchContract({ symbol, mmr }, fetchImpl = fetch) {
-  const data = await getData(contractsUrl({ symbol }), fetchImpl);
+  const data = await getBitget(contractsUrl({ symbol }), fetchImpl);
   if (!data.length) throw new Error(`No contract for ${symbol}`);
   return parseContract(data[0], mmr);
 }
 
 /**
- * Incrementally download candles into the repo. Order-agnostic + idempotent:
- * advances the cursor by the max timestamp seen and stops when a page yields no
- * NEW rows or the cursor passes `to`. Resumes from the last stored candle.
+ * Incrementally download Binance candles into the repo. Idempotent: resumes from the
+ * last stored candle, forward-paginates (Binance returns ascending), advances by the
+ * max timestamp seen, and stops on no forward progress or past `to`.
  * @returns {Promise<number>} total NEW rows inserted.
  */
-export async function downloadCandles(repo, { symbol, granularity, from, to = Date.now(), pageLimit = 200 }, fetchImpl = fetch) {
-  const tfMs = TF_MS[granularity];
-  if (!tfMs) throw new Error(`Unknown granularity: ${granularity}`);
+export async function downloadCandles(repo, { symbol, timeframe, from, to = Date.now(), pageLimit = 1000 }, fetchImpl = fetch) {
+  const tfMs = TF_MS[timeframe];
+  if (!tfMs) throw new Error(`Unknown timeframe: ${timeframe}`);
 
-  const last = await repo.lastCandleTime(symbol, granularity);
+  const last = await repo.lastCandleTime(symbol, timeframe);
   let cursor = last != null ? Math.max(from, last + tfMs) : from;
   let total = 0;
 
   while (cursor <= to) {
-    const page = await fetchCandlesPage({ symbol, granularity, startTime: cursor, limit: pageLimit }, fetchImpl);
+    const page = await fetchCandlesPage({ symbol, timeframe, startTime: cursor, limit: pageLimit }, fetchImpl);
     if (!page.length) break;
     const inRange = page.filter(c => c.time >= from && c.time <= to);
-    const inserted = await repo.upsertCandles(symbol, granularity, inRange);
-    total += inserted;
+    total += await repo.upsertCandles(symbol, timeframe, inRange);
     const maxTs = page[page.length - 1].time;
     const next = maxTs + tfMs;
-    if (next <= cursor) break;       // no forward progress → stop
-    if (inserted === 0 && maxTs >= to) break;
+    if (next <= cursor) break; // no forward progress → stop
     cursor = next;
   }
   return total;
@@ -721,8 +739,8 @@ Expected: PASS — `✅ download loop tests passed`.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/data/bitgetMarketData.js tests/test_download_loop.js
-git commit -m "feat(data): BitGet fetch wrappers + idempotent candle download loop"
+git add src/data/marketDataFetch.js tests/test_download_loop.js
+git commit -m "feat(data): fetch wrappers + idempotent Binance candle download loop"
 ```
 
 ---
@@ -735,7 +753,7 @@ git commit -m "feat(data): BitGet fetch wrappers + idempotent candle download lo
 
 - [ ] **Step 1: Write the failing test**
 
-Create `tests/test_verify.js` (tests the pure integrity check exported by the CLI module):
+Create `tests/test_verify.js`:
 
 ```js
 import assert from 'assert';
@@ -744,24 +762,29 @@ import path from 'path';
 import os from 'os';
 import { openMarketDb } from '../src/data/marketDataSchema.js';
 import { MarketDataRepo } from '../src/data/MarketDataRepo.js';
-import { verifyCandles } from '../backtest/download-data.js';
+import { verifyCandles, parseArgs } from '../backtest/download-data.js';
 
 const tmp = path.join(os.tmpdir(), `mdverify_${Date.now()}.db`);
 
 const run = async () => {
+  // parseArgs is pure — test it directly.
+  const a = parseArgs(['--symbol', 'BTCUSDT,ETHUSDT', '--tf', '1H', '--verify']);
+  assert.strictEqual(a.symbol, 'BTCUSDT,ETHUSDT');
+  assert.strictEqual(a.tf, '1H');
+  assert.strictEqual(a.verify, true);
+
   const db = await openMarketDb(tmp);
   const repo = new MarketDataRepo(db);
   const TF = 3600000;
   const c = (t, close) => ({ time: t, open: close, high: close, low: close, close, volume: 1 });
 
-  // Contiguous, clean → no issues.
   await repo.upsertCandles('BTCUSDT', '1H', [c(TF, 10), c(2 * TF, 11), c(3 * TF, 12)]);
   let report = await verifyCandles(repo, 'BTCUSDT', '1H');
   assert.strictEqual(report.gaps.length, 0, 'no gaps');
   assert.strictEqual(report.bad.length, 0, 'no bad candles');
   assert.strictEqual(report.count, 3);
 
-  // Add a gap (missing 5*TF) and a bad candle (zero price).
+  // add a gap (missing 5*TF) and a bad candle (zero price)
   await repo.upsertCandles('BTCUSDT', '1H', [c(4 * TF, 13), c(6 * TF, 0)]);
   report = await verifyCandles(repo, 'BTCUSDT', '1H');
   assert.deepStrictEqual(report.gaps, [5 * TF], `gaps ${JSON.stringify(report.gaps)}`);
@@ -787,15 +810,16 @@ Create `backtest/download-data.js`:
 ```js
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { TF_MS } from '../src/data/bitgetParse.js';
+import { TF_MS } from '../src/data/marketParse.js';
 import { openMarketDb } from '../src/data/marketDataSchema.js';
 import { MarketDataRepo } from '../src/data/MarketDataRepo.js';
-import { downloadCandles, fetchFundingPage, fetchContract } from '../src/data/bitgetMarketData.js';
+import { downloadCandles, fetchFundingPage, fetchContract } from '../src/data/marketDataFetch.js';
 
 const DEFAULT_MMR = 0.005; // single-tier MMR approximation (BitGet public API has no MMR field)
 
 /**
- * Integrity check: detect candle gaps and obviously bad candles (non-positive prices).
+ * Integrity check: detect candle gaps and obviously bad candles (non-positive prices,
+ * or high < low).
  * @returns {Promise<{count:number, gaps:number[], bad:number[]}>}
  */
 export async function verifyCandles(repo, symbol, timeframe) {
@@ -808,7 +832,7 @@ export async function verifyCandles(repo, symbol, timeframe) {
   return { count: rows.length, gaps, bad };
 }
 
-/** Parse `--key value` / `--flag` style argv into an object. */
+/** Parse `--key value` / `--flag` argv into an object. */
 export function parseArgs(argv) {
   const out = {};
   for (let i = 0; i < argv.length; i++) {
@@ -839,17 +863,17 @@ async function main() {
       console.log(`[verify] ${symbol} ${tf}: ${r.count} candles, ${r.gaps.length} gaps, ${r.bad.length} bad`);
       continue;
     }
-    console.log(`[download] ${symbol} ${tf} from ${new Date(from).toISOString()}...`);
-    const n = await downloadCandles(repo, { symbol, granularity: tf, from });
+    console.log(`[download] ${symbol} ${tf} candles (Binance) from ${new Date(from).toISOString()}...`);
+    const n = await downloadCandles(repo, { symbol, timeframe: tf, from });
     console.log(`[download] ${symbol} ${tf}: +${n} candles`);
 
-    const funding = await fetchFundingPage({ symbol });
+    const funding = await fetchFundingPage({ symbol }); // BitGet
     const fn = await repo.upsertFunding(symbol, funding);
-    console.log(`[download] ${symbol} funding: +${fn} rows`);
+    console.log(`[download] ${symbol} funding (BitGet): +${fn} rows`);
 
-    const spec = await fetchContract({ symbol, mmr });
+    const spec = await fetchContract({ symbol, mmr }); // BitGet
     await repo.upsertContractSpec(spec);
-    console.log(`[download] ${symbol} spec: leverage≤${spec.max_leverage}, takerFee ${spec.taker_fee}, mmr ${spec.mmr}`);
+    console.log(`[download] ${symbol} spec (BitGet): leverage≤${spec.max_leverage}, takerFee ${spec.taker_fee}, mmr ${spec.mmr}`);
   }
 
   await db.close();
@@ -869,7 +893,7 @@ Expected: PASS — `✅ verify tests passed`.
 
 - [ ] **Step 5: Run the full data-layer test suite**
 
-Run: `node tests/test_market_schema.js && node tests/test_bitget_parse.js && node tests/test_market_repo.js && node tests/test_download_loop.js && node tests/test_verify.js`
+Run: `node tests/test_market_schema.js && node tests/test_market_parse.js && node tests/test_market_repo.js && node tests/test_download_loop.js && node tests/test_verify.js`
 Expected: all five print their pass lines, exit 0.
 
 - [ ] **Step 6: Commit**
@@ -881,43 +905,42 @@ git commit -m "feat(data): download-data CLI + candle integrity verify"
 
 ---
 
-## Task 7: Live smoke test (manual integration — real BitGet)
+## Task 7: Live smoke test (manual integration — real Binance + BitGet)
 
-This is a MANUAL verification against the live public API. It is NOT a committed unit test (no network in CI).
+Manual verification against the live public APIs. NOT a committed unit test.
 
 **Files:** none created.
 
 - [ ] **Step 1: Download a small real slice**
 
 Run: `node backtest/download-data.js --symbol BTCUSDT --tf 1H --from 2026-05-01`
-Expected: log lines showing `+N candles` (N > 0), `+M funding rows`, and a spec line with `leverage≤150` (or current), `takerFee 0.0006`. A `market_data.db` file appears in the project root.
+Expected: `+N candles` (N > 0, from Binance), `+M funding rows` (from BitGet), and a spec line `leverage≤150` (or current) / `takerFee 0.0006`. A `market_data.db` appears in the project root.
 
 - [ ] **Step 2: Verify integrity**
 
 Run: `node backtest/download-data.js --symbol BTCUSDT --tf 1H --verify`
-Expected: `[verify] BTCUSDT 1H: N candles, 0 gaps, 0 bad` (0 gaps/bad on a clean fresh pull).
+Expected: `[verify] BTCUSDT 1H: N candles, 0 gaps, 0 bad`.
 
 - [ ] **Step 3: Confirm idempotent re-download**
 
-Run the Step 1 command again.
-Expected: `+0 candles` (already stored) — proves incremental/idempotent behavior.
+Re-run Step 1. Expected: `+0 candles`.
 
-- [ ] **Step 4: Note**
+- [ ] **Step 4: Ignore generated DB**
 
-`market_data.db` is generated data — confirm it is git-ignored (it should not be committed). If it is not ignored, add `market_data.db` to `.gitignore` in a separate commit:
+`market_data.db` is generated data — confirm it is git-ignored. If not, add it in a separate commit:
 
 ```bash
-git rev-parse --verify HEAD >/dev/null && echo "market_data.db" >> .gitignore && git add .gitignore && git commit -m "chore: ignore generated market_data.db"
+echo "market_data.db" >> .gitignore && git add .gitignore && git commit -m "chore: ignore generated market_data.db"
 ```
 
 ---
 
 ## Done criteria
 
-- `src/data/{marketDataSchema,bitgetParse,MarketDataRepo,bitgetMarketData}.js` + `backtest/download-data.js` exist.
-- Candles / funding / contract specs persist in a dedicated `market_data.db` behind `MarketDataRepo`.
+- `src/data/{marketDataSchema,marketParse,MarketDataRepo,marketDataFetch}.js` + `backtest/download-data.js` exist.
+- Candles (Binance) / funding (BitGet) / contract specs (BitGet) persist in a dedicated `market_data.db` behind `MarketDataRepo`.
 - Download is incremental + idempotent; `--verify` reports gaps and bad candles.
-- All five offline test files pass; the manual smoke test confirms the real BitGet endpoints.
+- All five offline test files pass; the manual smoke test confirms the real endpoints.
 - No live trading code, `db.js`, `src/core/**`, or indicators were modified.
 
 ## Next plan (not in this one)
