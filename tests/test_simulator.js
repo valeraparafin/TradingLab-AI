@@ -85,6 +85,29 @@ add('SL exit (market) on a BUY', () => {
   assert.ok(near(res.trades[0].pnl, 1000 * (90 - 100) / 100), `pnl ${res.trades[0].pnl}`); // -100
 });
 
+add('no look-ahead: entry fills at NEXT bar open, not the decision bar close', () => {
+  // Decision bar close = 100, but the next bar opens at 120. If the engine wrongly
+  // filled at close[i] the entry would be 100; the correct next-bar-open fill is 120.
+  const candles = [
+    c(0, 100, 100, 100, 100),
+    c(1, 100, 101, 99, 100),     // decision bar (flat): close = 100
+    c(2, 120, 125, 118, 122),    // entry bar: open = 120 (deliberately != close[1])
+    c(3, 122, 135, 121, 130),    // TP 130 hit (high 135)
+    c(4, 130, 131, 129, 130),
+  ];
+  const order = { side: 'BUY', sizeUSD: 1000, entryPrice: 100, slPrice: 90, tpPrice: 130 };
+  const res = simulate(
+    { candles, config: { logicType: 'X' }, guardrails: { portfolioValue: 10000 }, costs: { takerFee: 0, makerFee: 0, slippageBps: 0 }, symbol: 'BTCUSDT', timeframe: '1H', lookback: 1, startEquity: 10000 },
+    makeDecide(order)
+  );
+  assert.strictEqual(res.trades.length, 1, 'one trade');
+  const t = res.trades[0];
+  assert.ok(near(t.entryPrice, 120), `entry must be next-bar open 120, got ${t.entryPrice}`);
+  assert.strictEqual(t.reason, 'TP');
+  assert.ok(near(t.exitPrice, 130), `exit ${t.exitPrice}`);
+  assert.ok(near(t.pnl, 1000 * (130 - 120) / 120), `pnl ${t.pnl}`);
+});
+
 add('determinism: same input -> identical output', () => {
   const candles = [c(0,100,100,100,100), c(1,100,101,99,100), c(2,100,105,99,102), c(3,102,112,101,108), c(4,108,109,107,108)];
   const order = { side: 'BUY', sizeUSD: 1000, entryPrice: 100, slPrice: 90, tpPrice: 110 };

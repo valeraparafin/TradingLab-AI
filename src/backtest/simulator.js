@@ -52,7 +52,7 @@ export function simulate(p, decide = evaluateBar) {
       position = {
         side: pending.side, entryIndex: i, entryTime: bar.time,
         entryPrice: entryFill, slPrice: pending.slPrice, tpPrice: pending.tpPrice,
-        sizeUSD: pending.sizeUSD, entryFee: pending.sizeUSD * takerFee,
+        sizeUSD: pending.sizeUSD, entryFee: pending.sizeUSD * takerFee, // market entry → taker
       };
       pending = null;
     }
