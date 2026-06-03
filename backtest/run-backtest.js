@@ -50,6 +50,62 @@ export function parseDate(s, fallback) {
 
 function fmtPct(x) { return (x * 100).toFixed(2) + '%'; }
 
+/**
+ * Execute one backtest cell: build funding (futures only), simulate, compute metrics,
+ * and persist the run + trades + equity curve. Returns { runId, metrics }.
+ * Shared by the single-run CLI (main) and the matrix runner.
+ *
+ * @param {BacktestRepo} btRepo open backtest repository
+ * @param {object} p { label, logicType, symbol, tf, lookback, leverage, candles, spec,
+ *   realRows, guardrails, costs, fundingMode, fundingRate, group?, decide? }
+ */
+export async function runOne(btRepo, p) {
+  let funding = null;
+  if (p.leverage > 1) {
+    if (p.guardrails.mmr == null) throw new Error(`No MMR for ${p.symbol} (need contract spec or --mmr) for futures.`);
+    const fundIntervalH = (p.spec && p.spec.fund_interval_h) || 8;
+    const rateAt = buildFundingSeries({ realRows: p.realRows || [], mode: p.fundingMode, constantRate: p.fundingRate });
+    funding = { rateAt, intervalMs: fundIntervalH * 3600000 };
+    console.log(`[backtest] funding mode=${p.fundingMode}, real rows=${(p.realRows || []).length}, interval=${fundIntervalH}h`);
+  }
+
+  console.log(`[backtest] ${p.label}: ${p.candles.length} candles, lookback ${p.lookback}, leverage ${p.leverage}${p.leverage > 1 ? ' (futures)' : ' (spot)'}`);
+  const config = { logicType: p.logicType, logic: {} };
+  const sim = p.decide
+    ? simulate({ candles: p.candles, config, guardrails: p.guardrails, costs: p.costs, symbol: p.symbol, timeframe: p.tf, lookback: p.lookback, startEquity: p.guardrails.portfolioValue, funding }, p.decide)
+    : simulate({ candles: p.candles, config, guardrails: p.guardrails, costs: p.costs, symbol: p.symbol, timeframe: p.tf, lookback: p.lookback, startEquity: p.guardrails.portfolioValue, funding });
+  const metrics = computeMetrics({ trades: sim.trades, equityCurve: sim.equityCurve, startEquity: p.guardrails.portfolioValue, slippageCost: sim.slippageCost, timeframe: p.tf, totalFunding: sim.totalFunding, liquidationCount: sim.liquidationCount });
+
+  const runId = await btRepo.saveRun({
+    strategyLabel: p.label, logicType: p.logicType, symbol: p.symbol, timeframe: p.tf,
+    periodFrom: p.candles[0].time, periodTo: p.candles[p.candles.length - 1].time,
+    leverage: p.leverage, params: { lookback: p.lookback, guardrails: p.guardrails }, costs: p.costs, metrics,
+    group: p.group ?? null,
+  });
+  await btRepo.saveTrades(runId, sim.trades);
+  await btRepo.saveEquityCurve(runId, sim.equityCurve);
+  return { runId, metrics };
+}
+
+/** Print the single-run result block. */
+export function printSummary({ runId, label, logicType, leverage, metrics }) {
+  const m = metrics;
+  console.log('\n══════════ BACKTEST RESULT ══════════');
+  console.log(`Run id        : ${runId}`);
+  console.log(`Strategy      : ${label} (${logicType})`);
+  console.log(`Trades        : ${m.trades.count}  (W ${m.trades.wins} / L ${m.trades.losses})`);
+  console.log(`Win rate      : ${fmtPct(m.trades.winRate)}`);
+  console.log(`Profit factor : ${m.trades.profitFactor === Infinity ? '∞' : m.trades.profitFactor.toFixed(2)}`);
+  console.log(`Net PnL       : ${m.return.netPnl.toFixed(2)} USD (${fmtPct(m.return.netPnlPct)})`);
+  console.log(`Final equity  : ${m.return.finalEquity.toFixed(2)} USD`);
+  console.log(`Max drawdown  : ${fmtPct(m.risk.maxDrawdownPct)}`);
+  console.log(`Sharpe/Sortino: ${m.risk.sharpe.toFixed(2)} / ${m.risk.sortino.toFixed(2)}`);
+  console.log(`Costs         : fees ${m.costs.totalFees.toFixed(2)}, slippage ${m.costs.slippageCost.toFixed(2)}, funding ${m.costs.totalFunding.toFixed(2)}`);
+  if (leverage > 1) console.log(`Liquidations  : ${m.costs.liquidationCount}  (leverage ${leverage}x)`);
+  console.log(`Long / Short  : ${m.breakdown.long.count} / ${m.breakdown.short.count}`);
+  console.log('═════════════════════════════════════');
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const symbol = String(args.symbol || 'BTCUSDT');
@@ -82,47 +138,17 @@ async function main() {
 
   const guardrails = buildGuardrails(args, spec);
   const costs = buildCosts(args, spec);
-  const config = { logicType, logic: {} };
-
-  let funding = null;
-  if (leverage > 1) {
-    if (guardrails.mmr == null) throw new Error(`No MMR for ${symbol} (need contract spec or --mmr) for futures.`);
-    const fundIntervalH = (spec && spec.fund_interval_h) || 8;
-    const rateAt = buildFundingSeries({ realRows, mode: fundingMode, constantRate: fundingRateArg });
-    funding = { rateAt, intervalMs: fundIntervalH * 3600000 };
-    console.log(`[backtest] funding mode=${fundingMode}, real rows=${realRows.length}, interval=${fundIntervalH}h`);
-  }
-
-  console.log(`[backtest] ${label}: ${candles.length} candles, lookback ${lookback}, leverage ${leverage}${leverage > 1 ? ' (futures)' : ' (spot)'}`);
-  const sim = simulate({ candles, config, guardrails, costs, symbol, timeframe: tf, lookback, startEquity: guardrails.portfolioValue, funding });
-  const metrics = computeMetrics({ trades: sim.trades, equityCurve: sim.equityCurve, startEquity: guardrails.portfolioValue, slippageCost: sim.slippageCost, timeframe: tf, totalFunding: sim.totalFunding, liquidationCount: sim.liquidationCount });
 
   const btDb = await openBacktestDb(path.join(process.cwd(), 'backtest.db'));
   const btRepo = new BacktestRepo(btDb);
-  const runId = await btRepo.saveRun({
-    strategyLabel: label, logicType, symbol, timeframe: tf,
-    periodFrom: candles[0].time, periodTo: candles[candles.length - 1].time,
-    leverage, params: { lookback, guardrails }, costs, metrics,
+  const { runId, metrics } = await runOne(btRepo, {
+    label, logicType, symbol, tf, lookback, leverage,
+    candles, spec, realRows, guardrails, costs,
+    fundingMode, fundingRate: fundingRateArg, group: args.group ?? null,
   });
-  await btRepo.saveTrades(runId, sim.trades);
-  await btRepo.saveEquityCurve(runId, sim.equityCurve);
   await btDb.close();
 
-  const m = metrics;
-  console.log('\n══════════ BACKTEST RESULT ══════════');
-  console.log(`Run id        : ${runId}`);
-  console.log(`Strategy      : ${label} (${logicType})`);
-  console.log(`Trades        : ${m.trades.count}  (W ${m.trades.wins} / L ${m.trades.losses})`);
-  console.log(`Win rate      : ${fmtPct(m.trades.winRate)}`);
-  console.log(`Profit factor : ${m.trades.profitFactor === Infinity ? '∞' : m.trades.profitFactor.toFixed(2)}`);
-  console.log(`Net PnL       : ${m.return.netPnl.toFixed(2)} USD (${fmtPct(m.return.netPnlPct)})`);
-  console.log(`Final equity  : ${m.return.finalEquity.toFixed(2)} USD`);
-  console.log(`Max drawdown  : ${fmtPct(m.risk.maxDrawdownPct)}`);
-  console.log(`Sharpe/Sortino: ${m.risk.sharpe.toFixed(2)} / ${m.risk.sortino.toFixed(2)}`);
-  console.log(`Costs         : fees ${m.costs.totalFees.toFixed(2)}, slippage ${m.costs.slippageCost.toFixed(2)}, funding ${m.costs.totalFunding.toFixed(2)}`);
-  if (leverage > 1) console.log(`Liquidations  : ${m.costs.liquidationCount}  (leverage ${leverage}x)`);
-  console.log(`Long / Short  : ${m.breakdown.long.count} / ${m.breakdown.short.count}`);
-  console.log('═════════════════════════════════════');
+  printSummary({ runId, label, logicType, leverage, metrics });
 }
 
 // Run only when invoked directly (Windows-safe).
