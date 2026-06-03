@@ -92,4 +92,16 @@ const ok = (name) => { console.log(`  ok - ${name}`); passed++; };
   ok('bridge guardrails == resolveAgentParams guardrails (parity lock)');
 }
 
+// 6. EQUIVALENCE on the ABSENT-key path: a profile WITHOUT a daily profit target must
+//    produce the same dailyProfitTargetPct from both paths (undefined, no Infinity default),
+//    locking the gate's absent-key behaviour against future divergence.
+{
+  const agent = { id: 2, portfolio_value: 1000, watchlist: 'BTCUSDT', timeframe: '1H', trade_mode: 'spot' };
+  const live = resolveAgentParams(agent, { risk_per_trade_percent: 1 }).guardrails;
+  const bridged = riskProfileToGuardrails({ riskPerTradePercent: 1 });
+  assert.strictEqual(bridged.dailyProfitTargetPct, live.dailyProfitTargetPct, 'absent daily profit target matches live');
+  assert.strictEqual(bridged.dailyProfitTargetPct, undefined, 'absent gate is undefined, not Infinity');
+  ok('absent dailyProfitTargetPct parity (undefined)');
+}
+
 console.log(`\n${passed} checks passed`);

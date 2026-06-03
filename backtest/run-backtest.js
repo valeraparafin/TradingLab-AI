@@ -20,6 +20,8 @@ export function buildGuardrails(args, spec = null) {
     takeProfitPct: num(args.tp, 0.04),
     minRiskRewardRatio: num(args.minRR, 1.5),
     maxOpenPositions: num(args.maxOpen, 1),
+    // CLI convention: 100 = effectively unbounded heat gate, intentionally un-normalized
+    // (this is a raw CLI default, not a stored template percent — do not run it through normFraction).
     maxPortfolioHeatPct: num(args.maxHeat, 100),
     dailyLossLimitPct: num(args.dailyLoss, 1),
     dailyProfitTargetPct: null,
