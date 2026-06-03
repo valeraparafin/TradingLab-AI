@@ -12,6 +12,9 @@ import { fundingBetween } from './funding.js';
  * @param {import('../core/contracts.js').Candle[]} p.candles ascending by time
  * @param {{logicType:string, logic?:object}} p.config
  * @param {object} p.guardrails RiskPolicy guardrails (portfolioValue drives sizing; leverage/mmr for futures)
+ *   Precondition: when leverage > 1 (futures), guardrails.mmr must be a finite number; if missing or
+ *   non-finite, liqPrice returns null and the position can never be liquidated (liquidation silently
+ *   disabled). The CLI guards this; direct callers are responsible for supplying a finite mmr.
  * @param {{takerFee:number, makerFee:number, slippageBps:number, liqFeeRate?:number}} p.costs
  * @param {string} p.symbol
  * @param {string} p.timeframe
@@ -86,9 +89,13 @@ export function simulate(p, decide = evaluateBar) {
         const isLiq = ex.reason === 'LIQUIDATION' || ex.reason === 'LIQ_GAP';
         let pnl, fees;
         if (isLiq) {
-          // Isolated margin: loss capped at margin + liq fee + accrued funding. Entry fee absorbed.
+          // Isolated margin: loss capped at margin + liq fee + accrued funding.
+          // pnl embeds liqFee (and the margin absorbs the entry fee), so only liqFee is
+          // reported in fees — entryFee is NOT added again here. This keeps trade.fees
+          // uniformly equal to the fee amount embedded in that trade's equity impact,
+          // consistent with the normal-exit branch where fees = entryFee + exitFee are both in pnl.
           const liqFee = position.sizeUSD * liqFeeRate;
-          fees = position.entryFee + liqFee;
+          fees = liqFee;
           pnl = -(position.marginUSD + liqFee + position.fundingAccrued);
           liquidationCount += 1;
         } else {
