@@ -51,4 +51,19 @@ const ok = (n) => { console.log(`  ok - ${n}`); passed++; };
   ok('empty input handled');
 }
 
+// 5. null / non-finite metric fields render as n/a without throwing
+{
+  const r = buildReport([mk({
+    metrics: {
+      trades: { count: 0, winRate: null, profitFactor: NaN },
+      return: { netPnlPct: undefined, finalEquity: 0 },
+      risk: { maxDrawdownPct: null, sharpe: undefined },
+      costs: { totalFunding: 0, liquidationCount: 0 },
+    },
+  })]);
+  assert.strictEqual(r.rows.length, 1);
+  assert.ok(r.table.includes('n/a'), 'non-finite fields surface as n/a');
+  ok('null/non-finite metrics render n/a without throwing');
+}
+
 console.log(`\n${passed} checks passed`);
