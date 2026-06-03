@@ -2,10 +2,12 @@ import assert from 'assert';
 import { simulate } from '../src/backtest/simulator.js';
 import { computeMetrics } from '../src/backtest/metrics.js';
 
-// Deterministic synthetic series: a rising leg then a falling leg, enough bars for SMC's
-// pivot window. We assert the pipeline RUNS and is deterministic + that metrics are
-// well-formed — NOT a specific trade count (real indicators on synthetic data are not
-// a numeric contract; the spike repro in Task 8 is the qualitative numeric check).
+// Deterministic synthetic series: a rising leg then a falling leg. pivot_length is set
+// LOW (2) so the REAL SMC indicator forms pivots and emits PERMIT decisions on this
+// series — exercising the real decision.order → entry → fill → exit → trade-record seam
+// end-to-end. We assert the pipeline RUNS, books at least one trade, is byte-for-byte
+// deterministic, and produces well-formed metrics — but NOT a specific trade count
+// (the exact numbers are the Task 8 manual-smoke's qualitative check on real data).
 const TF = 3600000;
 function synth() {
   const out = [];
@@ -28,7 +30,7 @@ const run = () => {
   const candles = synth();
   const params = {
     candles,
-    config: { logicType: 'SMC', logic: { indicators: { pivot_length: 20 } } },
+    config: { logicType: 'SMC', logic: { indicators: { pivot_length: 2 } } },
     guardrails: { portfolioValue: 10000, riskPerTrade: 0.1, maxTradeSizeUSD: Infinity, stopLossPct: 0.02, takeProfitPct: 0.04, minRiskRewardRatio: 1.5, maxOpenPositions: 1, maxPortfolioHeatPct: 100, dailyLossLimitPct: 1, dailyProfitTargetPct: null, maxTradesPerDay: 999999 },
     costs: { takerFee: 0.0006, makerFee: 0.0002, slippageBps: 5 },
     symbol: 'BTCUSDT', timeframe: '1H', lookback: 100, startEquity: 10000,
@@ -39,6 +41,7 @@ const run = () => {
   assert.ok(Array.isArray(a.trades), 'trades is an array');
   assert.strictEqual(a.equityCurve.length, candles.length - 100, 'one equity point per iterated bar');
   assert.ok(Number.isFinite(a.finalEquity), 'finalEquity finite');
+  assert.ok(a.trades.length >= 1, `real pipeline must book >=1 trade — 0 means the PERMIT->fill seam is unexercised (got ${a.trades.length})`);
 
   // 2) Deterministic: a second identical run yields identical output.
   const b = simulate(params);
