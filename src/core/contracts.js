@@ -27,17 +27,21 @@
  * @property {number} [portfolioHeatPct]
  * @property {number} [dailyPnlPct]
  * @property {number} [tradesToday]
+ * @property {number} [freeEquity] - free equity available for margin (futures)
  *
  * @typedef {Object} Order
  * @property {'BUY'|'SELL'} side
- * @property {number} sizeUSD
+ * @property {number} sizeUSD - position notional in USD
  * @property {number} entryPrice
  * @property {number|null} slPrice
  * @property {number|null} tpPrice
+ * @property {number} [marginUSD] - reserved margin (futures only; sizeUSD/leverage)
+ * @property {number} [leverage] - position leverage (futures only)
  *
  * @typedef {Object} Decision
  * @property {'PERMIT'|'DENY'} decision
  * @property {string} [reason]
+ * @property {string} [warning] - non-blocking advisory (e.g. SL beyond liquidation)
  * @property {Order} [order]
  */
 

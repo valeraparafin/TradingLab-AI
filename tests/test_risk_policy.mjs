@@ -51,3 +51,43 @@ assert.equal(freq.evaluate({ side: 'BUY', conviction: 1 }, { ...ctx, tradesToday
 assert.equal(policy.evaluate({ side: 'BUY', conviction: 1 }, { ...ctx, tradesToday: 9999 }).decision, 'PERMIT', 'undefined cap is no-op');
 
 console.log('OK test_risk_policy');
+
+// ---- Phase 4: futures branch ----
+import { RiskPolicy as RP4 } from '../src/agents/RiskPolicy.js';
+import assert4 from 'node:assert';
+
+const baseG = {
+  portfolioValue: 10000, riskPerTrade: 0.1, maxTradeSizeUSD: Infinity,
+  stopLossPct: 0.02, takeProfitPct: 0.04, minRiskRewardRatio: 1.5,
+  maxOpenPositions: 1, maxPortfolioHeatPct: 100, dailyLossLimitPct: 1,
+  dailyProfitTargetPct: null, maxTradesPerDay: 999999,
+};
+
+// Parity: leverage=1 (and absent) → Order has NO marginUSD/leverage, byte-identical to spot shape.
+const spot = new RP4(baseG).evaluate({ side: 'BUY', conviction: 1 }, { entryPrice: 100 });
+assert4.deepStrictEqual(spot, {
+  decision: 'PERMIT',
+  order: { side: 'BUY', sizeUSD: 1000, entryPrice: 100, slPrice: 98, tpPrice: 104 },
+}, 'leverage=1 spot Order is byte-identical (no futures fields)');
+
+// Futures: leverage=5 → marginUSD = sizeUSD/leverage, futures fields present.
+const fut = new RP4({ ...baseG, leverage: 5, mmr: 0.005 }).evaluate({ side: 'BUY', conviction: 1 }, { entryPrice: 100, freeEquity: 10000 });
+assert4.strictEqual(fut.decision, 'PERMIT', 'futures permits');
+assert4.strictEqual(fut.order.marginUSD, 200, 'marginUSD = 1000/5');
+assert4.strictEqual(fut.order.leverage, 5, 'leverage echoed in order');
+assert4.strictEqual(fut.order.sizeUSD, 1000, 'sizeUSD stays the notional');
+assert4.ok(!('warning' in fut) || fut.warning == null, 'tight SL → no liq warning');
+
+// Margin gate: marginUSD must fit free equity.
+const broke = new RP4({ ...baseG, riskPerTrade: 1, leverage: 2, mmr: 0.005 })
+  .evaluate({ side: 'BUY', conviction: 1 }, { entryPrice: 100, freeEquity: 100 });
+assert4.strictEqual(broke.decision, 'DENY', 'margin > free equity → DENY');
+assert4.ok(/[Mm]argin/.test(broke.reason), 'deny reason mentions margin');
+
+// SL-beyond-liquidation → PERMIT + warning (NOT deny). Wide SL (50%) sits past the 10x liq (~90.5).
+const warn = new RP4({ ...baseG, stopLossPct: 0.5, takeProfitPct: 0.75, leverage: 10, mmr: 0.005 })
+  .evaluate({ side: 'BUY', conviction: 1 }, { entryPrice: 100, freeEquity: 10000 });
+assert4.strictEqual(warn.decision, 'PERMIT', 'wide SL still permits');
+assert4.ok(warn.warning && /liquidat/i.test(warn.warning), 'warning flags liquidation risk');
+
+console.log('test_risk_policy.mjs futures cases OK');
