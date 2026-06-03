@@ -12,7 +12,7 @@ export class RiskPolicy {
 
   /**
    * @param {{side:'BUY'|'SELL'|'HOLD', conviction:number}} proposal
-   * @param {{entryPrice:number, openPositions:number, portfolioHeatPct:number, dailyPnlPct:number, tradesToday:number}} ctx
+   * @param {{entryPrice:number, openPositions:number, portfolioHeatPct:number, dailyPnlPct:number, tradesToday:number, freeEquity?:number}} ctx - futures callers should supply `freeEquity`; when absent it defaults to `portfolioValue` (correct for a flat, single-position-per-instance account — v1 model)
    * @returns {{decision:'PERMIT'|'DENY', reason?:string, order?:object}}
    */
   evaluate(proposal, ctx) {
@@ -79,7 +79,7 @@ export class RiskPolicy {
     if (liq != null && slPrice != null) {
       const slBeyondLiq = proposal.side === 'BUY' ? slPrice <= liq : slPrice >= liq;
       if (slBeyondLiq) {
-        warning = `SL ${slPrice} is at/beyond liquidation ${liq.toFixed(2)} at ${leverage}x — liquidation may trigger first`;
+        warning = `SL ${slPrice.toFixed(2)} is at/beyond liquidation ${liq.toFixed(2)} at ${leverage}x — liquidation may trigger first`;
       }
     }
 
