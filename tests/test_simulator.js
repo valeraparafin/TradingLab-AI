@@ -121,3 +121,63 @@ let failed = 0;
 for (const t of tests) { try { t.fn(); console.log(`✅ ${t.n}`); } catch (e) { failed++; console.error(`❌ ${t.n}\n   ${e.message}`); } }
 if (failed) { console.error(`\n${failed} failed`); process.exit(1); }
 console.log('\nAll simulator tests passed!');
+
+// ---- Phase 4: futures (leverage, funding, liquidation) ----
+import { simulate as simulate4 } from '../src/backtest/simulator.js';
+import assertF from 'node:assert';
+
+const H8 = 8 * 3600000;
+const TF4 = 3600000; // 1h bars (renamed to avoid collision with top-level TF)
+// Always-enter decider: PERMIT a long with fixed SL/TP and notional.
+const alwaysLong = (lev) => () => ({
+  signal: { side: 'BUY', conviction: 1 },
+  decision: { decision: 'PERMIT', order: { side: 'BUY', sizeUSD: 1000, slPrice: null, tpPrice: null, leverage: lev, marginUSD: 1000 / lev } },
+});
+
+// Helper: n flat-ish candles starting at t0.
+const mkBars = (n, t0, priceFn) => Array.from({ length: n }, (_, i) => {
+  const p4 = priceFn(i);
+  return { time: t0 + i * TF4, open: p4, high: p4 * 1.001, low: p4 * 0.999, close: p4 };
+});
+
+// (a) Liquidation: 10x long, price crashes below liq (~0.905*entry). Loss capped at margin (+ fees).
+const crash = mkBars(40, 0, (i) => i < 20 ? 100 : 50); // halves after bar 20
+const liqRun = simulate4({
+  candles: crash, config: { logicType: 'X' },
+  guardrails: { portfolioValue: 10000, leverage: 10, mmr: 0.005 },
+  costs: { takerFee: 0.0006, makerFee: 0.0002, slippageBps: 0, liqFeeRate: 0.0006 },
+  symbol: 'T', timeframe: '1H', lookback: 5,
+}, alwaysLong(10));
+const liqTrade = liqRun.trades.find(t => t.reason === 'LIQUIDATION' || t.reason === 'LIQ_GAP');
+assertF.ok(liqTrade, 'a liquidation occurred on the crash');
+// margin = 1000/10 = 100; loss ≈ -(100 + liqFee + funding). With no funding here: ~ -100 - (1000*0.0006).
+assertF.ok(liqTrade.pnl < -99 && liqTrade.pnl > -102, `liq loss capped near margin, got ${liqTrade.pnl}`);
+
+// (b) Funding accrual: long pays positive funding; equity ends lower than the no-funding run.
+const flat = mkBars(80, 0, () => 100); // price never moves
+const common = {
+  candles: flat, config: { logicType: 'X' },
+  guardrails: { portfolioValue: 10000, leverage: 5, mmr: 0.005 },
+  costs: { takerFee: 0, makerFee: 0, slippageBps: 0, liqFeeRate: 0 },
+  symbol: 'T', timeframe: '1H', lookback: 5,
+};
+const withFunding = simulate4({ ...common, funding: { rateAt: () => 0.0001, intervalMs: H8 } }, alwaysLong(5));
+const noFunding = simulate4({ ...common }, alwaysLong(5));
+assertF.ok(withFunding.finalEquity < noFunding.finalEquity, 'positive funding lowers equity for a long');
+assertF.ok(withFunding.totalFunding > 0, 'totalFunding positive (long paid funding)');
+
+// (c) Determinism: same futures inputs → identical result.
+const r1 = simulate4({ ...common, funding: { rateAt: () => 0.0001, intervalMs: H8 } }, alwaysLong(5));
+const r2 = simulate4({ ...common, funding: { rateAt: () => 0.0001, intervalMs: H8 } }, alwaysLong(5));
+assertF.deepStrictEqual(r1, r2, 'futures run is deterministic');
+
+// (d) Parity: leverage=1 + no funding must equal the pure spot path (no funding/liq fields leak).
+const spotRun = simulate4({
+  candles: flat, config: { logicType: 'X' },
+  guardrails: { portfolioValue: 10000 }, costs: { takerFee: 0, makerFee: 0, slippageBps: 0 },
+  symbol: 'T', timeframe: '1H', lookback: 5,
+}, () => ({ signal: { side: 'BUY', conviction: 1 }, decision: { decision: 'PERMIT', order: { side: 'BUY', sizeUSD: 1000, slPrice: null, tpPrice: null } } }));
+assertF.strictEqual(spotRun.totalFunding, 0, 'spot totalFunding = 0');
+assertF.ok(spotRun.trades.every(t => t.funding === 0), 'spot trades carry funding 0');
+
+console.log('test_simulator.js futures cases OK');
