@@ -22,7 +22,8 @@ export async function openBacktestDb(filename) {
       leverage       REAL    NOT NULL,
       params_json    TEXT,
       costs_json     TEXT,
-      metrics_json   TEXT
+      metrics_json   TEXT,
+      run_group      TEXT
     );
 
     CREATE TABLE IF NOT EXISTS backtest_trades (
@@ -49,5 +50,12 @@ export async function openBacktestDb(filename) {
 
     CREATE INDEX IF NOT EXISTS idx_runs_symbol_tf ON backtest_runs (symbol, timeframe);
   `);
+  // Idempotent migration: add run_group to pre-existing databases (CREATE IF NOT EXISTS
+  // won't add columns to a table that already exists).
+  const cols = await db.all(`PRAGMA table_info(backtest_runs)`);
+  if (!cols.some(c => c.name === 'run_group')) {
+    await db.exec(`ALTER TABLE backtest_runs ADD COLUMN run_group TEXT`);
+  }
+  await db.exec(`CREATE INDEX IF NOT EXISTS idx_runs_group ON backtest_runs (run_group)`);
   return db;
 }

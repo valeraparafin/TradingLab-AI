@@ -16,10 +16,11 @@ export class BacktestRepo {
   async saveRun(run) {
     const r = await this.db.run(
       `INSERT INTO backtest_runs
-         (strategy_label, logic_type, symbol, timeframe, period_from, period_to, leverage, params_json, costs_json, metrics_json)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (strategy_label, logic_type, symbol, timeframe, period_from, period_to, leverage, params_json, costs_json, metrics_json, run_group)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [run.strategyLabel, run.logicType, run.symbol, run.timeframe, run.periodFrom, run.periodTo, run.leverage,
-       JSON.stringify(run.params || {}, finite), JSON.stringify(run.costs || {}, finite), JSON.stringify(run.metrics || {}, finite)]
+       JSON.stringify(run.params || {}, finite), JSON.stringify(run.costs || {}, finite), JSON.stringify(run.metrics || {}, finite),
+       run.group ?? null]
     );
     return r.lastID;
   }
@@ -91,5 +92,10 @@ export class BacktestRepo {
   /** All runs, most recent first. */
   async listRuns() {
     return this.db.all('SELECT * FROM backtest_runs ORDER BY id DESC');
+  }
+
+  /** All runs in a matrix group, oldest first (matrix cell order). */
+  async listRunsByGroup(group) {
+    return this.db.all('SELECT * FROM backtest_runs WHERE run_group = ? ORDER BY id ASC', [group]);
   }
 }
