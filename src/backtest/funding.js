@@ -6,12 +6,17 @@
  * Modes:
  *  - 'real-mean' (default): real rate inside coverage; mean of real rates outside (0 if none).
  *  - 'tile': real rate inside coverage; cyclic repeat of the real series (by 8h-boundary index) outside.
+ *    NOTE: `tile` mode assumes an 8h funding interval (matching the project's instruments).
+ *    Boundary indexing inside this function always uses an 8h step (H8 = 8×3600000 ms),
+ *    independently of the `fundIntervalMs` argument passed to `fundingBetween`.
  *  - 'constant': constantRate everywhere (real ignored).
  *
  * @param {object} p
- * @param {{time:number,rate:number}[]} p.realRows sorted-or-not real funding rows
+ * @param {{time:number,rate:number}[]} p.realRows sorted-or-not real funding rows.
+ *   Caller must ensure timestamps are unique (DB funding rows are unique by PK);
+ *   duplicate timestamps would distort the tile period.
  * @param {'real-mean'|'tile'|'constant'} [p.mode='real-mean']
- * @param {number} [p.constantRate=0] used by 'constant' mode
+ * @param {number} [p.constantRate=0] used only by 'constant' mode (ignored by 'real-mean'/'tile')
  * @returns {(time:number)=>number} rateAt
  */
 export function buildFundingSeries({ realRows = [], mode = 'real-mean', constantRate = 0 } = {}) {
@@ -28,7 +33,7 @@ export function buildFundingSeries({ realRows = [], mode = 'real-mean', constant
     const H8 = 8 * 3600000;
     return (time) => {
       if (byTime.has(time)) return byTime.get(time);
-      if (time >= minT && time <= maxT) return mean; // inside coverage but off-grid → mean (rare)
+      if (time >= minT && time <= maxT) return mean; // inside coverage but off-grid → mean (same as real-mean; tiling applies only OUTSIDE coverage)
       const idx = ((Math.floor(time / H8) % rows.length) + rows.length) % rows.length;
       return rows[idx].rate;
     };

@@ -30,6 +30,7 @@ assert.strictEqual(tl(5 * H8), -0.0002, 'tile outside cycles by boundary index')
 // empty real + no constant → 0 (never NaN).
 const empty = buildFundingSeries({ realRows: [], mode: 'real-mean' });
 assert.strictEqual(empty(3 * H8), 0, 'empty real → 0');
+assert.strictEqual(buildFundingSeries({ realRows: [], mode: 'tile' })(8 * 3600000), 0, 'tile empty → 0');
 
 // fundingBetween: sum of rates at boundaries strictly in (prev, cur].
 const sum = fundingBetween(2 * H8, 4 * H8, H8, rm); // boundaries 3*H8 and 4*H8
