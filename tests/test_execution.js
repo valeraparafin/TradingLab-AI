@@ -118,4 +118,16 @@ assertL.strictEqual(sLiq.reason, 'LIQUIDATION', 'short: liq below SL triggers fi
 const spot = checkExit4({ side: 'BUY', slPrice: 96, tpPrice: 110 }, { open: 100, high: 100, low: 95 }, noCost, false);
 assertL.strictEqual(spot.reason, 'SL', 'no liqPrice → spot SL behavior unchanged');
 
+// Tie-break: liqPrice === slPrice → LIQUIDATION (pessimistic).
+const tie = checkExit4({ side: 'BUY', slPrice: 95, tpPrice: 110, liqPrice: 95 }, { open: 100, high: 100, low: 94 }, noCost, false);
+assertL.strictEqual(tie.reason, 'LIQUIDATION', 'long: liq==SL tie → LIQUIDATION');
+
+// Short gap up through liq on the open → LIQ_GAP.
+const sLiqGap = checkExit4(spos, { open: 106, high: 108, low: 104 }, noCost, false);
+assertL.strictEqual(sLiqGap.reason, 'LIQ_GAP', 'short: open gaps past liq → LIQ_GAP');
+
+// Intrabar crossing both liq and TP → liquidation takes precedence (adverse before favorable).
+const liqOverTp = checkExit4({ side: 'BUY', slPrice: 90, tpPrice: 110, liqPrice: 95 }, { open: 100, high: 112, low: 94 }, noCost, false);
+assertL.strictEqual(liqOverTp.reason, 'LIQUIDATION', 'long: liq precedes TP when both touched');
+
 console.log('test_execution.js liquidation cases OK');

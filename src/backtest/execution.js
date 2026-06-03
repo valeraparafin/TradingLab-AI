@@ -32,8 +32,11 @@ export function checkExit(pos, bar, costs, isEntryBar) {
   const bps = (costs && costs.slippageBps) || 0;
   const mkt = (ideal, reason) => ({ idealPrice: ideal, exitPrice: slip(ideal, exitSide, bps), reason, market: true });
   const lim = (price, reason) => ({ idealPrice: price, exitPrice: price, reason, market: false });
-  // Liquidation fills AT the liq price (loss is capped at margin by the simulator regardless).
-  const liqExit = (reason) => ({ idealPrice: liqPrice, exitPrice: liqPrice, reason, market: true });
+  // Liquidation fills EXACTLY at liqPrice (forced close; slippage is NOT applied here — the
+  // forced-close cost is modelled separately as liqFee in the simulator).
+  // exitPrice === idealPrice === liqPrice; market:false (no spread).
+  // Both call sites guard liqPrice != null, so liqExit is never called with a null price.
+  const liqExit = (reason) => ({ idealPrice: liqPrice, exitPrice: liqPrice, reason, market: false });
 
   if (side === 'BUY') {
     // Adverse = downward. Among {SL, LIQ} the HIGHER price is hit first while falling.
@@ -46,6 +49,7 @@ export function checkExit(pos, bar, costs, isEntryBar) {
     }
     const slHit = slPrice != null && bar.low <= slPrice;
     const liqHit = liqPrice != null && bar.low <= liqPrice;
+    // Pessimistic tie-break: liqPrice === slPrice → LIQUIDATION (loss capped at margin + liqFee).
     if (liqHit && (!slHit || liqPrice >= slPrice)) return liqExit('LIQUIDATION');
     if (slHit) return mkt(slPrice, 'SL');
     if (tpPrice != null && bar.high >= tpPrice) return lim(tpPrice, 'TP');
@@ -60,6 +64,7 @@ export function checkExit(pos, bar, costs, isEntryBar) {
     }
     const slHit = slPrice != null && bar.high >= slPrice;
     const liqHit = liqPrice != null && bar.high >= liqPrice;
+    // Pessimistic tie-break: liqPrice === slPrice → LIQUIDATION (loss capped at margin + liqFee).
     if (liqHit && (!slHit || liqPrice <= slPrice)) return liqExit('LIQUIDATION');
     if (slHit) return mkt(slPrice, 'SL');
     if (tpPrice != null && bar.low <= tpPrice) return lim(tpPrice, 'TP');
