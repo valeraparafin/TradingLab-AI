@@ -8,7 +8,6 @@ import { simulate } from '../src/backtest/simulator.js';
 import { computeMetrics } from '../src/backtest/metrics.js';
 import { parseArgs } from './download-data.js';
 import { buildFundingSeries } from '../src/backtest/funding.js';
-import { TF_MS } from '../src/data/marketParse.js';
 
 /** Build RiskPolicy guardrails from CLI args (fixed-notional sizing; spot defaults). */
 export function buildGuardrails(args, spec = null) {
