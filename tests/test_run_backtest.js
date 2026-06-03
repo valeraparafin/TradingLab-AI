@@ -1,5 +1,5 @@
 import assert from 'assert';
-import { buildGuardrails, buildCosts } from '../backtest/run-backtest.js';
+import { buildGuardrails, buildCosts, parseDate } from '../backtest/run-backtest.js';
 
 const tests = [];
 const add = (n, fn) => tests.push({ n, fn });
@@ -12,6 +12,7 @@ add('buildGuardrails: defaults', () => {
   assert.ok(near(g.stopLossPct, 0.02));
   assert.ok(near(g.takeProfitPct, 0.04));
   assert.strictEqual(g.maxOpenPositions, 1);
+  assert.strictEqual(g.maxTradeSizeUSD, Infinity);
 });
 
 add('buildGuardrails: overrides from args', () => {
@@ -40,6 +41,17 @@ add('buildCosts: explicit args override spec', () => {
   const c = buildCosts({ takerFee: '0.002', slippageBps: '10' }, { taker_fee: 0.001 });
   assert.ok(near(c.takerFee, 0.002));
   assert.strictEqual(c.slippageBps, 10);
+});
+
+add('buildGuardrails: maxTradeSizeUSD override', () => {
+  assert.strictEqual(buildGuardrails({ maxTradeSizeUSD: '500' }).maxTradeSizeUSD, 500);
+});
+
+add('parseDate: valid ISO, fallback on absent, throws on garbage', () => {
+  assert.strictEqual(parseDate('2024-01-01', 0), Date.parse('2024-01-01'));
+  assert.strictEqual(parseDate(undefined, 42), 42);
+  assert.strictEqual(parseDate(null, 7), 7);
+  assert.throws(() => parseDate('not-a-date', 0), /Invalid date/);
 });
 
 let failed = 0;

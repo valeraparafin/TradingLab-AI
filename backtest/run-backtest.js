@@ -35,6 +35,14 @@ export function buildCosts(args, spec = null) {
   };
 }
 
+/** Parse an ISO date arg to epoch ms; returns `fallback` if absent, throws on a bad value. */
+export function parseDate(s, fallback) {
+  if (s == null) return fallback;
+  const t = Date.parse(s);
+  if (Number.isNaN(t)) throw new Error(`Invalid date: "${s}". Use ISO format, e.g. 2024-01-01`);
+  return t;
+}
+
 function fmtPct(x) { return (x * 100).toFixed(2) + '%'; }
 
 async function main() {
@@ -45,8 +53,8 @@ async function main() {
   const leverage = args.leverage != null ? Number(args.leverage) : 1;
   if (leverage !== 1) throw new Error('Phase 3 supports spot only (leverage = 1). Futures arrive in Phase 4.');
   const lookback = args.lookback != null ? Number(args.lookback) : 250;
-  const from = args.from ? Date.parse(args.from) : 0;
-  const to = args.to ? Date.parse(args.to) : Number.MAX_SAFE_INTEGER;
+  const from = parseDate(args.from, 0);
+  const to = parseDate(args.to, Number.MAX_SAFE_INTEGER);
   const label = String(args.label || `${logicType} ${symbol} ${tf}`);
 
   const marketDb = await openMarketDb(path.join(process.cwd(), 'market_data.db'));
