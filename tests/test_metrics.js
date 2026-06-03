@@ -56,6 +56,22 @@ add('costs group present (funding/liquidation zero for spot)', () => {
   assert.ok(near(m.costs.slippageCost, 1.5));
 });
 
+add('profit factor is Infinity for an all-win run (no losses)', () => {
+  const trades = [
+    { side: 'BUY', pnl: 50, fees: 1, entryTime: 0,       exitTime: 1 * TF, reason: 'TP' },
+    { side: 'BUY', pnl: 20, fees: 1, entryTime: 2 * TF,  exitTime: 3 * TF, reason: 'TP' },
+  ];
+  const equityCurve = [
+    { time: 0,      equity: 10000 },
+    { time: 1 * TF, equity: 10050 },
+    { time: 3 * TF, equity: 10070 },
+  ];
+  const m = computeMetrics({ trades, equityCurve, startEquity: 10000, slippageCost: 0, timeframe: '1H' });
+  assert.strictEqual(m.trades.profitFactor, Infinity, 'no losses -> Infinity profit factor');
+  assert.strictEqual(m.trades.winRate, 1);
+  assert.strictEqual(m.trades.losses, 0);
+});
+
 add('empty run does not throw and yields zeros', () => {
   const m = computeMetrics({ trades: [], equityCurve: [], startEquity: 10000, slippageCost: 0, timeframe: '1H' });
   assert.strictEqual(m.trades.count, 0);
