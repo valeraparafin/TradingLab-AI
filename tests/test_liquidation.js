@@ -7,7 +7,7 @@ assert.ok(Math.abs(liqPrice(100, 'BUY', 10, 0.005) - 90.5) < 1e-9, 'long 10x liq
 assert.ok(Math.abs(liqPrice(100, 'SELL', 10, 0.005) - 109.5) < 1e-9, 'short 10x liq');
 // Long 5x, mmr 0: liq = entry × 0.8
 assert.ok(Math.abs(liqPrice(200, 'BUY', 5, 0) - 160) < 1e-9, 'long 5x liq no-mmr');
-// Higher leverage → liq closer to entry (long)
+// Higher leverage → liq price closer to entry (higher value for a long)
 assert.ok(liqPrice(100, 'BUY', 20, 0.005) > liqPrice(100, 'BUY', 5, 0.005), 'more leverage → closer liq (long)');
 // Spot / no inputs → null (no liquidation concept)
 assert.strictEqual(liqPrice(100, 'BUY', 1, 0.005), null, 'leverage 1 → null');
