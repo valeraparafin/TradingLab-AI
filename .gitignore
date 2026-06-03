@@ -40,3 +40,6 @@ trades.csv
 graphify-out/
 docs/superpowers
 graphify-out
+
+# Backtest reports
+backtest/reports/
