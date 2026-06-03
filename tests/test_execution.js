@@ -60,6 +60,24 @@ add('checkExit SELL intrabar SL and TP mirror correctly', () => {
   assert.strictEqual(tpEx.exitPrice, 90);
 });
 
+add('checkExit TP_GAP: open gaps past TP fills at tpPrice (limit, no slippage)', () => {
+  // BUY: open gaps up through TP 110
+  const buyPos = { side: 'BUY', slPrice: 90, tpPrice: 110 };
+  const buyBar = { open: 115, high: 116, low: 112 };
+  const buyEx = checkExit(buyPos, buyBar, { slippageBps: 10 }, false);
+  assert.strictEqual(buyEx.reason, 'TP_GAP');
+  assert.strictEqual(buyEx.exitPrice, 110);
+  assert.strictEqual(buyEx.market, false);
+
+  // SELL: open gaps down through TP 90
+  const sellPos = { side: 'SELL', slPrice: 110, tpPrice: 90 };
+  const sellBar = { open: 85, high: 88, low: 84 };
+  const sellEx = checkExit(sellPos, sellBar, { slippageBps: 10 }, false);
+  assert.strictEqual(sellEx.reason, 'TP_GAP');
+  assert.strictEqual(sellEx.exitPrice, 90);
+  assert.strictEqual(sellEx.market, false);
+});
+
 add('checkExit returns null when no level is touched', () => {
   const pos = { side: 'BUY', slPrice: 90, tpPrice: 110 };
   const bar = { open: 100, high: 105, low: 95 };

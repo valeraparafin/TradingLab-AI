@@ -30,7 +30,8 @@ export function checkExit(pos, bar, costs, isEntryBar) {
   const mkt = (ideal, reason) => ({ idealPrice: ideal, exitPrice: slip(ideal, exitSide, bps), reason, market: true });
   const lim = (price, reason) => ({ idealPrice: price, exitPrice: price, reason, market: false });
 
-  // Gap on open (skipped on the entry bar).
+  // Gap on open (skipped on the entry bar). SL_GAP fills at the (worse) gapped open;
+  // TP_GAP fills at tpPrice (limit convention — no windfall from the open gapping past TP).
   if (!isEntryBar) {
     if (side === 'BUY') {
       if (slPrice != null && bar.open <= slPrice) return mkt(bar.open, 'SL_GAP');
