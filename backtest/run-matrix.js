@@ -56,41 +56,49 @@ async function main() {
   const cells = expandMatrix(dims);
   console.log(`[matrix] group=${group}: ${cells.length} cells (${dims.risks.length}r × ${dims.logics.length}l × ${dims.symbols.length}s × ${dims.tfs.length}tf), leverage ${leverage}`);
 
-  const marketDb = await openMarketDb(path.join(process.cwd(), 'market_data.db'));
-  const marketRepo = new MarketDataRepo(marketDb);
-  const btDb = await openBacktestDb(path.join(process.cwd(), 'backtest.db'));
-  const btRepo = new BacktestRepo(btDb);
-
   const summaries = [];
+  let marketDb, btDb;
+  // Both opens run CREATE-TABLE DDL and can throw; keep them inside the try so the
+  // finally always closes whatever was successfully opened (no leak on partial open).
   try {
+    marketDb = await openMarketDb(path.join(process.cwd(), 'market_data.db'));
+    const marketRepo = new MarketDataRepo(marketDb);
+    btDb = await openBacktestDb(path.join(process.cwd(), 'backtest.db'));
+    const btRepo = new BacktestRepo(btDb);
+
     for (const cell of cells) {
-      const candles = await marketRepo.getCandles(cell.symbol, cell.tf, from, to);
-      if (candles.length < lookback + 2) {
-        console.warn(`[matrix] SKIP ${cell.symbol} ${cell.tf}: ${candles.length} candles (< ${lookback + 2}). Download more first.`);
-        continue;
-      }
-      const spec = await marketRepo.getContractSpec(cell.symbol);
-      const settings = loadRiskProfile(cell.riskId);
-      const mmr = args.mmr != null ? Number(args.mmr) : (spec && spec.mmr != null ? spec.mmr : null);
-      const guardrails = riskProfileToGuardrails(settings, { leverage, mmr });
-      const costs = buildCosts(args, spec);
+      try {
+        const candles = await marketRepo.getCandles(cell.symbol, cell.tf, from, to);
+        if (candles.length < lookback + 2) {
+          console.warn(`[matrix] SKIP ${cell.symbol} ${cell.tf}: ${candles.length} candles (< ${lookback + 2}). Download more first.`);
+          continue;
+        }
+        const spec = await marketRepo.getContractSpec(cell.symbol);
+        const settings = loadRiskProfile(cell.riskId);
+        const mmr = args.mmr != null ? Number(args.mmr) : (spec && spec.mmr != null ? spec.mmr : null);
+        const guardrails = riskProfileToGuardrails(settings, { leverage, mmr });
+        const costs = buildCosts(args, spec);
 
-      let realRows = [];
-      if (leverage > 1) {
-        realRows = await marketRepo.getFunding(cell.symbol, candles[0].time, candles[candles.length - 1].time);
-      }
+        let realRows = [];
+        if (leverage > 1) {
+          realRows = await marketRepo.getFunding(cell.symbol, candles[0].time, candles[candles.length - 1].time);
+        }
 
-      const label = `${cell.logicType}/${cell.riskId} ${cell.symbol} ${cell.tf}`;
-      const { metrics } = await runOne(btRepo, {
-        label, logicType: cell.logicType, symbol: cell.symbol, tf: cell.tf,
-        lookback, leverage, candles, spec, realRows, guardrails, costs,
-        fundingMode, fundingRate, group,
-      });
-      summaries.push({ ...cell, leverage, metrics });
+        const label = `${cell.logicType}/${cell.riskId} ${cell.symbol} ${cell.tf}`;
+        const { metrics } = await runOne(btRepo, {
+          label, logicType: cell.logicType, symbol: cell.symbol, tf: cell.tf,
+          lookback, leverage, candles, spec, realRows, guardrails, costs,
+          fundingMode, fundingRate, group,
+        });
+        summaries.push({ ...cell, leverage, metrics });
+      } catch (err) {
+        // Isolate per-cell failures so one bad cell doesn't discard the whole sweep.
+        console.warn(`[matrix] ERROR ${cell.logicType}/${cell.riskId} ${cell.symbol} ${cell.tf}: ${err.message}`);
+      }
     }
   } finally {
-    await marketDb.close();
-    await btDb.close();
+    if (marketDb) await marketDb.close();
+    if (btDb) await btDb.close();
   }
 
   const report = buildReport(summaries);
