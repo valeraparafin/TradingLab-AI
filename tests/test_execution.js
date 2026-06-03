@@ -88,3 +88,34 @@ let failed = 0;
 for (const t of tests) { try { t.fn(); console.log(`✅ ${t.n}`); } catch (e) { failed++; console.error(`❌ ${t.n}\n   ${e.message}`); } }
 if (failed) { console.error(`\n${failed} failed`); process.exit(1); }
 console.log('\nAll execution tests passed!');
+
+// ---- Phase 4: liquidation level ----
+import { checkExit as checkExit4 } from '../src/backtest/execution.js';
+import assertL from 'node:assert';
+
+const noCost = { slippageBps: 0 };
+
+// Long, liq below SL is irrelevant; here liq (95) is ABOVE sl (90) → liq triggers first on a fall.
+const lpos = { side: 'BUY', slPrice: 90, tpPrice: 110, liqPrice: 95 };
+const liqHit = checkExit4(lpos, { open: 100, high: 100, low: 94 }, noCost, false);
+assertL.strictEqual(liqHit.reason, 'LIQUIDATION', 'long: liq above SL triggers first');
+assertL.strictEqual(liqHit.exitPrice, 95, 'liq fills at liq price');
+
+// Long, SL (96) above liq (90): SL triggers first (normal, tight SL).
+const slFirst = checkExit4({ side: 'BUY', slPrice: 96, tpPrice: 110, liqPrice: 90 }, { open: 100, high: 100, low: 95 }, noCost, false);
+assertL.strictEqual(slFirst.reason, 'SL', 'long: SL above liq triggers first');
+
+// Long gap down through liq on the open (non-entry) → LIQ_GAP.
+const liqGap = checkExit4(lpos, { open: 93, high: 96, low: 92 }, noCost, false);
+assertL.strictEqual(liqGap.reason, 'LIQ_GAP', 'long: open gaps past liq → LIQ_GAP');
+
+// Short mirror: liq (105) below sl (110) → liq triggers first on a rise.
+const spos = { side: 'SELL', slPrice: 110, tpPrice: 90, liqPrice: 105 };
+const sLiq = checkExit4(spos, { open: 100, high: 106, low: 100 }, noCost, false);
+assertL.strictEqual(sLiq.reason, 'LIQUIDATION', 'short: liq below SL triggers first');
+
+// Spot parity: no liqPrice on pos → behaves exactly as before (SL).
+const spot = checkExit4({ side: 'BUY', slPrice: 96, tpPrice: 110 }, { open: 100, high: 100, low: 95 }, noCost, false);
+assertL.strictEqual(spot.reason, 'SL', 'no liqPrice → spot SL behavior unchanged');
+
+console.log('test_execution.js liquidation cases OK');
