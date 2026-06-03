@@ -24,7 +24,9 @@ function sideStats(trades) {
 
 /**
  * Compute the full per-run metrics set from trades + per-bar equity curve. Pure.
- * Funding/liquidation report as 0 (spot); the shape is already futures-ready.
+ * totalFunding and liquidationCount are explicit aggregates supplied by the simulator
+ * (including any open-at-end position's funding) — not re-derived from the trades array.
+ * Both default to 0 for spot backtests where they are not applicable.
  *
  * @param {object} p
  * @param {object[]} p.trades
@@ -32,9 +34,11 @@ function sideStats(trades) {
  * @param {number} p.startEquity
  * @param {number} [p.slippageCost=0]
  * @param {string} p.timeframe
+ * @param {number} [p.totalFunding=0]   Aggregate funding paid/received by the simulator (single source of truth).
+ * @param {number} [p.liquidationCount=0] Number of liquidation events reported by the simulator.
  * @returns {object}
  */
-export function computeMetrics({ trades, equityCurve, startEquity, slippageCost = 0, timeframe }) {
+export function computeMetrics({ trades, equityCurve, startEquity, slippageCost = 0, timeframe, totalFunding = 0, liquidationCount = 0 }) {
   const finalEquity = equityCurve.length ? equityCurve[equityCurve.length - 1].equity : startEquity;
   const netPnl = finalEquity - startEquity;
   const netPnlPct = startEquity ? netPnl / startEquity : 0;
@@ -86,7 +90,7 @@ export function computeMetrics({ trades, equityCurve, startEquity, slippageCost 
       winRate: all.winRate, profitFactor: all.profitFactor, expectancy: all.expectancy,
       avgWin: all.avgWin, avgLoss: all.avgLoss, avgHoldMs, exposurePct,
     },
-    costs: { totalFees, totalFunding: 0, liquidationCount: 0, slippageCost },
+    costs: { totalFees, totalFunding, liquidationCount, slippageCost },
     breakdown: {
       long: sideStats(trades.filter(t => t.side === 'BUY')),
       short: sideStats(trades.filter(t => t.side === 'SELL')),

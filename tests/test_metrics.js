@@ -84,3 +84,24 @@ let failed = 0;
 for (const t of tests) { try { t.fn(); console.log(`✅ ${t.n}`); } catch (e) { failed++; console.error(`❌ ${t.n}\n   ${e.message}`); } }
 if (failed) { console.error(`\n${failed} failed`); process.exit(1); }
 console.log('\nAll metrics tests passed!');
+
+// ---- Phase 4: funding + liquidation aggregation (explicit inputs from simulator) ----
+import { computeMetrics as cm4 } from '../src/backtest/metrics.js';
+import assertM from 'node:assert';
+
+const eq = [{ time: 0, equity: 10000 }, { time: 3600000, equity: 9900 }];
+const trades4 = [
+  { side: 'BUY', entryTime: 0, exitTime: 3600000, pnl: -50, fees: 1, funding: 2, reason: 'LIQUIDATION' },
+  { side: 'SELL', entryTime: 0, exitTime: 3600000, pnl: -50, fees: 1, funding: -1, reason: 'SL' },
+];
+// Explicit aggregates from the simulator flow through to costs.
+const m = cm4({ trades: trades4, equityCurve: eq, startEquity: 10000, timeframe: '1H', totalFunding: 1, liquidationCount: 1 });
+assertM.ok(Math.abs(m.costs.totalFunding - 1) < 1e-12, 'totalFunding passed through');
+assertM.strictEqual(m.costs.liquidationCount, 1, 'liquidationCount passed through');
+
+// Defaults to 0/0 when not provided (spot).
+const spot = cm4({ trades: [{ side: 'BUY', entryTime: 0, exitTime: 3600000, pnl: 5, fees: 1, reason: 'TP' }], equityCurve: eq, startEquity: 10000, timeframe: '1H' });
+assertM.strictEqual(spot.costs.totalFunding, 0, 'default totalFunding 0');
+assertM.strictEqual(spot.costs.liquidationCount, 0, 'default liquidationCount 0');
+
+console.log('test_metrics.js futures cases OK');
