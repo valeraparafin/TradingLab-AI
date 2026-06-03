@@ -7,9 +7,11 @@ import { BacktestRepo } from '../src/backtest/BacktestRepo.js';
 import { simulate } from '../src/backtest/simulator.js';
 import { computeMetrics } from '../src/backtest/metrics.js';
 import { parseArgs } from './download-data.js';
+import { buildFundingSeries } from '../src/backtest/funding.js';
+import { TF_MS } from '../src/data/marketParse.js';
 
 /** Build RiskPolicy guardrails from CLI args (fixed-notional sizing; spot defaults). */
-export function buildGuardrails(args) {
+export function buildGuardrails(args, spec = null) {
   const num = (v, d) => (v != null ? Number(v) : d);
   return {
     portfolioValue: num(args.equity, 10000),
@@ -23,15 +25,19 @@ export function buildGuardrails(args) {
     dailyLossLimitPct: num(args.dailyLoss, 1),
     dailyProfitTargetPct: null,
     maxTradesPerDay: num(args.maxTrades, 999999),
+    leverage: num(args.leverage, 1),
+    mmr: args.mmr != null ? Number(args.mmr) : (spec && spec.mmr != null ? spec.mmr : null),
   };
 }
 
 /** Build cost config from CLI args, falling back to the stored contract spec, then constants. */
 export function buildCosts(args, spec = null) {
+  const taker = args.takerFee != null ? Number(args.takerFee) : (spec && spec.taker_fee != null ? spec.taker_fee : 0.0006);
   return {
-    takerFee: args.takerFee != null ? Number(args.takerFee) : (spec && spec.taker_fee != null ? spec.taker_fee : 0.0006),
+    takerFee: taker,
     makerFee: args.makerFee != null ? Number(args.makerFee) : (spec && spec.maker_fee != null ? spec.maker_fee : 0.0002),
     slippageBps: args.slippageBps != null ? Number(args.slippageBps) : 5,
+    liqFeeRate: args.liqFee != null ? Number(args.liqFee) : taker,
   };
 }
 
@@ -51,7 +57,8 @@ async function main() {
   const tf = String(args.tf || '1H');
   const logicType = String(args.logic || 'SMC');
   const leverage = args.leverage != null ? Number(args.leverage) : 1;
-  if (leverage !== 1) throw new Error('Phase 3 supports spot only (leverage = 1). Futures arrive in Phase 4.');
+  const fundingMode = String(args.fundingMode || 'real-mean');
+  const fundingRateArg = args.fundingRate != null ? Number(args.fundingRate) : 0;
   const lookback = args.lookback != null ? Number(args.lookback) : 250;
   const from = parseDate(args.from, 0);
   const to = parseDate(args.to, Number.MAX_SAFE_INTEGER);
@@ -67,13 +74,26 @@ async function main() {
     throw new Error(`Not enough candles for ${symbol} ${tf}: ${candles.length} (need > ${lookback + 1}). Download more via backtest/download-data.js.`);
   }
 
-  const guardrails = buildGuardrails(args);
+  const guardrails = buildGuardrails(args, spec);
   const costs = buildCosts(args, spec);
   const config = { logicType, logic: {} };
 
-  console.log(`[backtest] ${label}: ${candles.length} candles, lookback ${lookback}, leverage 1 (spot)`);
-  const sim = simulate({ candles, config, guardrails, costs, symbol, timeframe: tf, lookback, startEquity: guardrails.portfolioValue });
-  const metrics = computeMetrics({ trades: sim.trades, equityCurve: sim.equityCurve, startEquity: guardrails.portfolioValue, slippageCost: sim.slippageCost, timeframe: tf });
+  let funding = null;
+  if (leverage > 1) {
+    if (guardrails.mmr == null) throw new Error(`No MMR for ${symbol} (need contract spec or --mmr) for futures.`);
+    const fundIntervalH = (spec && spec.fund_interval_h) || 8;
+    const intervalMs = fundIntervalH * 3600000;
+    const mdb = await openMarketDb(path.join(process.cwd(), 'market_data.db'));
+    const realRows = await new MarketDataRepo(mdb).getFunding(symbol, candles[0].time, candles[candles.length - 1].time);
+    await mdb.close();
+    const rateAt = buildFundingSeries({ realRows, mode: fundingMode, constantRate: fundingRateArg });
+    funding = { rateAt, intervalMs };
+    console.log(`[backtest] funding mode=${fundingMode}, real rows=${realRows.length}, interval=${fundIntervalH}h`);
+  }
+
+  console.log(`[backtest] ${label}: ${candles.length} candles, lookback ${lookback}, leverage ${leverage}${leverage > 1 ? ' (futures)' : ' (spot)'}`);
+  const sim = simulate({ candles, config, guardrails, costs, symbol, timeframe: tf, lookback, startEquity: guardrails.portfolioValue, funding });
+  const metrics = computeMetrics({ trades: sim.trades, equityCurve: sim.equityCurve, startEquity: guardrails.portfolioValue, slippageCost: sim.slippageCost, timeframe: tf, totalFunding: sim.totalFunding, liquidationCount: sim.liquidationCount });
 
   const btDb = await openBacktestDb(path.join(process.cwd(), 'backtest.db'));
   const btRepo = new BacktestRepo(btDb);
@@ -97,7 +117,8 @@ async function main() {
   console.log(`Final equity  : ${m.return.finalEquity.toFixed(2)} USD`);
   console.log(`Max drawdown  : ${fmtPct(m.risk.maxDrawdownPct)}`);
   console.log(`Sharpe/Sortino: ${m.risk.sharpe.toFixed(2)} / ${m.risk.sortino.toFixed(2)}`);
-  console.log(`Costs         : fees ${m.costs.totalFees.toFixed(2)}, slippage ${m.costs.slippageCost.toFixed(2)}`);
+  console.log(`Costs         : fees ${m.costs.totalFees.toFixed(2)}, slippage ${m.costs.slippageCost.toFixed(2)}, funding ${m.costs.totalFunding.toFixed(2)}`);
+  if (leverage > 1) console.log(`Liquidations  : ${m.costs.liquidationCount}  (leverage ${leverage}x)`);
   console.log(`Long / Short  : ${m.breakdown.long.count} / ${m.breakdown.short.count}`);
   console.log('═════════════════════════════════════');
 }

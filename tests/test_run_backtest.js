@@ -58,3 +58,27 @@ let failed = 0;
 for (const t of tests) { try { t.fn(); console.log(`✅ ${t.n}`); } catch (e) { failed++; console.error(`❌ ${t.n}\n   ${e.message}`); } }
 if (failed) { console.error(`\n${failed} failed`); process.exit(1); }
 console.log('\nAll run-backtest tests passed!');
+
+// ---- Phase 4: futures builders ----
+import { buildGuardrails as bg4, buildCosts as bc4 } from '../backtest/run-backtest.js';
+import assertR from 'node:assert';
+
+// leverage + mmr flow into guardrails; defaults are spot.
+const gSpot = bg4({});
+assertR.strictEqual(gSpot.leverage, 1, 'default leverage 1');
+const gFut = bg4({ leverage: '5' });
+assertR.strictEqual(gFut.leverage, 5, 'leverage parsed');
+
+// mmr falls back to the contract spec.
+const gMmr = bg4({}, { mmr: 0.004 });
+assertR.strictEqual(gMmr.mmr, 0.004, 'mmr from spec');
+const gMmrArg = bg4({ mmr: '0.01' }, { mmr: 0.004 });
+assertR.strictEqual(gMmrArg.mmr, 0.01, 'mmr arg overrides spec');
+
+// liqFeeRate defaults to taker fee, overridable.
+const c1 = bc4({}, { taker_fee: 0.0006 });
+assertR.strictEqual(c1.liqFeeRate, 0.0006, 'liqFeeRate defaults to taker');
+const c2 = bc4({ liqFee: '0.001' }, { taker_fee: 0.0006 });
+assertR.strictEqual(c2.liqFeeRate, 0.001, 'liqFee arg overrides');
+
+console.log('test_run_backtest.js futures cases OK');
