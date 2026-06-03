@@ -71,9 +71,11 @@ export async function runOne(btRepo, p) {
 
   console.log(`[backtest] ${p.label}: ${p.candles.length} candles, lookback ${p.lookback}, leverage ${p.leverage}${p.leverage > 1 ? ' (futures)' : ' (spot)'}`);
   const config = { logicType: p.logicType, logic: {} };
-  const sim = p.decide
-    ? simulate({ candles: p.candles, config, guardrails: p.guardrails, costs: p.costs, symbol: p.symbol, timeframe: p.tf, lookback: p.lookback, startEquity: p.guardrails.portfolioValue, funding }, p.decide)
-    : simulate({ candles: p.candles, config, guardrails: p.guardrails, costs: p.costs, symbol: p.symbol, timeframe: p.tf, lookback: p.lookback, startEquity: p.guardrails.portfolioValue, funding });
+  // p.decide is optional; passing undefined uses simulate's default (evaluateBar).
+  const sim = simulate(
+    { candles: p.candles, config, guardrails: p.guardrails, costs: p.costs, symbol: p.symbol, timeframe: p.tf, lookback: p.lookback, startEquity: p.guardrails.portfolioValue, funding },
+    p.decide,
+  );
   const metrics = computeMetrics({ trades: sim.trades, equityCurve: sim.equityCurve, startEquity: p.guardrails.portfolioValue, slippageCost: sim.slippageCost, timeframe: p.tf, totalFunding: sim.totalFunding, liquidationCount: sim.liquidationCount });
 
   const runId = await btRepo.saveRun({

@@ -72,5 +72,19 @@ const lookback = 20;
   ok('spot run has zero funding');
 }
 
+// 3. default decider path: omitting `decide` falls back to simulate's evaluateBar
+//    (the path the single-run CLI uses) — must run and return well-formed metrics.
+{
+  const { runId, metrics } = await runOne(repo, {
+    label: 'unit3', logicType: 'SMC', symbol: 'BTCUSDT', tf: '1H',
+    lookback, leverage: 1, candles: cs, spec: null, realRows: [],
+    guardrails, costs, fundingMode: 'real-mean', fundingRate: 0,
+    group: null,
+  });
+  assert.ok(runId > 0, 'runId assigned (default decider)');
+  assert.ok(metrics && metrics.trades && typeof metrics.trades.count === 'number', 'well-formed metrics from default path');
+  ok('default evaluateBar path runs');
+}
+
 await db.close();
 console.log(`\n${passed} checks passed`);
