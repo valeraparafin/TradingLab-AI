@@ -56,6 +56,9 @@ async function main() {
   const tf = String(args.tf || '1H');
   const logicType = String(args.logic || 'SMC');
   const leverage = args.leverage != null ? Number(args.leverage) : 1;
+  // CLI flags use camelCase throughout (consistent with e.g. --riskPerTrade):
+  //   --leverage, --mmr, --fundingMode (real-mean|tile|constant),
+  //   --fundingRate (for constant mode), --liqFee
   const fundingMode = String(args.fundingMode || 'real-mean');
   const fundingRateArg = args.fundingRate != null ? Number(args.fundingRate) : 0;
   const lookback = args.lookback != null ? Number(args.lookback) : 250;
@@ -67,6 +70,10 @@ async function main() {
   const marketRepo = new MarketDataRepo(marketDb);
   const candles = await marketRepo.getCandles(symbol, tf, from, to);
   const spec = await marketRepo.getContractSpec(symbol);
+  let realRows = [];
+  if (leverage > 1 && candles.length) {
+    realRows = await marketRepo.getFunding(symbol, candles[0].time, candles[candles.length - 1].time);
+  }
   await marketDb.close();
 
   if (candles.length < lookback + 2) {
@@ -81,12 +88,8 @@ async function main() {
   if (leverage > 1) {
     if (guardrails.mmr == null) throw new Error(`No MMR for ${symbol} (need contract spec or --mmr) for futures.`);
     const fundIntervalH = (spec && spec.fund_interval_h) || 8;
-    const intervalMs = fundIntervalH * 3600000;
-    const mdb = await openMarketDb(path.join(process.cwd(), 'market_data.db'));
-    const realRows = await new MarketDataRepo(mdb).getFunding(symbol, candles[0].time, candles[candles.length - 1].time);
-    await mdb.close();
     const rateAt = buildFundingSeries({ realRows, mode: fundingMode, constantRate: fundingRateArg });
-    funding = { rateAt, intervalMs };
+    funding = { rateAt, intervalMs: fundIntervalH * 3600000 };
     console.log(`[backtest] funding mode=${fundingMode}, real rows=${realRows.length}, interval=${fundIntervalH}h`);
   }
 
