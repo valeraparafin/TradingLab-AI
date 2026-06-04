@@ -21,9 +21,11 @@ export function BacktestRunPage() {
 
   useEffect(() => {
     if (!id) return;
+    let cancelled = false;
     backtestApi.getRun(Number(id))
-      .then(res => setDetail(res.data))
-      .catch(e => setError(e.response?.status === 404 ? 'Run not found' : e.message));
+      .then(res => { if (!cancelled) setDetail(res.data); })
+      .catch(e => { if (!cancelled) setError(e.response?.status === 404 ? 'Run not found' : (e?.message ?? 'Failed to load run')); });
+    return () => { cancelled = true; };
   }, [id]);
 
   if (error) {
