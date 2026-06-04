@@ -1,9 +1,6 @@
 import type { BacktestRunRow } from '../lib/api';
 import { Card } from './ui/components';
-
-const pct = (v: number | null) => (v == null || !isFinite(v) ? '—' : (v * 100).toFixed(2) + '%');
-const num = (v: number | null) => (v == null || !isFinite(v) ? '—' : v.toFixed(2));
-const pf = (v: number | null) => (v == null || !isFinite(v) ? '∞' : v.toFixed(2));
+import { pct, num, pf } from '../lib/formatters';
 
 interface Props {
   rows: BacktestRunRow[];

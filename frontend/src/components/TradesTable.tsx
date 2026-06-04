@@ -1,7 +1,6 @@
 import type { BacktestTrade } from '../lib/api';
 import { Card } from './ui/components';
-
-const time = (t: number) => new Date(t).toLocaleString();
+import { num, dateTime } from '../lib/formatters';
 
 export function TradesTable({ trades }: { trades: BacktestTrade[] }) {
   if (!trades.length) return <Card className="p-6 text-muted-foreground">No trades.</Card>;
@@ -20,11 +19,11 @@ export function TradesTable({ trades }: { trades: BacktestTrade[] }) {
             <tr key={t.idx} className="border-b border-border">
               <td className="p-2">{t.idx}</td>
               <td className={'p-2 font-medium ' + (t.side === 'BUY' ? 'text-green-500' : 'text-red-500')}>{t.side}</td>
-              <td className="p-2">{time(t.entryTime)}<div className="text-xs text-muted-foreground">{t.entryPrice}</div></td>
-              <td className="p-2">{time(t.exitTime)}<div className="text-xs text-muted-foreground">{t.exitPrice}</div></td>
-              <td className="p-2">{t.sizeUSD?.toFixed(2)}</td>
-              <td className={'p-2 ' + (t.pnl >= 0 ? 'text-green-500' : 'text-red-500')}>{t.pnl?.toFixed(2)}</td>
-              <td className="p-2">{t.fees?.toFixed(2)}</td>
+              <td className="p-2">{dateTime(t.entryTime)}<div className="text-xs text-muted-foreground">{t.entryPrice}</div></td>
+              <td className="p-2">{dateTime(t.exitTime)}<div className="text-xs text-muted-foreground">{t.exitPrice}</div></td>
+              <td className="p-2">{num(t.sizeUSD)}</td>
+              <td className={'p-2 ' + ((t.pnl ?? 0) >= 0 ? 'text-green-500' : 'text-red-500')}>{num(t.pnl)}</td>
+              <td className="p-2">{num(t.fees)}</td>
               <td className="p-2">{t.reason}</td>
             </tr>
           ))}
