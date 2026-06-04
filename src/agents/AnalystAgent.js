@@ -1,5 +1,6 @@
 import { getDB } from '../../db.js';
 import { ToolRegistry } from '../registry/ToolRegistry.js';
+import { deriveAgentProposal } from './deriveAgentProposal.js';
 
 const INDICATOR_DESCRIPTIONS = {
     SMC: 'Smart Money Concepts — institutional order flow, BOS/CHoCH structure shifts.',
@@ -86,6 +87,15 @@ export class AnalystAgent {
         const { symbol, timeframe = "1H" } = task;
         if (!symbol) throw new Error("Symbol is required for analysis.");
 
+        // Phase 6b: when USE_SIGNAL_CORE is ON, derive the proposal from the shared
+        // pure core instead of the simulated reflection loop. OFF (default) is unchanged.
+        // `??` (not `||`) so an explicit `false` in per-agent config survives.
+        const cfg = this.orchestrator?.config || {};
+        const useSignalCore = cfg.useSignalCore ?? (process.env.USE_SIGNAL_CORE === "true");
+        if (useSignalCore) {
+            return this._coreProposal(symbol, timeframe);
+        }
+
         this.emitThought(`Starting analysis for ${symbol}...`);
 
         let confidence = 0;
@@ -124,6 +134,27 @@ export class AnalystAgent {
 
         // 5. FINAL DECISION: Synthesize all iterations into a final signal
         return this._finalizeDecision(symbol, evidence);
+    }
+
+    /**
+     * Phase 6b ON path: derive the proposal from the shared pure core on real candles.
+     * The shell (this method) does the I/O (candle fetch); deriveAgentProposal is pure.
+     * HOLD / unsupported / empty-data all yield a HOLD proposal, which RiskPolicy then
+     * DENYs (no trade) — the live loop never crashes.
+     */
+    async _coreProposal(symbol, timeframe) {
+        this.emitThought(`Analyzing ${symbol} via signal core...`);
+        const res = await this.tools.get_candles({ symbol, interval: timeframe, limit: 200 });
+        if (!res?.success || !Array.isArray(res.data) || res.data.length === 0) {
+            const reason = `No candle data for ${symbol}; holding.`;
+            this.emitThought(reason);
+            return { side: 'HOLD', conviction: 0, rationale: reason, invalidationIdea: null };
+        }
+        const candles = res.data;
+        const price = candles[candles.length - 1].close;
+        const proposal = deriveAgentProposal({ indicators: this.indicators, logicConfig: {}, candles, price });
+        this.emitThought(`Core proposal: ${proposal.side} for ${symbol} (conviction ${proposal.conviction.toFixed(2)})`);
+        return proposal;
     }
 
     async _consultCouncil(symbol, timeframe, hypothesis) {
