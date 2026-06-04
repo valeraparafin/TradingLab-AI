@@ -17,6 +17,7 @@ import templateRouter from './src/server/routes/template.routes.js';
 import strategyRouter from './src/server/routes/strategy.routes.js';
 import analyticsRouter from './src/server/routes/analytics.routes.js';
 import assetRouter from './src/server/routes/asset.routes.js';
+import backtestRouter from './src/server/routes/backtest.routes.js';
 import { createAgentManager } from './src/server/services/agentManager.js';
 import { createAgentsRouter } from './src/server/routes/agents.routes.js';
 
@@ -37,6 +38,7 @@ app.use('/api', strategyRouter);
 app.use('/api/strategies', strategyRouter);
 app.use('/api/analytics', analyticsRouter);
 app.use('/api/assets', assetRouter);
+app.use('/api/backtest', backtestRouter);
 
 const agentManager = createAgentManager(io);
 app.use('/api/agents', createAgentsRouter(agentManager));
