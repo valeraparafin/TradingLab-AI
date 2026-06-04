@@ -38,4 +38,13 @@ const smcBull = { structure: { trend: 1, structure: [] }, obs: [] };
   ok('ON + SMC bearish → core SELL');
 }
 
+// ON + unsupported logicType → skip (no throw into the live loop), reason present
+{
+  const r = resolveEntrySide({ logicType: 'NopeNotReal', strategyData: {}, price: 100, candles: [], useSignalCore: true });
+  assert.strictEqual(r.skip, true);
+  assert.strictEqual(r.side, null);
+  assert.ok(typeof r.reason === 'string' && /unsupported logicType/i.test(r.reason), 'reason names the unsupported type');
+  ok('ON + unsupported logicType → skip, no throw');
+}
+
 console.log(`\n${passed} checks passed`);

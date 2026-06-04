@@ -18,7 +18,15 @@ export function resolveEntrySide({ logicType, strategyData, price, candles, useS
   if (!useSignalCore) {
     return { side: legacyManualSide(logicType, strategyData, price), skip: false };
   }
-  const signal = deriveSignal(logicType, strategyData, { price, candles });
+  // deriveSignal throws on an unsupported/unknown logicType. On the live ON path
+  // that must not crash the trading loop: treat it as a logged config error and
+  // skip the entry (no trade), exactly as the spec (§4) prescribes.
+  let signal;
+  try {
+    signal = deriveSignal(logicType, strategyData, { price, candles });
+  } catch (err) {
+    return { side: null, skip: true, reason: `unsupported logicType for signal core: ${err.message}` };
+  }
   if (signal.side === 'HOLD') {
     return { side: null, skip: true, reason: signal.reason || 'signal core HOLD' };
   }
