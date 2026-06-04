@@ -21,7 +21,7 @@ export function pickLogicType(indicators = []) {
 }
 
 /** HOLD proposal — RiskPolicy DENYs it (no trade). Carries a reason for UI/memory. */
-function holdProposal(reason) {
+export function holdProposal(reason) {
   return { side: 'HOLD', conviction: 0, rationale: reason, invalidationIdea: null };
 }
 

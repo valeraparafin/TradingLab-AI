@@ -1,6 +1,6 @@
 import { getDB } from '../../db.js';
 import { ToolRegistry } from '../registry/ToolRegistry.js';
-import { deriveAgentProposal } from './deriveAgentProposal.js';
+import { deriveAgentProposal, holdProposal } from './deriveAgentProposal.js';
 
 const INDICATOR_DESCRIPTIONS = {
     SMC: 'Smart Money Concepts — institutional order flow, BOS/CHoCH structure shifts.',
@@ -148,10 +148,12 @@ export class AnalystAgent {
         if (!res?.success || !Array.isArray(res.data) || res.data.length === 0) {
             const reason = `No candle data for ${symbol}; holding.`;
             this.emitThought(reason);
-            return { side: 'HOLD', conviction: 0, rationale: reason, invalidationIdea: null };
+            return holdProposal(reason);
         }
         const candles = res.data;
         const price = candles[candles.length - 1].close;
+        // logicConfig {} → IndicatorManager defaults. Threading the agent's seeded
+        // thresholds (this.baselineSettings) is a documented Phase 6b simplification (spec §7).
         const proposal = deriveAgentProposal({ indicators: this.indicators, logicConfig: {}, candles, price });
         this.emitThought(`Core proposal: ${proposal.side} for ${symbol} (conviction ${proposal.conviction.toFixed(2)})`);
         return proposal;
