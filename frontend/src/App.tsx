@@ -8,6 +8,8 @@ import { StrategyEditor } from './pages/StrategyEditor';
 import { AssetsPage } from './pages/AssetsPage';
 import { AIHubPage } from './pages/AIHubPage';
 import { AICockpitPage } from './pages/AICockpitPage';
+import { BacktestLabPage } from './pages/BacktestLabPage';
+import { BacktestRunPage } from './pages/BacktestRunPage';
 import { Card } from './components/ui/components';
 import { cn } from './lib/utils';
 import { strategyApi } from './lib/api';
@@ -52,6 +54,7 @@ function App() {
                 <Link to="/ai" className="text-sm font-medium text-primary font-bold hover:text-primary-foreground transition-colors">AI Trading</Link>
                 <Link to="/templates" className="text-sm font-medium hover:text-primary transition-colors">Templates</Link>
                 <Link to="/assets" className="text-sm font-medium hover:text-primary transition-colors">Assets</Link>
+                <Link to="/backtest" className="text-sm font-medium hover:text-primary transition-colors">Backtest</Link>
               </nav>
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
@@ -101,6 +104,8 @@ function App() {
             <Route path="/ai/:agentId" element={<AICockpitPage />} />
             <Route path="/templates" element={<TemplateManager />} />
             <Route path="/assets" element={<AssetsPage />} />
+            <Route path="/backtest" element={<BacktestLabPage />} />
+            <Route path="/backtest/run/:id" element={<BacktestRunPage />} />
             <Route path="/strategy/:id" element={<StrategyDetails />} />
             <Route path="/strategy/edit/:id" element={<StrategyEditor />} />
           </Routes>
