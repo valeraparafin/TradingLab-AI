@@ -34,7 +34,10 @@ try {
     const groups = await svc.listGroups();
     const labels = groups.map(g => g.label);
     assert.ok(labels.includes('gA') && labels.includes('gB') && labels.includes('(ungrouped)'), 'all groups present');
-    assert.strictEqual(groups.find(g => g.group === 'gA').runCount, 2);
+    const gA = groups.find(g => g.group === 'gA');
+    assert.strictEqual(gA.runCount, 2);
+    assert.strictEqual(gA.periodFrom, 1, 'group periodFrom mapped');
+    assert.strictEqual(gA.periodTo, 100, 'group periodTo mapped');
     assert.strictEqual(groups.find(g => g.group === null).runCount, 1);
     ok('listGroups buckets runs incl. ungrouped');
   }
