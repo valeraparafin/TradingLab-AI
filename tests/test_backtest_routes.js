@@ -9,10 +9,12 @@ let passed = 0;
 const ok = (n) => { console.log(`  ok - ${n}`); passed++; };
 
 assert.strictEqual(typeof router, 'function', 'express router is a function');
-const paths = router.stack.filter(l => l.route).map(l => l.route.path);
-assert.ok(paths.includes('/groups'), 'GET /groups registered');
-assert.ok(paths.includes('/groups/:group'), 'GET /groups/:group registered');
-assert.ok(paths.includes('/runs/:id'), 'GET /runs/:id registered');
-ok('backtest router exposes the 3 read routes');
+// Assert each path is registered AND as a GET (guards against an accidental POST).
+const routes = router.stack.filter(l => l.route).map(l => ({ path: l.route.path, method: Object.keys(l.route.methods)[0] }));
+const hasGet = (p) => routes.some(r => r.path === p && r.method === 'get');
+assert.ok(hasGet('/groups'), 'GET /groups registered');
+assert.ok(hasGet('/groups/:group'), 'GET /groups/:group registered');
+assert.ok(hasGet('/runs/:id'), 'GET /runs/:id registered');
+ok('backtest router exposes the 3 read GET routes');
 
 console.log(`\n${passed} checks passed`);

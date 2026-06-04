@@ -24,7 +24,11 @@ router.get('/groups/:group', async (req, res) => {
 /** GET /runs/:id — run detail: metrics/params/costs + equity curve + trades. */
 router.get('/runs/:id', async (req, res) => {
   try {
-    const detail = await backtestService.getRunDetail(Number(req.params.id));
+    const id = Number(req.params.id);
+    // Explicit guard: a non-numeric id (e.g. /runs/abc) is a 404, not a 500.
+    // Don't rely on the sqlite driver coercing NaN to a no-match row.
+    if (!Number.isFinite(id)) return res.status(404).json({ error: 'run not found' });
+    const detail = await backtestService.getRunDetail(id);
     if (!detail) return res.status(404).json({ error: 'run not found' });
     res.json(detail);
   } catch (err) {
