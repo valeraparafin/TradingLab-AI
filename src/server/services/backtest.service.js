@@ -63,6 +63,9 @@ export function createBacktestService(repo) {
     },
 
     async getGroup(group) {
+      // 'ungrouped' is a reserved UI sentinel for the null run_group bucket. A matrix
+      // launched with a literal `--group ungrouped` would be unreachable here; treat
+      // that name as reserved if a CLI guard is added in a later phase.
       const isNull = group == null || group === 'ungrouped';
       const runs = isNull ? await repo.listUngroupedRuns() : await repo.listRunsByGroup(group);
       return { group: isNull ? null : group, runs: runs.map(toRow).sort(byNetPnlDesc) };
