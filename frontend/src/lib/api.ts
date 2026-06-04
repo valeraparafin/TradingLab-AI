@@ -108,3 +108,76 @@ export const assetApi = {
   getAssets: () => api.get<AssetPrecision[]>('/assets'),
   syncAssets: () => api.post('/assets/sync'),
 };
+
+// ---- Backtest Lab (read-only) ----
+
+export interface BacktestGroup {
+  group: string | null;
+  label: string;
+  runCount: number;
+  periodFrom: number;
+  periodTo: number;
+  latestRunId: number;
+}
+
+export interface BacktestRunRow {
+  id: number;
+  label: string;
+  logicType: string;
+  symbol: string;
+  tf: string;
+  leverage: number;
+  trades: number;
+  winRate: number | null;
+  profitFactor: number | null;
+  netPnlPct: number | null;
+  finalEquity: number | null;
+  maxDrawdownPct: number | null;
+  sharpe: number | null;
+  totalFunding: number | null;
+  liquidations: number;
+}
+
+export interface EquityPoint {
+  time: number;
+  equity: number;
+}
+
+export interface BacktestTrade {
+  idx: number;
+  side: string;
+  entryTime: number;
+  entryPrice: number;
+  exitTime: number;
+  exitPrice: number;
+  sizeUSD: number;
+  pnl: number;
+  fees: number;
+  reason: string;
+}
+
+export interface BacktestRunDetail {
+  run: {
+    id: number;
+    label: string;
+    logicType: string;
+    symbol: string;
+    tf: string;
+    leverage: number;
+    periodFrom: number;
+    periodTo: number;
+    group: string | null;
+    metrics: any;
+    params: any;
+    costs: any;
+  };
+  equityCurve: EquityPoint[];
+  trades: BacktestTrade[];
+}
+
+export const backtestApi = {
+  getGroups: () => api.get<BacktestGroup[]>('/backtest/groups'),
+  getGroup: (group: string) =>
+    api.get<{ group: string | null; runs: BacktestRunRow[] }>(`/backtest/groups/${encodeURIComponent(group)}`),
+  getRun: (id: number) => api.get<BacktestRunDetail>(`/backtest/runs/${id}`),
+};
