@@ -2,7 +2,9 @@
 import { IndicatorManager } from '../indicators/index.js';
 import { deriveSignal } from '../core/SignalAdapter.js';
 
-// The four logic types the shared core (IndicatorManager + deriveSignal) supports.
+// The four logic types the shared core supports.
+// KEEP IN SYNC with the switch in src/indicators/index.js (IndicatorManager.calculate)
+// and src/core/SignalAdapter.js (deriveSignal). Adding a fifth type means updating all three.
 const CORE_LOGIC_TYPES = new Set(['SMC', 'BREAKOUT', 'VMC_CIPHERB', 'REVERSAL']);
 
 /**
@@ -29,7 +31,7 @@ function holdProposal(reason) {
  *
  * @param {object} args
  * @param {string[]} args.indicators - agent's resolved indicator names
- * @param {object} [args.logicConfig] - indicator thresholds ({} → engine defaults)
+ * @param {object} [args.logicConfig] - indicator thresholds, passed through to IndicatorManager ({} → its built-in defaults)
  * @param {object[]} args.candles
  * @param {number} args.price
  * @returns {{side:'BUY'|'SELL'|'HOLD', conviction:number, rationale:string, invalidationIdea:(number|null)}}
