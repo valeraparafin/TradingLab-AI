@@ -479,7 +479,7 @@ async function run(inputStrategyId) {
                 });
 
                 if (entry.skip) {
-                  const skipMsg = `⏭️  No entry for ${symbol}: signal core returned HOLD (${entry.reason})`;
+                  const skipMsg = `⏭️  No entry for ${symbol}: signal core skipped entry (${entry.reason})`;
                   console.log(skipMsg);
                   await logEventSimple(strategyId, "CHECK", skipMsg);
                   continue; // skip to next symbol in the watchlist — no spurious entry
