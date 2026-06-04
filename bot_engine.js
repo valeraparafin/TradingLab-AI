@@ -5,6 +5,7 @@ import path from "path";
 import { initDB, getDB } from "./db.js";
 import { resolveConfig } from "./src/config_resolver.js";
 import { IndicatorManager } from "./src/indicators/index.js";
+import { resolveEntrySide } from "./src/manual/resolveEntrySide.js";
 import { SafetyValidator } from "./src/validators/index.js";
 import { BitGetService } from "./src/services/exchange/bitget.js";
 import { PrecisionManager } from "./src/utils/precision.js";
@@ -450,11 +451,11 @@ async function run(inputStrategyId) {
               if (logicType) {
                 strategyData = indicatorManager.calculate(logicType, candles);
 
+                // Operator-facing visibility (unchanged from legacy logging).
                 if (logicType === "Breakout" && strategyData.channel?.active) {
                   console.log(
                     `  Channel Active: Top $${strategyData.channel.top.toFixed(2)} | Bottom $${strategyData.channel.bottom.toFixed(2)}`,
                   );
-                  side = price > strategyData.channel.top ? "BUY" : (price < strategyData.channel.bottom ? "SELL" : "BUY");
                 } else if (logicType === "SMC") {
                   console.log(
                     `  Trend: ${strategyData.structure?.trend === 1 ? "BULLISH" : strategyData.structure?.trend === -1 ? "BEARISH" : "NEUTRAL"}`,
@@ -462,8 +463,29 @@ async function run(inputStrategyId) {
                   console.log(
                     `  OBs detected: ${strategyData.obs?.length || 0} | FVGs detected: ${strategyData.fvgs?.length || 0}`,
                   );
-                  side = strategyData.structure?.trend === 1 ? "BUY" : (strategyData.structure?.trend === -1 ? "SELL" : "BUY");
                 }
+
+                // Feature flag: per-strategy config overrides the global env (default OFF).
+                const useSignalCore =
+                  strategyConfig.useSignalCore ??
+                  (process.env.USE_SIGNAL_CORE_MANUAL === "true");
+
+                const entry = resolveEntrySide({
+                  logicType,
+                  strategyData,
+                  price,
+                  candles,
+                  useSignalCore,
+                });
+
+                if (entry.skip) {
+                  const skipMsg = `⏭️  No entry for ${symbol}: signal core returned HOLD (${entry.reason})`;
+                  console.log(skipMsg);
+                  await logEventSimple(strategyId, "CHECK", skipMsg);
+                  continue; // skip to next symbol in the watchlist — no spurious entry
+                }
+
+                side = entry.side;
               }
 
               // 2. Run Safety Checks using Modular Validator
