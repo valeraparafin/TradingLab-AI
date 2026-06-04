@@ -1,9 +1,10 @@
 // tests/test_manual_characterization.js
 // Golden-master: the new core (deriveSignal) must match the legacy bot_engine
-// side decision EXCEPT the three documented intentional fixes:
+// side decision EXCEPT the three documented intentional fix CATEGORIES:
 //   #1 neutral/inactive → HOLD (was BUY)
 //   #2 VMC_CipherB gains a real wt-cross side (was always BUY)
 //   #3 Reversal gains a real rejection side (was always BUY)
+// These 3 categories produce 7 fixture-level diffs below (3 for #1, 2 for #2, 2 for #3).
 import assert from 'node:assert';
 import { legacyManualSide } from '../src/manual/legacyManualSide.js';
 import { deriveSignal } from '../src/core/SignalAdapter.js';
@@ -38,6 +39,7 @@ const cases = [
 let diffCount = 0;
 for (const c of cases) {
   const legacySide = legacyManualSide(c.logicType, c.raw, c.price);
+  // candles is unused by the manual-mode side mappers (price + raw indicator data suffice).
   const coreSide = deriveSignal(c.logicType, c.raw, { price: c.price, candles: [] }).side;
   assert.strictEqual(legacySide, c.legacy, `${c.name}: legacy side`);
   assert.strictEqual(coreSide, c.core, `${c.name}: core side`);
@@ -47,7 +49,7 @@ for (const c of cases) {
   ok(`${c.name} (legacy ${legacySide} / core ${coreSide}${isDiff ? ' — documented diff' : ''})`);
 }
 
-// Exactly the documented diffs, no more, no less
+// Exactly the documented diffs, no more, no less (3 for #1 + 2 for #2 + 2 for #3 = 7)
 assert.strictEqual(diffCount, 7, 'exactly 7 documented diffs across the battery');
 ok('diff count == 7 (no undocumented divergence)');
 
