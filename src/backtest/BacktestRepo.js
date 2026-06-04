@@ -98,4 +98,23 @@ export class BacktestRepo {
   async listRunsByGroup(group) {
     return this.db.all('SELECT * FROM backtest_runs WHERE run_group = ? ORDER BY id ASC', [group]);
   }
+
+  /** One row per distinct run_group (NULLs collapse into one bucket), latest run first. */
+  async listGroups() {
+    return this.db.all(
+      `SELECT run_group AS "group",
+              COUNT(*)         AS run_count,
+              MIN(period_from) AS period_from,
+              MAX(period_to)   AS period_to,
+              MAX(id)          AS latest_run_id
+         FROM backtest_runs
+        GROUP BY run_group
+        ORDER BY latest_run_id DESC`
+    );
+  }
+
+  /** Runs with no group (run_group IS NULL), oldest first. */
+  async listUngroupedRuns() {
+    return this.db.all('SELECT * FROM backtest_runs WHERE run_group IS NULL ORDER BY id ASC');
+  }
 }
