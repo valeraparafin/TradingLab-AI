@@ -23,7 +23,7 @@
  *
  * @typedef {Object} AccountState
  * @property {number} entryPrice
- * @property {number|null} [invalidation] - structural stop level; entry→invalidation is the setup risk leg (null when none)
+ * @property {number|null} [invalidation] - structural stop level (passed through from Signal.invalidation; null when absent)
  * @property {number} [openPositions]
  * @property {number} [portfolioHeatPct]
  * @property {number} [dailyPnlPct]

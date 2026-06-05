@@ -13,7 +13,7 @@ export class RiskPolicy {
 
   /**
    * @param {{side:'BUY'|'SELL'|'HOLD', conviction:number}} proposal
-   * @param {{entryPrice:number, openPositions:number, portfolioHeatPct:number, dailyPnlPct:number, tradesToday:number, freeEquity?:number}} ctx - futures callers should supply `freeEquity`; when absent it defaults to `portfolioValue` (correct for a flat, single-position-per-instance account — v1 model)
+   * @param {{entryPrice:number, openPositions:number, portfolioHeatPct:number, dailyPnlPct:number, tradesToday:number, freeEquity?:number, invalidation?:number|null}} ctx - futures callers should supply `freeEquity`; when absent it defaults to `portfolioValue` (correct for a flat, single-position-per-instance account — v1 model)
    * @returns {{decision:'PERMIT'|'DENY', reason?:string, order?:object}}
    */
   evaluate(proposal, ctx) {
@@ -45,6 +45,9 @@ export class RiskPolicy {
     // invalidation is available, the risk leg is the entry→invalidation distance (the real
     // setup risk); otherwise fall back to the config ratio (takeProfitPct/stopLossPct).
     // Gate-only: this can only DENY — it never changes size, SL, or TP.
+    // The stopLossPct > 0 part of the guard is deliberate (kept identical to the
+    // pre-Spec-2 condition): SL is schema-guaranteed >= 0.1% (Guard 2), so the gate is
+    // never skipped for a validated config, and the fallback's /stopLossPct stays safe.
     if (g.minRiskRewardRatio > 0 && g.stopLossPct > 0 && isFinite(g.takeProfitPct)) {
       const setupRR = computeSetupRR({ entryPrice, invalidation, side: proposal.side, takeProfitPct: g.takeProfitPct });
       if (setupRR != null) {

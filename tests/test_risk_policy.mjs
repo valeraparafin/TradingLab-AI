@@ -58,8 +58,9 @@ const den = sg.evaluate({ side: 'BUY', conviction: 1 }, { ...ctx, invalidation: 
 assert.equal(den.decision, 'DENY', 'structural setupRR 1.0 < 1.5 must DENY');
 assert.ok(/structural/i.test(den.reason), 'deny reason names structural');
 // invalidation 96 → riskFrac 0.04 → setupRR 2.5 >= 1.5 → PERMIT
-assert.equal(sg.evaluate({ side: 'BUY', conviction: 1 }, { ...ctx, invalidation: 96 }).decision, 'PERMIT',
-  'structural setupRR 2.5 >= 1.5 must PERMIT');
+const permit96 = sg.evaluate({ side: 'BUY', conviction: 1 }, { ...ctx, invalidation: 96 });
+assert.equal(permit96.decision, 'PERMIT', 'structural setupRR 2.5 >= 1.5 must PERMIT');
+assert.ok(permit96.order != null && permit96.order.sizeUSD > 0, 'structural PERMIT produces a valid order');
 // SELL: invalidation 110 (above entry) → riskFrac 0.10 → setupRR 1.0 < 1.5 → DENY
 assert.equal(sg.evaluate({ side: 'SELL', conviction: 1 }, { ...ctx, invalidation: 110 }).decision, 'DENY',
   'SELL structural setupRR 1.0 < 1.5 must DENY');
