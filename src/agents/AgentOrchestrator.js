@@ -66,7 +66,13 @@ export default class AgentOrchestrator {
 
         // 2. Deterministic policy decides size/SL/TP and gates
         const entryPrice = await this._getCurrentPrice(symbol);
-        const verdict = this.riskPolicy.evaluate(proposal, { entryPrice, ...portfolioState });
+        const verdict = this.riskPolicy.evaluate(proposal, {
+          entryPrice,
+          ...portfolioState,
+          invalidation: (typeof proposal.invalidationIdea === 'number' && isFinite(proposal.invalidationIdea))
+            ? proposal.invalidationIdea
+            : null,
+        });
 
         await this.memory.saveEpisode({
           agent_id: 'RiskPolicy', input: proposal, reasoning: verdict.reason || 'permitted',
