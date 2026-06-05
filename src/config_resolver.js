@@ -3,18 +3,23 @@ import path from 'path';
 import { z } from 'zod';
 import { toCamel } from './utils/casing.js';
 
+// Required fields are the minimal set every risk template must define; the remaining
+// gate fields are optional because riskProfileToGuardrails.js defaults them gracefully
+// (Infinity / 0 / portfolioValue=10000), so the schema must not be stricter than the
+// runtime needs. stopLossPercent/takeProfitPercent keep the units-foundation guard
+// (min 0.1, max 100) to reject malformed percent values.
 const RiskSchema = z.object({
-  portfolioValue: z.number().positive(),
   maxTradeSizeUSD: z.number().positive(),
   riskPerTradePercent: z.number().min(0).max(100),
-  stopLossPercent: z.number().min(0).max(100),
-  takeProfitPercent: z.number().min(0).max(100),
-  minRiskRewardRatio: z.number().positive(),
-  maxPortfolioHeatPercent: z.number().min(0).max(100),
-  maxOpenPositions: z.number().int().positive(),
+  stopLossPercent: z.number().min(0.1).max(100),
+  takeProfitPercent: z.number().min(0.1).max(100),
   maxTradesPerDay: z.number().int().positive(),
-  dailyLossLimitPercent: z.number().min(0).max(100),
-  dailyProfitTargetPercent: z.number().min(0).max(100),
+  portfolioValue: z.number().positive().optional(),
+  minRiskRewardRatio: z.number().positive().optional(),
+  maxPortfolioHeatPercent: z.number().min(0).max(100).optional(),
+  maxOpenPositions: z.number().int().positive().optional(),
+  dailyLossLimitPercent: z.number().min(0).max(100).optional(),
+  dailyProfitTargetPercent: z.number().min(0).max(100).optional(),
 });
 
 /**

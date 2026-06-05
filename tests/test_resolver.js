@@ -66,6 +66,22 @@ function test() {
   assert.throws(() => resolveConfig(config3), /Risk template not found/, 'Should throw error when risk template is missing');
   console.log('✅ Test 3 Passed');
 
+  // Test 4: Minimal real template resolves (only the 5 required gate fields + portfolioValue)
+  // scalp_majors omits the non-essential gates (minRiskRewardRatio, maxOpenPositions,
+  // maxPortfolioHeatPercent, dailyLossLimitPercent, dailyProfitTargetPercent); these are
+  // optional and defaulted downstream by riskProfileToGuardrails, so resolveConfig must not throw.
+  console.log('Test 4: Minimal real template (scalp_majors) resolves...');
+  const config4 = {
+    riskTemplateId: 'scalp_majors',
+    logicTemplateId: 'test_logic'
+  };
+  const resolved4 = resolveConfig(config4);
+  assert.strictEqual(resolved4.risk.stopLossPercent, 0.3, 'Minimal template SL should resolve');
+  assert.strictEqual(resolved4.risk.takeProfitPercent, 0.8, 'Minimal template TP should resolve');
+  assert.strictEqual(resolved4.risk.maxTradesPerDay, 100, 'Minimal template maxTradesPerDay should resolve');
+  assert.strictEqual(resolved4.risk.minRiskRewardRatio, undefined, 'Optional gate should be absent, not defaulted in schema');
+  console.log('✅ Test 4 Passed');
+
   console.log('\nAll tests passed successfully!');
 }
 
