@@ -17,7 +17,7 @@
 export function computeSetupRR({ entryPrice, invalidation, side, takeProfitPct }) {
   if (typeof invalidation !== 'number' || !isFinite(invalidation)) return null;
   if (typeof entryPrice !== 'number' || !isFinite(entryPrice) || entryPrice <= 0) return null;
-  if (typeof takeProfitPct !== 'number' || !isFinite(takeProfitPct)) return null;
+  if (typeof takeProfitPct !== 'number' || !isFinite(takeProfitPct) || takeProfitPct <= 0) return null;
   const onCorrectSide =
     side === 'BUY' ? invalidation < entryPrice :
     side === 'SELL' ? invalidation > entryPrice : false;

@@ -40,8 +40,10 @@ ok('null/NaN/string invalidation → null');
 assert.strictEqual(computeSetupRR({ entryPrice: 100, invalidation: 98, side: 'HOLD', takeProfitPct: 0.06 }), null);
 ok('HOLD side → null');
 
-// Missing/garbage takeProfitPct → null
+// Missing/garbage/non-positive takeProfitPct → null
 assert.strictEqual(computeSetupRR({ entryPrice: 100, invalidation: 98, side: 'BUY', takeProfitPct: null }), null);
-ok('null takeProfitPct → null');
+assert.strictEqual(computeSetupRR({ entryPrice: 100, invalidation: 98, side: 'BUY', takeProfitPct: 0 }), null);
+assert.strictEqual(computeSetupRR({ entryPrice: 100, invalidation: 98, side: 'BUY', takeProfitPct: -0.06 }), null);
+ok('null/zero/negative takeProfitPct → null');
 
 console.log(`\n${passed} checks passed`);
