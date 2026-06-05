@@ -20,6 +20,17 @@ const RiskSchema = z.object({
   maxOpenPositions: z.number().int().positive().optional(),
   dailyLossLimitPercent: z.number().min(0).max(100).optional(),
   dailyProfitTargetPercent: z.number().min(0).max(100).optional(),
+}).superRefine((s, ctx) => {
+  // Guard 1: a template can't demand more reward:risk than its own fixed TP/SL can yield.
+  if (s.minRiskRewardRatio != null && s.minRiskRewardRatio > 0 && s.stopLossPercent > 0) {
+    const ratio = s.takeProfitPercent / s.stopLossPercent;
+    if (ratio < s.minRiskRewardRatio) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `minRiskRewardRatio ${s.minRiskRewardRatio} unreachable with TP ${s.takeProfitPercent} / SL ${s.stopLossPercent} (ratio ${ratio.toFixed(2)})`,
+      });
+    }
+  }
 });
 
 /**

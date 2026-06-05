@@ -94,6 +94,18 @@ function test() {
     /validation failed/, 'SL 0.02 must be rejected by the 0.1 floor');
   console.log('✅ Test 5 Passed');
 
+  // Test 6: Guard 1 — a template whose minRiskRewardRatio exceeds its TP/SL ratio is rejected.
+  console.log('Test 6: Guard 1 rejects unreachable minRiskRewardRatio...');
+  fs.writeFileSync(path.join(riskDir, 'badrr_risk.json'), JSON.stringify({
+    settings: {
+      maxTradesPerDay: 10, maxTradeSizeUSD: 200, riskPerTradePercent: 2,
+      stopLossPercent: 2, takeProfitPercent: 5, minRiskRewardRatio: 3
+    }
+  }));
+  assert.throws(() => resolveConfig({ riskTemplateId: 'badrr_risk', logicTemplateId: 'test_logic' }),
+    /validation failed/, 'TP/SL 2.5 < minRR 3 must be rejected by Guard 1');
+  console.log('✅ Test 6 Passed');
+
   console.log('\nAll tests passed successfully!');
 }
 
@@ -102,7 +114,7 @@ function test() {
 // test_risk.json / test_logic.json are tracked fixtures and are left in place.
 function cleanup() {
   const riskDir = path.join(process.cwd(), 'templates', 'risk');
-  for (const f of ['invalid_risk.json', 'fraction_risk.json']) {
+  for (const f of ['invalid_risk.json', 'fraction_risk.json', 'badrr_risk.json']) {
     try { fs.unlinkSync(path.join(riskDir, f)); } catch { /* not written / already gone */ }
   }
 }
