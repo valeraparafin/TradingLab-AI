@@ -25,7 +25,7 @@ assert.strictEqual(RiskTemplateSchema.safeParse(badTemplate).success, false, 'SL
 console.log('  ok - schema Guard 2 floors SL/TP at 0.1 (rejects leftover fractions, passes scalp 0.3)');
 
 // --- Guard 1 (Spec 2): minRiskRewardRatio must be reachable by TP/SL ---
-// snake_case (RiskSettingsSchema): min_risk_reward_ratio required.
+// snake_case (RiskSettingsSchema): min_risk_reward_ratio optional; present → Guard 1 active.
 const rrBase = {
   risk_per_trade_percent: 1, stop_loss_percent: 2, take_profit_percent: 6,
   min_risk_reward_ratio: 3, max_portfolio_heat_percent: 5, max_open_positions: 2,
