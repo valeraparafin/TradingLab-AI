@@ -226,3 +226,32 @@ in robust cells). Requires explicit per-action approval if you proceed.
 - Funding/spec fetch for XRP 5m failed at download time (candles present; funding not needed for spot).
 - Robust-cell PFs are thin; treat the basket as a *foundation to strengthen* (Level 2), not a
   finished system.
+
+## 2026-06-05 — Spec 2 (Structural Risk) note
+
+The setup-RR gate (`RiskPolicy` uses `ctx.invalidation` when numeric, else falls back to the
+config ratio) is opt-in via `minRiskRewardRatio > 0`. Guard 1 (schema) now rejects any template
+whose fixed `TP/SL` ratio cannot meet its own `minRiskRewardRatio`.
+
+Two templates were fixed by widening TP to restore RR 3.0: `conservative` (TP 5→6) and
+`vmc_cipherb_1h_conservative` (TP 8→9). Both previously demanded `minRiskRewardRatio: 3` while
+their fixed TP/SL yielded only 2.5 / 2.67, so the runtime RR check DENYed every bar — they never
+traded.
+
+### Measured before/after (SMC, BTCUSDT, 1H, spot — identical market data)
+
+| Risk profile | minRR | Before (pre-Spec-2) | After (Spec 2) | Why |
+|---|---|---|---|---|
+| `conservative` | 3 | **0 trades**, 0.00% | **97 trades**, +0.27% | Latent never-trades bug fixed (TP 5→6) |
+| `aggressive` | 1.5 | 42 trades, +3.38% | 41 trades, +3.64% | Structural gate DENYed 1 poor-location setup; PnL improved |
+| `scalp_majors` | none | 1991 trades, −1.07% | 1991 trades, −1.07% | No minRR → gate inert → byte-identical |
+
+**Key takeaway (more precise than the original plan assumption):** it is not only the two fixed
+templates that change. Any strategy with `minRiskRewardRatio > 0` running on a *structural* logic
+(SMC / Breakout / Reversal, which emit a numeric `signal.invalidation`) now gets a setup-location
+filter: entries where the structural stop sits too far from price relative to the target are
+DENYed. Strategies with **no** `minRiskRewardRatio`, or on VMC/WaveTrend (no numeric
+invalidation), are unchanged. The `aggressive` 42→41 result is this filter working as designed —
+it removed one low-RR-location entry and net PnL rose.
+
+Reports: `backtest/reports/spec2_before.json`, `backtest/reports/spec2_after.json`.
