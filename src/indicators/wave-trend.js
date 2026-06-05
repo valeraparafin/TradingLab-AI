@@ -1,15 +1,34 @@
 import { Technicals } from "./technical.js";
 
 const WaveTrend = {
-  execute(candles, config) {
+  execute(candles, config = {}) {
     // 1. Config
-    const wtLen = config.wtLen || 9;
-    const wtAvg = config.wtAvg || 12;
-    const mfiLen = config.mfiLen || 60;
-    const rsiLen = config.rsiLen || 14;
-    const stochLen = config.stochLen || 14;
-    const stcFast = config.stcFast || 23;
-    const stcSlow = config.stcSlow || 50;
+    //
+    // Params live under `config.indicators` (same shape as SMC). Templates
+    // store snake_case keys (channel_length, average_length, ...) and
+    // resolveConfig() deep-converts them to camelCase before runtime, so the
+    // canonical runtime key is camelCase per the repo casing policy. We accept
+    // the camelCase descriptive name first, then the raw snake_case form (for
+    // un-resolved configs), then the legacy short alias used by older VMC
+    // templates (wtLen/wtAvg/...), then the hardcoded default.
+    //
+    // VMC Cipher B reference: n1 "Channel Length" -> wtLen (esa/d EMA period),
+    // n2 "Average Length" -> wtAvg (tci/wt1 EMA period).
+    const ind = config.indicators || {};
+    const param = (camel, snake, legacy, def) => {
+      for (const v of [ind[camel], ind[snake], ind[legacy], config[legacy]]) {
+        if (v !== undefined && v !== null) return v;
+      }
+      return def;
+    };
+
+    const wtLen = param('channelLength', 'channel_length', 'wtLen', 9);
+    const wtAvg = param('averageLength', 'average_length', 'wtAvg', 12);
+    const mfiLen = param('mfiLength', 'mfi_length', 'mfiLen', 60);
+    const rsiLen = param('rsiLength', 'rsi_length', 'rsiLen', 14);
+    const stochLen = param('stochLength', 'stoch_length', 'stochLen', 14);
+    const stcFast = param('stcFast', 'stc_fast', 'stcFast', 23);
+    const stcSlow = param('stcSlow', 'stc_slow', 'stcSlow', 50);
 
     // --- WaveTrend Calculation ---
     const hlc3 = candles.map((c) => (c.high + c.low + c.close) / 3);
