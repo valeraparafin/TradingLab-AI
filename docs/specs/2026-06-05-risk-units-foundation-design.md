@@ -116,7 +116,7 @@ heuristic auto-multiply — best practice for data migration). Known examples:
 
 Already-whole fields (`maxPortfolioHeatPercent: 15`, `dailyLossLimitPercent: 5`, and
 `scalp_alts` `stopLossPercent: 1.0` → stays `1`, `takeProfitPercent: 2.5` → stays `2.5`) are
-unchanged. **All 14 `templates/risk/*.json` must be audited** and each `*Percent` field set to
+unchanged. **All 11 `templates/risk/*.json` must be audited** and each `*Percent` field set to
 its intended whole-percent value explicitly during implementation.
 
 **Genuinely ambiguous values require author intent, not a guess.** Example:
@@ -172,5 +172,5 @@ template profiles at server startup, so corrected template files flow into `ai_r
 - `bot_engine.js` — remove inline `/100`; route through the converter; read `*Pct` fractions.
 - `src/config_resolver.js` — `RiskSchema`: add Guard 2 floor on SL/TP.
 - `src/server/schemas/strategy.schema.js` — mirror Guard 2 floor.
-- `templates/risk/*.json` — migrate all `*Percent` fields to whole percent (audit all 14).
+- `templates/risk/*.json` — migrate all `*Percent` fields to whole percent (audit all 11).
 - `tests/test_risk_profile_to_guardrails.js` (+ new parity & regression tests).
