@@ -4,6 +4,7 @@ import { execSync } from "child_process";
 import path from "path";
 import { initDB, getDB } from "./db.js";
 import { resolveConfig } from "./src/config_resolver.js";
+import { riskProfileToGuardrails } from "./src/agents/riskProfileToGuardrails.js";
 import { IndicatorManager } from "./src/indicators/index.js";
 import { resolveEntrySide } from "./src/manual/resolveEntrySide.js";
 import { SafetyValidator } from "./src/validators/index.js";
@@ -516,11 +517,11 @@ async function run(inputStrategyId) {
               });
 
   const risk = strategyConfig.risk;
-  const portfolioValue = risk.portfolioValue;
-  const riskPercent = risk.riskPerTradePercent;
+  const guardrails = riskProfileToGuardrails(risk);
+  const portfolioValue = guardrails.portfolioValue;
   const confidenceFloor = 0.8;
 
-  const baseRiskUSD = portfolioValue * (riskPercent / 100);
+  const baseRiskUSD = portfolioValue * guardrails.riskPerTrade;
 
   let finalTradeSize = 0;
   if (gci >= confidenceFloor) {
@@ -601,8 +602,8 @@ async function run(inputStrategyId) {
                   side,
                   price,
                   sizeUSD: safeTradeSize,
-                  stopLoss: precisionManager.format(side === "BUY" ? price * (1 - risk.stopLossPercent / 100) : price * (1 + risk.stopLossPercent / 100), symbol),
-                  takeProfit: precisionManager.format(side === "BUY" ? price * (1 + risk.takeProfitPercent / 100) : price * (1 - risk.takeProfitPercent / 100), symbol),
+                  stopLoss: precisionManager.format(side === "BUY" ? price * (1 - guardrails.stopLossPct) : price * (1 + guardrails.stopLossPct), symbol),
+                  takeProfit: precisionManager.format(side === "BUY" ? price * (1 + guardrails.takeProfitPct) : price * (1 - guardrails.takeProfitPct), symbol),
                 });
                 } else {
                   console.log(
@@ -632,8 +633,8 @@ async function run(inputStrategyId) {
                       side,
                       price,
                       sizeUSD: safeTradeSize,
-                      stopLoss: side === "BUY" ? price * (1 - risk.stopLossPercent / 100) : price * (1 + risk.stopLossPercent / 100),
-                      takeProfit: side === "BUY" ? price * (1 + risk.takeProfitPercent / 100) : price * (1 - risk.takeProfitPercent / 100),
+                      stopLoss: side === "BUY" ? price * (1 - guardrails.stopLossPct) : price * (1 + guardrails.stopLossPct),
+                      takeProfit: side === "BUY" ? price * (1 + guardrails.takeProfitPct) : price * (1 - guardrails.takeProfitPct),
                     });
                     console.log(`✅ ORDER PLACED — ${order.orderId}`);
                     await logEventSimple(
