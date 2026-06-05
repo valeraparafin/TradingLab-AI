@@ -19,6 +19,12 @@ for (const f of files) {
     `${f}: stopLossPct ${g.stopLossPct} out of sane band (0.001..0.5)`);
   assert.ok(g.takeProfitPct >= 0.001 && g.takeProfitPct <= 0.6,
     `${f}: takeProfitPct ${g.takeProfitPct} out of sane band (0.001..0.6)`);
+  // Guard 1 at the data layer: a template's fixed TP/SL must be able to meet its own minRR.
+  if (s.minRiskRewardRatio != null && s.minRiskRewardRatio > 0) {
+    const ratio = s.takeProfitPercent / s.stopLossPercent;
+    assert.ok(ratio + 1e-9 >= s.minRiskRewardRatio,
+      `${f}: TP/SL ratio ${ratio.toFixed(2)} < minRiskRewardRatio ${s.minRiskRewardRatio}`);
+  }
   checked++;
 }
 console.log(`  ok - ${checked} risk templates have sane SL/TP fractions after conversion`);

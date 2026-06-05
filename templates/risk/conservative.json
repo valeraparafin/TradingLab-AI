@@ -6,7 +6,7 @@
     "portfolioValue": 1000,
     "maxTradeSizeUSD": 100,
     "stopLossPercent": 2,
-    "takeProfitPercent": 5,
+    "takeProfitPercent": 6,
     "maxTradesPerDay": 3,
     "minRiskRewardRatio": 3,
     "maxPortfolioHeatPercent": 5,
