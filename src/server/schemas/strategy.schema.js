@@ -37,7 +37,7 @@ export const RiskSettingsSchema = z.object({
   risk_per_trade_percent: z.number().positive().max(100),
   stop_loss_percent: z.number().min(0.1).max(100),
   take_profit_percent: z.number().min(0.1).max(100),
-  min_risk_reward_ratio: z.number().positive(),
+  min_risk_reward_ratio: z.number().positive().optional(),
   max_portfolio_heat_percent: z.number().positive().max(100),
   max_open_positions: z.number().int().positive(),
   max_trades_per_day: z.number().int().positive(),

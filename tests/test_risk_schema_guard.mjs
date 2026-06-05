@@ -42,4 +42,8 @@ assert.strictEqual(RiskTemplateSchema.safeParse({ ...tplBase, settings: { ...tpl
   'template 5/2=2.5 < minRR 3 rejected (Guard 1)');
 const tplNoRR = { name: 'X', settings: { riskPerTradePercent: 1, maxTradeSizeUSD: 100, stopLossPercent: 2, takeProfitPercent: 5, maxTradesPerDay: 5 } };
 assert.strictEqual(RiskTemplateSchema.safeParse(tplNoRR).success, true, 'no minRR → Guard 1 inert');
+// snake_case schema is also inert when min_risk_reward_ratio is omitted (now optional).
+const snakeNoRR = { ...rrBase, take_profit_percent: 5 };
+delete snakeNoRR.min_risk_reward_ratio;
+assert.strictEqual(RiskSettingsSchema.safeParse(snakeNoRR).success, true, 'no min_risk_reward_ratio → Guard 1 inert (snake)');
 console.log('  ok - Guard 1 rejects minRR unreachable by TP/SL (both schemas)');
