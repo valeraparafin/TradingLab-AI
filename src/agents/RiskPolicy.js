@@ -1,5 +1,6 @@
 // src/agents/RiskPolicy.js
 import { liqPrice } from '../core/liquidation.js';
+import { computeSetupRR } from './computeSetupRR.js';
 
 /**
  * Deterministic risk policy. Constructed from resolved guardrails (all *Pct are FRACTIONS).
@@ -17,7 +18,7 @@ export class RiskPolicy {
    */
   evaluate(proposal, ctx) {
     const g = this.g;
-    const { entryPrice, openPositions = 0, portfolioHeatPct = 0, dailyPnlPct = 0, tradesToday = 0 } = ctx || {};
+    const { entryPrice, openPositions = 0, portfolioHeatPct = 0, dailyPnlPct = 0, tradesToday = 0, invalidation = null } = ctx || {};
 
     if (!proposal || proposal.side === 'HOLD' || !proposal.side) {
       return { decision: 'DENY', reason: 'Proposal is HOLD/empty (no-op)' };
@@ -40,11 +41,21 @@ export class RiskPolicy {
     if (isFinite(g.maxPortfolioHeatPct) && portfolioHeatPct >= g.maxPortfolioHeatPct) {
       return { decision: 'DENY', reason: `Portfolio heat ${portfolioHeatPct} >= limit ${g.maxPortfolioHeatPct}` };
     }
-    // Minimum risk/reward: TP distance vs SL distance (both fractions from the profile).
+    // Minimum risk/reward (Spec 2 — structural-first). When a numeric structural
+    // invalidation is available, the risk leg is the entry→invalidation distance (the real
+    // setup risk); otherwise fall back to the config ratio (takeProfitPct/stopLossPct).
+    // Gate-only: this can only DENY — it never changes size, SL, or TP.
     if (g.minRiskRewardRatio > 0 && g.stopLossPct > 0 && isFinite(g.takeProfitPct)) {
-      const rr = g.takeProfitPct / g.stopLossPct;
-      if (rr < g.minRiskRewardRatio) {
-        return { decision: 'DENY', reason: `Risk/reward ${rr.toFixed(2)} below minimum ${g.minRiskRewardRatio}` };
+      const setupRR = computeSetupRR({ entryPrice, invalidation, side: proposal.side, takeProfitPct: g.takeProfitPct });
+      if (setupRR != null) {
+        if (setupRR < g.minRiskRewardRatio) {
+          return { decision: 'DENY', reason: `Setup RR ${setupRR.toFixed(2)} below minimum ${g.minRiskRewardRatio} (structural)` };
+        }
+      } else {
+        const rr = g.takeProfitPct / g.stopLossPct;
+        if (rr < g.minRiskRewardRatio) {
+          return { decision: 'DENY', reason: `Risk/reward ${rr.toFixed(2)} below minimum ${g.minRiskRewardRatio}` };
+        }
       }
     }
 

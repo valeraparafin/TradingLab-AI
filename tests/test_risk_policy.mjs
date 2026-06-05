@@ -50,6 +50,31 @@ assert.equal(freq.evaluate({ side: 'BUY', conviction: 1 }, { ...ctx, tradesToday
 // no-config defaults: absent maxTradesPerDay / minRiskRewardRatio never block
 assert.equal(policy.evaluate({ side: 'BUY', conviction: 1 }, { ...ctx, tradesToday: 9999 }).decision, 'PERMIT', 'undefined cap is no-op');
 
+// (f) structural setup-RR gate (Spec 2). Base guardrails: stopLossPct 0.05, takeProfitPct 0.10
+//     → configRR (fallback) = 2.0. Risk leg = |entry - invalidation| / entry.
+const sg = new RiskPolicy({ ...guardrails, minRiskRewardRatio: 1.5 });
+// invalidation 90 → riskFrac 0.10 → setupRR 1.0 < 1.5 → DENY, reason names "structural"
+const den = sg.evaluate({ side: 'BUY', conviction: 1 }, { ...ctx, invalidation: 90 });
+assert.equal(den.decision, 'DENY', 'structural setupRR 1.0 < 1.5 must DENY');
+assert.ok(/structural/i.test(den.reason), 'deny reason names structural');
+// invalidation 96 → riskFrac 0.04 → setupRR 2.5 >= 1.5 → PERMIT
+assert.equal(sg.evaluate({ side: 'BUY', conviction: 1 }, { ...ctx, invalidation: 96 }).decision, 'PERMIT',
+  'structural setupRR 2.5 >= 1.5 must PERMIT');
+// SELL: invalidation 110 (above entry) → riskFrac 0.10 → setupRR 1.0 < 1.5 → DENY
+assert.equal(sg.evaluate({ side: 'SELL', conviction: 1 }, { ...ctx, invalidation: 110 }).decision, 'DENY',
+  'SELL structural setupRR 1.0 < 1.5 must DENY');
+// BUY with wrong-side invalidation (110 > entry) → null → fallback config-ratio (2.0 >= 1.5) → PERMIT
+assert.equal(sg.evaluate({ side: 'BUY', conviction: 1 }, { ...ctx, invalidation: 110 }).decision, 'PERMIT',
+  'wrong-side invalidation falls back to config-ratio PERMIT');
+// no numeric invalidation → fallback; reason is the OLD wording (no "structural")
+const fb = new RiskPolicy({ ...guardrails, minRiskRewardRatio: 3 }).evaluate({ side: 'BUY', conviction: 1 }, ctx);
+assert.equal(fb.decision, 'DENY', 'fallback config-ratio 2.0 < 3 must DENY');
+assert.ok(!/structural/i.test(fb.reason), 'fallback reason is not structural');
+// minRR 0 with a near invalidation → gate inert → PERMIT
+assert.equal(new RiskPolicy({ ...guardrails, minRiskRewardRatio: 0 })
+  .evaluate({ side: 'BUY', conviction: 1 }, { ...ctx, invalidation: 90 }).decision, 'PERMIT',
+  'minRR 0 → gate inert even with near invalidation');
+
 console.log('OK test_risk_policy');
 
 // ---- Phase 4: futures branch ----
