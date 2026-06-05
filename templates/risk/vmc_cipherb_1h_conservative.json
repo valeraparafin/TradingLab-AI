@@ -1,10 +1,10 @@
 {
   "name": "VMC Cipher B 1h Conservative Risk",
   "settings": {
-    "riskPerTradePercent": 0.01,
+    "riskPerTradePercent": 1,
     "portfolioValue": 1000,
-    "stopLossPercent": 0.03,
-    "takeProfitPercent": 0.08,
+    "stopLossPercent": 3,
+    "takeProfitPercent": 8,
     "maxTradesPerDay": 2,
     "maxTradeSizeUSD": 100,
     "minRiskRewardRatio": 3.0,

@@ -1,10 +1,10 @@
 {
   "name": "VMC Cipher B 5m Aggressive Risk",
   "settings": {
-    "riskPerTradePercent": 0.01,
+    "riskPerTradePercent": 1,
     "portfolioValue": 1000,
-    "stopLossPercent": 0.015,
-    "takeProfitPercent": 0.03,
+    "stopLossPercent": 1.5,
+    "takeProfitPercent": 3,
     "maxTradesPerDay": 5,
     "maxTradeSizeUSD": 100,
     "minRiskRewardRatio": 1.5,
