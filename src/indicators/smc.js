@@ -1,6 +1,15 @@
 const SMC = {
-  execute(candles, config) {
-    const pivotLength = config.indicators?.pivot_length || 50;
+  execute(candles, config = {}) {
+    // Params live under `config.indicators`. Templates store snake_case keys
+    // (pivot_length) and resolveConfig() deep-converts them to camelCase before
+    // runtime, so the canonical runtime key is camelCase per the repo casing
+    // policy. Accept the camelCase form first (runtime/resolved), then the raw
+    // snake_case form (un-resolved configs), then the hardcoded default. Mirror
+    // of the tolerant lookup in src/indicators/wave-trend.js.
+    const ind = config.indicators || {};
+    const pivotLength = [ind.pivotLength, ind.pivot_length].find(
+      (v) => v !== undefined && v !== null
+    ) ?? 50;
     const pivots = this.findPivots(candles, pivotLength);
     const structure = this.detectStructure(candles, pivots);
     return {
