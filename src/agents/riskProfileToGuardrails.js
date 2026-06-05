@@ -1,15 +1,14 @@
 // src/agents/riskProfileToGuardrails.js
 
 /**
- * Normalize a stored percent that may already be a fraction (0.05) or a whole
- * percent (5) into a FRACTION. Intentional copy of paramResolver.js's normFraction
- * so this module is self-contained; a later phase unifies the two (resolveAgentParams
- * will delegate here). The equivalence test in tests/test_risk_profile_to_guardrails.js
- * guarantees the two copies stay identical.
+ * Convert a stored WHOLE-PERCENT value (e.g. 2 -> 2%) into a runtime FRACTION (0.02).
+ * The canonical unit convention is whole percents everywhere (templates, DB, schema, UI);
+ * this is the single ÷100 boundary. No heuristics: every percent field is divided by 100.
+ * null/undefined/non-finite pass through unchanged (so absent optional gates stay absent).
  */
-function normFraction(v) {
+function toFraction(v) {
   if (v == null || !isFinite(v)) return v;
-  return v > 1 ? v / 100 : v;
+  return v / 100;
 }
 
 /**
@@ -25,14 +24,14 @@ function normFraction(v) {
  */
 export function riskProfileToGuardrails(s = {}, { leverage = 1, mmr = null } = {}) {
   return {
-    riskPerTrade: normFraction(s.riskPerTradePercent ?? 0.01),
-    stopLossPct: normFraction(s.stopLossPercent),
-    takeProfitPct: normFraction(s.takeProfitPercent),
+    riskPerTrade: toFraction(s.riskPerTradePercent ?? 1),
+    stopLossPct: toFraction(s.stopLossPercent),
+    takeProfitPct: toFraction(s.takeProfitPercent),
     maxTradeSizeUSD: s.maxTradeSizeUSD ?? Infinity,
     maxOpenPositions: s.maxOpenPositions ?? Infinity,
-    maxPortfolioHeatPct: normFraction(s.maxPortfolioHeatPercent) ?? Infinity,
-    dailyLossLimitPct: normFraction(s.dailyLossLimitPercent) ?? Infinity,
-    dailyProfitTargetPct: normFraction(s.dailyProfitTargetPercent),
+    maxPortfolioHeatPct: toFraction(s.maxPortfolioHeatPercent) ?? Infinity,
+    dailyLossLimitPct: toFraction(s.dailyLossLimitPercent) ?? Infinity,
+    dailyProfitTargetPct: toFraction(s.dailyProfitTargetPercent),
     // Counts/ratios are NOT percents — never normalize.
     maxTradesPerDay: s.maxTradesPerDay ?? Infinity,
     minRiskRewardRatio: s.minRiskRewardRatio ?? 0,

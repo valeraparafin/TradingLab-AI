@@ -30,18 +30,29 @@ const ok = (name) => { console.log(`  ok - ${name}`); passed++; };
   ok('whole-number percents normalize to fractions');
 }
 
-// 2. already-fractional inputs pass through unchanged
+// 2. whole-percent sub-1 and boundary values convert correctly (no v>1 heuristic)
 {
   const g = riskProfileToGuardrails({
-    riskPerTradePercent: 0.01, stopLossPercent: 0.02, takeProfitPercent: 0.04,
-    maxPortfolioHeatPercent: 0.5, dailyLossLimitPercent: 0.03,
+    riskPerTradePercent: 0.5,   // 0.5% scalp risk
+    stopLossPercent: 0.3,       // 0.3% scalp stop
+    takeProfitPercent: 0.8,     // 0.8% scalp target
+    maxPortfolioHeatPercent: 1, // 1%
+    dailyLossLimitPercent: 1,   // 1%
   });
-  assert.strictEqual(g.riskPerTrade, 0.01);
-  assert.strictEqual(g.stopLossPct, 0.02);
-  assert.strictEqual(g.takeProfitPct, 0.04);
-  assert.strictEqual(g.maxPortfolioHeatPct, 0.5);
-  assert.strictEqual(g.dailyLossLimitPct, 0.03);
-  ok('fractional inputs pass through');
+  assert.strictEqual(g.riskPerTrade, 0.005);
+  assert.strictEqual(g.stopLossPct, 0.003);
+  assert.strictEqual(g.takeProfitPct, 0.008);
+  assert.strictEqual(g.maxPortfolioHeatPct, 0.01);
+  assert.strictEqual(g.dailyLossLimitPct, 0.01);
+  ok('sub-1% whole percents convert via plain /100');
+}
+
+// 2b. exactly-1.0 converts to 1% (the old normFraction boundary bug gave 100%)
+{
+  const g = riskProfileToGuardrails({ stopLossPercent: 1.0, takeProfitPercent: 2.5 });
+  assert.strictEqual(g.stopLossPct, 0.01);
+  assert.strictEqual(g.takeProfitPct, 0.025);
+  ok('boundary 1.0 -> 1% (not 100%)');
 }
 
 // 3. missing optional gates default to Infinity / sane fallbacks
