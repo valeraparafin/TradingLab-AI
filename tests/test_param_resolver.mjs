@@ -12,7 +12,7 @@ const agent = {
   trade_mode: 'spot', portfolio_value: 1000, cycle_interval_ms: 60000,
 };
 const profile = {
-  risk_per_trade_percent: 0.02, stop_loss_percent: 0.05, take_profit_percent: 0.1,
+  risk_per_trade_percent: 2, stop_loss_percent: 5, take_profit_percent: 10,
   max_trade_size_usd: 250, max_open_positions: 3, max_portfolio_heat_percent: 10,
   daily_loss_limit_percent: 5, daily_profit_target_percent: 8,
   max_trades_per_day: 10, min_risk_reward_ratio: 1.5,
@@ -26,7 +26,7 @@ assert.deepEqual(out.llmContext.watchlist, ['BTCUSDT', 'ETHUSDT']);
 assert.ok(out.llmContext.posture.startsWith('balanced'));
 assert.equal(out.llmContext.riskPerTrade, undefined, 'no raw money number leaks into llmContext');
 
-// guardrails normalized to FRACTIONS (5 -> 0.05, 0.05 stays 0.05)
+// guardrails normalized to FRACTIONS (whole percent / 100: 5 -> 0.05)
 assert.equal(out.guardrails.riskPerTrade, 0.02);
 assert.equal(out.guardrails.stopLossPct, 0.05);
 assert.equal(out.guardrails.maxPortfolioHeatPct, 0.10);
@@ -38,7 +38,7 @@ assert.equal(out.guardrails.maxTradesPerDay, 10);
 assert.equal(out.guardrails.minRiskRewardRatio, 1.5);
 
 // absent gate fields fall back to no-op defaults (∞ trades, 0 min R:R)
-const bare = resolveAgentParams(agent, { risk_per_trade_percent: 0.02 }, ['SMC'], {});
+const bare = resolveAgentParams(agent, { risk_per_trade_percent: 2 }, ['SMC'], {});
 assert.equal(bare.guardrails.maxTradesPerDay, Infinity);
 assert.equal(bare.guardrails.minRiskRewardRatio, 0);
 
