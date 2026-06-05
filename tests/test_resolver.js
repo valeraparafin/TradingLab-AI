@@ -82,6 +82,18 @@ function test() {
   assert.strictEqual(resolved4.risk.minRiskRewardRatio, undefined, 'Optional gate should be absent, not defaulted in schema');
   console.log('✅ Test 4 Passed');
 
+  // Test 5: Guard 2 — config_resolver's RiskSchema rejects a leftover-fraction SL (< 0.1 floor)
+  console.log('Test 5: Guard 2 floor rejects fractional SL in config_resolver...');
+  fs.writeFileSync(path.join(riskDir, 'fraction_risk.json'), JSON.stringify({
+    settings: {
+      maxTradesPerDay: 10, maxTradeSizeUSD: 200,
+      riskPerTradePercent: 2, stopLossPercent: 0.02, takeProfitPercent: 6
+    }
+  }));
+  assert.throws(() => resolveConfig({ riskTemplateId: 'fraction_risk', logicTemplateId: 'test_logic' }),
+    /validation failed/, 'SL 0.02 must be rejected by the 0.1 floor');
+  console.log('✅ Test 5 Passed');
+
   console.log('\nAll tests passed successfully!');
 }
 
