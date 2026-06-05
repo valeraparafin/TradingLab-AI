@@ -17,9 +17,10 @@ const ok = (n) => { console.log(`  ok - ${n}`); passed++; };
 // 2. loadRiskProfile reads a real template into camelCase *Percent settings
 {
   const s = loadRiskProfile('aggressive');
-  assert.strictEqual(s.riskPerTradePercent, 0.05);
-  assert.strictEqual(s.stopLossPercent, 0.05);
-  assert.strictEqual(s.takeProfitPercent, 0.15);
+  // Whole-percent convention (units foundation): aggressive is risk 5% / SL 5% / TP 15%.
+  assert.strictEqual(s.riskPerTradePercent, 5);
+  assert.strictEqual(s.stopLossPercent, 5);
+  assert.strictEqual(s.takeProfitPercent, 15);
   assert.strictEqual(s.maxTradeSizeUSD, 500);
   assert.strictEqual(s.portfolioValue, 1000);
   ok('loadRiskProfile reads aggressive template');

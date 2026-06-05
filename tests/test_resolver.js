@@ -97,10 +97,22 @@ function test() {
   console.log('\nAll tests passed successfully!');
 }
 
+// Remove the throwaway fixtures this test writes into templates/risk so they don't
+// pollute the dir or break other suites (e.g. test_template_units reads every template).
+// test_risk.json / test_logic.json are tracked fixtures and are left in place.
+function cleanup() {
+  const riskDir = path.join(process.cwd(), 'templates', 'risk');
+  for (const f of ['invalid_risk.json', 'fraction_risk.json']) {
+    try { fs.unlinkSync(path.join(riskDir, f)); } catch { /* not written / already gone */ }
+  }
+}
+
 try {
   test();
+  cleanup();
 } catch (err) {
   console.error('❌ Test failed:');
   console.error(err);
+  cleanup();
   process.exit(1);
 }

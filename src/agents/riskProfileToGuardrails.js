@@ -16,7 +16,8 @@ function toFraction(v) {
  * settings shape produced by file risk templates (templates/risk/*.json after toCamel,
  * validated by config_resolver.js's RiskSchema) and produces the exact `guardrails`
  * object that simulate()/RiskPolicy consume. This is the single source of truth for the
- * percent→fraction mapping shared by the backtest matrix and (later) the live path.
+ * percent→fraction mapping, used by all three paths: the backtest matrix, the AI live
+ * path (paramResolver delegates here), and the manual live engine (bot_engine routes here).
  *
  * @param {object} s    risk settings (camelCase, *Percent keys)
  * @param {{leverage?: number, mmr?: number|null}} [opts]
