@@ -45,20 +45,20 @@ export function analyzeTrades(trades, htf, opts = {}) {
       const cell = res[def][bucketOf(t.side, verdicts[def])];
       cell.count += 1;
       cell.pnl += t.pnl;
-      if (t.pnl > 0) cell.wins += 1;
+      if (t.pnl > 0) cell.wins += 1; // break-even (pnl === 0) counts as a loss for WR
     }
   }
   return res;
 }
 
-/** Format one definition's tally as printable lines. */
-export function formatTally(label, def, tally, startEquity) {
+/** Format one definition's tally as printable lines (caller prints the strategy label once). */
+export function formatTally(def, tally, startEquity) {
   const pct = (x) => (startEquity > 0 ? (x / startEquity * 100).toFixed(2) + '%' : x.toFixed(2));
   const wr = (cell) => (cell.count > 0 ? Math.round(cell.wins / cell.count * 100) + '%' : '—');
   const line = (name, cell) =>
     `  ${name.padEnd(8)} ${String(cell.count).padStart(4)}  PnL ${pct(cell.pnl).padStart(8)}  WR ${wr(cell)}`;
   return [
-    `${label} [${def}]:`,
+    `[${def}]:`,
     line('with', tally.with),
     line('against', tally.against),
     line('neutral', tally.neutral),
@@ -67,7 +67,7 @@ export function formatTally(label, def, tally, startEquity) {
 
 async function main() {
   // Lazy imports so the unit test never loads sqlite/backtest machinery.
-  const { parseArgs } = await import('../backtest/download-data.js');
+  const { parseArgs } = await import('../backtest/download-data.js'); // reuse the backtest CLI arg parser
   const { simulate } = await import('../src/backtest/simulator.js');
   const { buildGuardrails, buildCosts } = await import('../backtest/run-backtest.js');
   const { openMarketDb } = await import('../src/data/marketDataSchema.js');
@@ -112,7 +112,7 @@ async function main() {
   console.log('\n══════════ HTF FILTER MEASUREMENT ══════════');
   console.log(label);
   for (const def of DEFS) {
-    console.log(formatTally(label, def, res[def], guardrails.portfolioValue));
+    console.log(formatTally(def, res[def], guardrails.portfolioValue));
   }
   console.log('════════════════════════════════════════════');
 }
