@@ -64,4 +64,11 @@ const mk = (t, o, h, l, c, v = 1) => ({ time: t, open: o, high: h, low: l, close
   ok('guards → []');
 }
 
+// --- minimum productive case: 2 candles spanning a boundary, ratio 1 → 1 closed bar ---
+{
+  const two = [mk(0, 1, 2, 0.5, 1.5), mk(HOUR, 1, 2, 0.5, 1.5)];
+  assert.strictEqual(aggregateHTF(two, 1).length, 1, 'minimum productive: 2 candles ratio=1 → 1 bar');
+  ok('minimum productive case → 1 bar');
+}
+
 console.log(`\n${passed} checks passed`);

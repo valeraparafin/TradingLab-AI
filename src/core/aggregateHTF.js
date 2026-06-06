@@ -8,6 +8,7 @@ function inferStepMs(candles) {
     if (d > 0) counts.set(d, (counts.get(d) || 0) + 1);
   }
   let best = 0, bestN = -1;
+  // On a tie, first-seen delta wins (Map insertion order) — deterministic.
   for (const [d, n] of counts) if (n > bestN) { bestN = n; best = d; }
   return best;
 }
@@ -15,20 +16,25 @@ function inferStepMs(candles) {
 const startBar = (time, c) => ({
   time, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume || 0,
 });
-function extendBar(bar, c) {
+const extendBar = (bar, c) => {
   if (c.high > bar.high) bar.high = c.high;
   if (c.low < bar.low) bar.low = c.low;
   bar.close = c.close;
   bar.volume += c.volume || 0;
-}
+};
 
 /**
  * Resample ascending LTF candles into higher-timeframe candles.
  * Calendar-aligned (buckets keyed by floor(time/htfMs)*htfMs) and CLOSED-ONLY:
  * the final, still-forming bucket is intentionally excluded (no repaint/look-ahead).
  *
+ * Precondition: `candles` MUST be ascending by time. Not enforced — matching the
+ * simulate() convention; the sole caller (MarketDataRepo.getCandles) is ORDER BY
+ * time ASC. Out-of-order input yields undefined output.
+ *
  * @param {import('./contracts.js').Candle[]} candles ascending by time
- * @param {number} ratio LTF→HTF multiple (e.g. 4 for 1H→4H). Rounded to an integer >= 1.
+ * @param {number} ratio LTF→HTF multiple (e.g. 4 for 1H→4H). Rounded to nearest
+ *   integer >= 1; ratio=1 is valid (returns LTF candles minus the final open bucket).
  * @returns {import('./contracts.js').Candle[]} closed HTF candles, ascending
  */
 export function aggregateHTF(candles, ratio) {
