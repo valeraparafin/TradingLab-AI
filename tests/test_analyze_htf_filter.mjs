@@ -44,4 +44,20 @@ const early = analyzeTrades([{ side: 'BUY', entryTime: -1, pnl: 1 }], htf, {});
 assert.strictEqual(early.emaBand.neutral.count, 1, 'pre-history trade → neutral');
 ok('trade before first HTF bar → neutral');
 
+// --- no look-ahead: an entry INSIDE a bucket must NOT see that bucket's future close ---
+{
+  // 60 flat HTF bars at 100 (→ NEUTRAL), then a 61st bar whose close spikes far above EMA.
+  const series = Array.from({ length: 60 }, (_, i) => mk(i * 4 * HOUR, 100));
+  series.push(mk(60 * 4 * HOUR, 130)); // the still-forming bucket has a big up-close
+  // Enter 1h into that last (forming) bucket — its close (130) is still in the future.
+  const entry = 60 * 4 * HOUR + HOUR;
+  const r = analyzeTrades([{ side: 'BUY', entryTime: entry, pnl: 1 }], series,
+    { emaPeriod: 50, band: 0.005, adxPeriod: 14, adxThreshold: 25 });
+  // Must classify on the 60 flat closed bars (NEUTRAL), NOT include the 130 spike (which
+  // would make it UP → with). This pins the no-look-ahead contract.
+  assert.strictEqual(r.emaBand.neutral.count, 1, 'mid-bucket entry → NEUTRAL (forming bar excluded)');
+  assert.strictEqual(r.emaBand.with.count, 0, 'no look-ahead: forming up-bar not seen as UP');
+  ok('no look-ahead: mid-bucket entry excludes the forming HTF bar');
+}
+
 console.log(`\n${passed} checks passed`);

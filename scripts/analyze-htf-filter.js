@@ -6,11 +6,29 @@ import { classifyHTFTrend } from '../src/core/classifyHTFTrend.js';
 
 const DEFS = ['emaBand', 'emaSlope', 'adxRegime'];
 
-/** Index of the last HTF bar with time <= entryTime, or -1 if none. (htf ascending) */
-function lastClosedIndex(htf, entryTime) {
+/** Bucket width = smallest positive gap between consecutive HTF opens. Buckets are
+ *  calendar-aligned so gaps only widen deltas; the minimum is the true width. 0 if
+ *  indeterminate (fewer than 2 bars). */
+function htfStep(htf) {
+  let step = Infinity;
+  for (let i = 1; i < htf.length; i++) {
+    const d = htf[i].time - htf[i - 1].time;
+    if (d > 0 && d < step) step = d;
+  }
+  return Number.isFinite(step) ? step : 0;
+}
+
+/**
+ * Index of the last HTF bar FULLY CLOSED at entryTime, or -1 if none. A bar opening at
+ * htf[i].time closes at htf[i].time + step and is usable only once entryTime reaches that
+ * close. Keying on open-time alone would let a mid-bucket entry see the bar's own (future)
+ * close — a look-ahead bias. (htf ascending)
+ */
+function lastClosedIndex(htf, entryTime, step) {
+  if (!(step > 0)) return -1;
   let j = -1;
   for (let i = 0; i < htf.length; i++) {
-    if (htf[i].time <= entryTime) j = i; else break;
+    if (htf[i].time + step <= entryTime) j = i; else break;
   }
   return j;
 }
@@ -35,9 +53,10 @@ export function analyzeTrades(trades, htf, opts = {}) {
   const z = () => ({ count: 0, pnl: 0, wins: 0 });
   const blank = () => ({ with: z(), against: z(), neutral: z() });
   const res = { emaBand: blank(), emaSlope: blank(), adxRegime: blank() };
+  const step = htfStep(htf);
 
   for (const t of trades) {
-    const j = lastClosedIndex(htf, t.entryTime);
+    const j = lastClosedIndex(htf, t.entryTime, step);
     const verdicts = j < 0
       ? { emaBand: 'NEUTRAL', emaSlope: 'NEUTRAL', adxRegime: 'NEUTRAL' }
       : classifyHTFTrend(htf.slice(0, j + 1), opts);

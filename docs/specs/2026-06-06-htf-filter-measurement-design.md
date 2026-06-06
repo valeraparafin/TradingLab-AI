@@ -84,7 +84,9 @@ For each (strategy logicType, symbol, timeframe) cell:
 1. Load LTF candles from `market_data.db` (reuse `MarketDataRepo`).
 2. Run `simulate()` with the same guardrails the backtest CLI uses → `trades[]`.
 3. Build the HTF series via `aggregateHTF(candles, ratio)`.
-4. For each trade: find the **last closed** HTF bar with `time <= entryTime`; for each of
+4. For each trade: find the **last fully-closed** HTF bar — the last bar whose CLOSE
+   (`open + bucketWidth`) is `<= entryTime`, NOT merely `open <= entryTime` (keying on
+   open-time would let a mid-bucket entry see that bar's own future close — look-ahead); for each of
    the three trend definitions, classify `UP/DOWN/NEUTRAL`; bucket the trade as:
    - `with`    — HTF `UP` & `side==BUY`, or HTF `DOWN` & `side==SELL`
    - `against` — HTF `UP` & `side==SELL`, or HTF `DOWN` & `side==BUY`
