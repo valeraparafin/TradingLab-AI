@@ -20,7 +20,7 @@ function emaSlopeVerdict(htf, emaPeriod, lookback, threshold) {
   if (ema.length <= lookback) return 'NEUTRAL';
   const now = ema[ema.length - 1];
   const past = ema[ema.length - 1 - lookback];
-  if (!(past > 0)) return 'NEUTRAL';
+  if (!(past > 0)) return 'NEUTRAL'; // guards div-by-zero; prices are always positive here
   const slope = (now - past) / past;
   if (slope > threshold) return 'UP';
   if (slope < -threshold) return 'DOWN';
@@ -64,11 +64,11 @@ function computeADX(htf, period) {
   return adx;
 }
 
-/** ADX gate: range (ADX < threshold) → NEUTRAL; else direction from emaBand. */
-function adxRegimeVerdict(htf, emaPeriod, band, adxPeriod, adxThreshold) {
+/** ADX gate: range (ADX < threshold) → NEUTRAL; else the already-computed emaBand direction. */
+function adxRegimeVerdict(htf, emaBand, adxPeriod, adxThreshold) {
   const adx = computeADX(htf, adxPeriod);
   if (adx == null || adx < adxThreshold) return 'NEUTRAL';
-  return emaBandVerdict(htf, emaPeriod, band);
+  return emaBand;
 }
 
 /**
@@ -94,9 +94,10 @@ export function classifyHTFTrend(htf, opts = {}) {
   if (!Array.isArray(htf) || htf.length === 0) {
     return { emaBand: 'NEUTRAL', emaSlope: 'NEUTRAL', adxRegime: 'NEUTRAL' };
   }
+  const emaBand = emaBandVerdict(htf, emaPeriod, band);
   return {
-    emaBand: emaBandVerdict(htf, emaPeriod, band),
+    emaBand,
     emaSlope: emaSlopeVerdict(htf, emaPeriod, slopeLookback, slopeThreshold),
-    adxRegime: adxRegimeVerdict(htf, emaPeriod, band, adxPeriod, adxThreshold),
+    adxRegime: adxRegimeVerdict(htf, emaBand, adxPeriod, adxThreshold),
   };
 }

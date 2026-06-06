@@ -48,4 +48,15 @@ const mk = (c) => ({ time: 0, open: c, high: c + 1, low: c - 1, close: c, volume
   ok('flat market → all NEUTRAL');
 }
 
+// --- regime gate independence: low-ADX market → adxRegime NEUTRAL even while emaBand UP ---
+{
+  // 79 flat bars (no directional movement → ADX stays low), then one bar closing ~10% above EMA.
+  const htf = Array.from({ length: 79 }, () => mk(100));
+  htf.push({ time: 0, open: 100, high: 112, low: 99, close: 110, volume: 1 });
+  const v = classifyHTFTrend(htf, { emaPeriod: 14, band: 0.005, adxPeriod: 14, adxThreshold: 25 });
+  assert.strictEqual(v.emaBand, 'UP', 'price 10% above EMA → emaBand UP');
+  assert.strictEqual(v.adxRegime, 'NEUTRAL', 'regime gate suppresses direction in low-ADX market');
+  ok('regime gate: emaBand UP but adxRegime NEUTRAL');
+}
+
 console.log(`\n${passed} checks passed`);
