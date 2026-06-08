@@ -38,8 +38,11 @@ const Breakout = {
     const avgVol = window.reduce((a, b) => a + b, 0) / window.length;
 
     if (currentVol < avgVol) {
-      const recentHigh = Math.max(...highs.slice(-length));
-      const recentLow = Math.min(...lows.slice(-length));
+      // Channel boundaries come from the `length` bars BEFORE the current (forming) bar.
+      // Including the current bar would let its own high/low bound the close, making a
+      // breakout (price > top / price < bottom) mathematically impossible → 0 signals.
+      const recentHigh = Math.max(...highs.slice(-length - 1, -1));
+      const recentLow = Math.min(...lows.slice(-length - 1, -1));
       return { top: recentHigh, bottom: recentLow, active: true };
     }
     return { top: null, bottom: null, active: false };
