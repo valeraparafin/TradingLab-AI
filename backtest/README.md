@@ -53,11 +53,13 @@ If a cell errors with "Not enough candles", download more via `backtest/download
 
 Read `src/agents/RiskPolicy.js` + `src/backtest/simulator.js` if you doubt this:
 
-- **Position notional `sizeUSD = portfolioValue × riskPerTrade`** (a USD notional, capped by
+- **Position notional `sizeUSD = sizingBase × riskPerTrade`** (a USD notional, capped by
   `maxTradeSizeUSD`). It is **NOT** risk-based off the stop distance.
-- **No compounding.** Sizing always uses the *starting* `portfolioValue`; the running
-  equity does not feed back into size. So absolute PnL is roughly linear in trade count,
-  not geometric. `netPnl%` = netPnl / startEquity.
+- **Compounding is opt-in via `--sizing`.** Default `fixed`: `sizingBase` is always the
+  *starting* `portfolioValue`, equity does not feed back into size, so absolute PnL is
+  roughly linear in trade count. `--sizing compound`: `sizingBase` is the live running
+  equity (geometric — wins grow the next position, losses shrink it). `netPnl%` =
+  netPnl / startEquity either way. Matrix runner takes the same `--sizing` flag.
 - **Leverage does NOT amplify PnL.** `--leverage` only lowers required margin
   (`marginUSD = sizeUSD / leverage`) and sets the liquidation price. With a stop tighter
   than ~`1/leverage`, the SL fires before liquidation (Liq stays 0) and 1× vs 10× give
@@ -78,6 +80,25 @@ EMA-band trend (`src/backtest/htfGate.js`). In the matrix it's built once and ap
 
 Observed: a mild refinement on SMC, not a primary edge; widening the band barely changes trade counts.
 
+## Stop modes & breakeven (backtest-only, opt-in, single cell)
+
+All default-off so the shared `RiskPolicy`/`pipeline.js` paths stay byte-identical for live
+(`bot_engine.js` never simulates). Stop mode is `--stopMode`; both non-percent modes fall back
+to percent safely if their inputs are missing.
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--stopMode` | `percent` | `percent` (uses `--sl`/`--tp`), `atr`, or `structural` |
+| `--atrPeriod` | 14 | Wilder ATR period (`atr`/`structural` need ≥ period+1 candles) |
+| `--atrSL` | 2 | SL distance = `atrSL × ATR` from entry (`stopMode=atr`) |
+| `--atrTP` | 4 | TP distance = `atrTP × ATR` from entry (`stopMode=atr`) |
+| `--structuralRR` | 2 | `stopMode=structural`: SL = signal invalidation, TP = entry ± RR × risk |
+| `--breakevenR` | off | once price advances `breakevenR × R`, move SL to entry (one-shot, profit-only) |
+
+> **`--minRR` caveat for `--stopMode atr`:** the `minRiskRewardRatio` gate measures RR from the
+> *percent/structural* config, not the ATR stop. For ATR runs pass `--minRR 0` or it may deny
+> entries whose ATR-derived RR is fine. (See the comment above the minRR gate in `RiskPolicy.js`.)
+
 ## `run-backtest.js` flags (single cell)
 
 `--symbol --tf --logic --label --group`
@@ -85,14 +106,18 @@ Observed: a mild refinement on SMC, not a primary edge; widening the band barely
 `--lookback (250) --from <ISO> --to <ISO>`
 Guardrails: `--equity (10000) --riskPerTrade (0.1) --maxTradeSizeUSD --sl (0.02) --tp (0.04)`
 `--minRR (1.5) --maxOpen (1) --maxHeat (100) --dailyLoss (1) --maxTrades`
+Sizing/stops: `--sizing (fixed|compound) --stopMode (percent|atr|structural)`
+`--atrPeriod (14) --atrSL (2) --atrTP (4) --structuralRR (2) --breakevenR`
 Costs: `--takerFee --makerFee --slippageBps (5)`
 **Guardrail flags here are FRACTIONS** (`--sl 0.03` = 3%, `--riskPerTrade 0.1` = 10%).
 
 ## `run-matrix.js` flags (sweep)
 
 Comma-separated lists: `--risks --logics --symbols --tfs`.
-Shared: `--leverage --mmr --fundingMode --fundingRate --lookback --from --to --group`
+Shared: `--leverage --mmr --fundingMode --fundingRate --lookback --from --to --group --sizing`
 HTF: `--htf --htfRatio --htfEma --htfBand`.
+(`--sizing compound` works here too; the per-cell stop modes / `--breakevenR` are
+single-cell only — set SL/TP in the risk template for matrix runs.)
 There is **no** `--equity`/`--sl`/`--tp` here — those live in the risk template.
 
 ### Risk templates (`templates/risk/<id>.json`)
