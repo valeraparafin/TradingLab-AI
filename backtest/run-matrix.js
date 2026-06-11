@@ -33,12 +33,32 @@ export function loadRiskProfile(riskId) {
 
 const csv = (v, d) => String(v ?? d).split(',').map(s => s.trim()).filter(Boolean);
 
+/**
+ * Build the opt-in HTF gate decision fn from CLI args (backtest-only).
+ * Mirrors the gate block in run-backtest.js main(): bare `--htf` → args.htf === true.
+ * Returns undefined when the gate is off, so simulate() falls back to its default evaluateBar.
+ * Built once and shared across every matrix cell.
+ */
+export async function buildHtfDecide(args) {
+  if (!args.htf) return undefined;
+  const { withHtfGate } = await import('../src/backtest/htfGate.js');
+  const { evaluateBar } = await import('../src/core/pipeline.js');
+  const htfOpts = {
+    ratio: args.htfRatio != null ? Number(args.htfRatio) : 4,
+    emaPeriod: args.htfEma != null ? Number(args.htfEma) : 50,
+    band: args.htfBand != null ? Number(args.htfBand) : 0.005,
+  };
+  console.log(`[matrix] HTF gate ON (emaBand, ratio=${htfOpts.ratio}, ema=${htfOpts.emaPeriod}, band=${htfOpts.band})`);
+  return withHtfGate(evaluateBar, htfOpts);
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   // CLI flags (camelCase, comma-separated lists):
   //   --risks aggressive,conservative  --logics SMC,breakout
   //   --symbols BTCUSDT,ETHUSDT         --tfs 1H,4H
   //   shared: --leverage --mmr --fundingMode --fundingRate --lookback --from --to --group
+  //   HTF gate (backtest-only): --htf --htfRatio --htfEma --htfBand (applied to every cell)
   const dims = {
     risks: csv(args.risks, 'aggressive'),
     logics: csv(args.logics, 'SMC'),
@@ -52,6 +72,9 @@ async function main() {
   const from = parseDate(args.from, 0);
   const to = parseDate(args.to, Number.MAX_SAFE_INTEGER);
   const group = String(args.group || `m_${Date.now()}`);
+
+  // Opt-in HTF gate, built once and reused for every cell (backtest-only).
+  const decide = await buildHtfDecide(args);
 
   const cells = expandMatrix(dims);
   console.log(`[matrix] group=${group}: ${cells.length} cells (${dims.risks.length}r × ${dims.logics.length}l × ${dims.symbols.length}s × ${dims.tfs.length}tf), leverage ${leverage}`);
@@ -88,7 +111,7 @@ async function main() {
         const { metrics } = await runOne(btRepo, {
           label, logicType: cell.logicType, symbol: cell.symbol, tf: cell.tf,
           lookback, leverage, candles, spec, realRows, guardrails, costs,
-          fundingMode, fundingRate, group,
+          fundingMode, fundingRate, group, decide,
         });
         summaries.push({ ...cell, leverage, metrics });
       } catch (err) {

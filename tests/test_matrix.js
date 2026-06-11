@@ -1,6 +1,6 @@
 // tests/test_matrix.js
 import assert from 'node:assert';
-import { expandMatrix, loadRiskProfile } from '../backtest/run-matrix.js';
+import { expandMatrix, loadRiskProfile, buildHtfDecide } from '../backtest/run-matrix.js';
 
 let passed = 0;
 const ok = (n) => { console.log(`  ok - ${n}`); passed++; };
@@ -30,6 +30,20 @@ const ok = (n) => { console.log(`  ok - ${n}`); passed++; };
 {
   assert.throws(() => loadRiskProfile('does_not_exist'), /risk template/i);
   ok('loadRiskProfile rejects unknown id');
+}
+
+// 4. buildHtfDecide is off by default — undefined so simulate() uses its default evaluateBar
+{
+  assert.strictEqual(await buildHtfDecide({}), undefined);
+  assert.strictEqual(await buildHtfDecide({ htf: false }), undefined);
+  ok('buildHtfDecide off without --htf');
+}
+
+// 5. bare --htf builds a decision fn the matrix loop can pass into runOne
+{
+  const decide = await buildHtfDecide({ htf: true });
+  assert.strictEqual(typeof decide, 'function');
+  ok('buildHtfDecide on with --htf');
 }
 
 console.log(`\n${passed} checks passed`);
