@@ -1,5 +1,6 @@
 import { evaluateBar } from '../core/pipeline.js';
 import { slip, checkExit } from './execution.js';
+import { breakevenStop } from './exitPolicy.js';
 import { liqPrice } from '../core/liquidation.js';
 import { fundingBetween } from './funding.js';
 
@@ -70,6 +71,7 @@ export function simulate(p, decide = evaluateBar) {
         marginUSD: isFutures ? pending.sizeUSD / leverage : pending.sizeUSD,
         liqPrice: isFutures ? liqPrice(entryFill, pending.side, leverage, mmr) : null,
         fundingAccrued: 0, lastFundingTime: bar.time,
+        initialSlPrice: pending.slPrice, breakevenMoved: false,
       };
       pending = null;
     }
@@ -116,6 +118,13 @@ export function simulate(p, decide = evaluateBar) {
         });
         position = null;
       }
+    }
+
+    // 3b) Breakeven stop. Recomputes the stop AFTER this bar's exit check, so it only
+    // affects subsequent bars (no intrabar ambiguity). One-shot, profit-only.
+    if (position && p.exitPolicy && p.exitPolicy.breakevenR != null && !position.breakevenMoved) {
+      const moved = breakevenStop(position, bar, p.exitPolicy.breakevenR);
+      if (moved !== position.slPrice) { position.slPrice = moved; position.breakevenMoved = true; }
     }
 
     // 4) If flat, decide for a next-bar entry (uses only data up to close[i]).

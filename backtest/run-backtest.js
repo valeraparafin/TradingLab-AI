@@ -81,7 +81,7 @@ export async function runOne(btRepo, p) {
   const config = { logicType: p.logicType, logic: {} };
   // p.decide is optional; passing undefined uses simulate's default (evaluateBar).
   const sim = simulate(
-    { candles: p.candles, config, guardrails: p.guardrails, costs: p.costs, symbol: p.symbol, timeframe: p.tf, lookback: p.lookback, startEquity: p.guardrails.portfolioValue, funding },
+    { candles: p.candles, config, guardrails: p.guardrails, costs: p.costs, symbol: p.symbol, timeframe: p.tf, lookback: p.lookback, startEquity: p.guardrails.portfolioValue, funding, exitPolicy: p.exitPolicy },
     p.decide,
   );
   const metrics = computeMetrics({ trades: sim.trades, equityCurve: sim.equityCurve, startEquity: p.guardrails.portfolioValue, slippageCost: sim.slippageCost, timeframe: p.tf, totalFunding: sim.totalFunding, liquidationCount: sim.liquidationCount });
@@ -163,13 +163,15 @@ async function main() {
     console.log(`[backtest] HTF gate ON (emaBand, ratio=${htfOpts.ratio}, ema=${htfOpts.emaPeriod}, band=${htfOpts.band})`);
   }
 
+  const exitPolicy = args.breakevenR != null ? { breakevenR: Number(args.breakevenR) } : undefined;
+
   const btDb = await openBacktestDb(path.join(process.cwd(), 'backtest.db'));
   const btRepo = new BacktestRepo(btDb);
   const { runId, metrics } = await runOne(btRepo, {
     label, logicType, symbol, tf, lookback, leverage,
     candles, spec, realRows, guardrails, costs,
     fundingMode, fundingRate: fundingRateArg, group: args.group ?? null,
-    decide,
+    decide, exitPolicy,
   });
   await btDb.close();
 
