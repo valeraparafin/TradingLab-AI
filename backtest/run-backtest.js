@@ -143,12 +143,27 @@ async function main() {
   const guardrails = buildGuardrails(args, spec);
   const costs = buildCosts(args, spec);
 
+  // Opt-in HTF gate (backtest-only). Bare `--htf` parses to args.htf === true.
+  let decide; // undefined → simulate() uses its default evaluateBar
+  if (args.htf) {
+    const { withHtfGate } = await import('../src/backtest/htfGate.js');
+    const { evaluateBar } = await import('../src/core/pipeline.js');
+    const htfOpts = {
+      ratio: args.htfRatio != null ? Number(args.htfRatio) : 4,
+      emaPeriod: args.htfEma != null ? Number(args.htfEma) : 50,
+      band: args.htfBand != null ? Number(args.htfBand) : 0.005,
+    };
+    decide = withHtfGate(evaluateBar, htfOpts);
+    console.log(`[backtest] HTF gate ON (emaBand, ratio=${htfOpts.ratio}, ema=${htfOpts.emaPeriod}, band=${htfOpts.band})`);
+  }
+
   const btDb = await openBacktestDb(path.join(process.cwd(), 'backtest.db'));
   const btRepo = new BacktestRepo(btDb);
   const { runId, metrics } = await runOne(btRepo, {
     label, logicType, symbol, tf, lookback, leverage,
     candles, spec, realRows, guardrails, costs,
     fundingMode, fundingRate: fundingRateArg, group: args.group ?? null,
+    decide,
   });
   await btDb.close();
 
