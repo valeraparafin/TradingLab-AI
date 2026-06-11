@@ -44,5 +44,27 @@ export const Technicals = {
     }
     return highs;
   },
+  /**
+   * Wilder's Average True Range. Consumes OHLC candle objects (not a value array).
+   * TR = max(high-low, |high-prevClose|, |low-prevClose|). Seed = SMA of the first
+   * `period` TRs, then Wilder smoothing: ATR = (prevATR*(period-1) + TR) / period.
+   * Returns an ascending ATR series of length (candles.length - period), or [] if
+   * there are not more than `period` candles. (candles ascending by time)
+   */
+  atr(candles, period) {
+    if (!Array.isArray(candles) || candles.length < period + 1) return [];
+    const tr = [];
+    for (let i = 1; i < candles.length; i++) {
+      const h = candles[i].high, l = candles[i].low, pc = candles[i - 1].close;
+      tr.push(Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc)));
+    }
+    let sum = 0;
+    for (let i = 0; i < period; i++) sum += tr[i];
+    const out = [sum / period];
+    for (let i = period; i < tr.length; i++) {
+      out.push((out[out.length - 1] * (period - 1) + tr[i]) / period);
+    }
+    return out;
+  },
 };
 
