@@ -1,0 +1,18 @@
+{
+  "name": "PnL rpt 0.50",
+  "content": {
+    "id": "pnl_rpt050",
+    "name": "PnL rpt 0.50",
+    "settings": {
+      "riskPerTradePercent": 50,
+      "portfolioValue": 200,
+      "stopLossPercent": 3,
+      "takeProfitPercent": 6,
+      "minRiskRewardRatio": 1.5,
+      "maxOpenPositions": 1,
+      "maxPortfolioHeatPercent": 100,
+      "dailyLossLimitPercent": 100,
+      "maxTradesPerDay": 999999
+    }
+  }
+}
