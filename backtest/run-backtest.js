@@ -29,6 +29,11 @@ export function buildGuardrails(args, spec = null) {
     maxTradesPerDay: num(args.maxTrades, 999999),
     leverage: num(args.leverage, 1),
     mmr: args.mmr != null ? Number(args.mmr) : (spec && spec.mmr != null ? spec.mmr : null),
+    stopMode: args.stopMode || 'percent',
+    atrPeriod: num(args.atrPeriod, 14),
+    atrSL: num(args.atrSL, 2),
+    atrTP: num(args.atrTP, 4),
+    structuralRR: num(args.structuralRR, 2),
   };
 }
 

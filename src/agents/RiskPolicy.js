@@ -69,11 +69,27 @@ export class RiskPolicy {
       : (g.portfolioValue || 0);
     const sizeUSD = Math.min(sizingBase * (g.riskPerTrade || 0), g.maxTradeSizeUSD ?? Infinity);
 
-    // SL/TP prices mirrored by side (round to 8 dp to avoid FP artifacts)
+    // SL/TP prices mirrored by side (round to 8 dp to avoid FP artifacts).
+    // stopMode selects the SL/TP geometry; 'atr' and 'structural' fall back to 'percent'
+    // when their inputs are missing/invalid, so behavior degrades safely.
     const round = (n) => n == null ? null : Math.round(n * 1e8) / 1e8;
+    const isBuy = proposal.side === 'BUY';
     const sl = g.stopLossPct, tp = g.takeProfitPct;
-    const slPrice = sl == null ? null : round(proposal.side === 'BUY' ? entryPrice * (1 - sl) : entryPrice * (1 + sl));
-    const tpPrice = tp == null ? null : round(proposal.side === 'BUY' ? entryPrice * (1 + tp) : entryPrice * (1 - tp));
+    const pctSl = sl == null ? null : round(isBuy ? entryPrice * (1 - sl) : entryPrice * (1 + sl));
+    const pctTp = tp == null ? null : round(isBuy ? entryPrice * (1 + tp) : entryPrice * (1 - tp));
+
+    let slPrice = pctSl, tpPrice = pctTp;
+    if (g.stopMode === 'atr' && ctx && ctx.atr > 0) {
+      const kSl = g.atrSL ?? 2, kTp = g.atrTP ?? 4;
+      slPrice = round(isBuy ? entryPrice - kSl * ctx.atr : entryPrice + kSl * ctx.atr);
+      tpPrice = round(isBuy ? entryPrice + kTp * ctx.atr : entryPrice - kTp * ctx.atr);
+    } else if (g.stopMode === 'structural' && ctx && ctx.invalidation != null
+               && (isBuy ? ctx.invalidation < entryPrice : ctx.invalidation > entryPrice)) {
+      const rr = g.structuralRR ?? 2;
+      const risk = Math.abs(entryPrice - ctx.invalidation);
+      slPrice = round(ctx.invalidation);
+      tpPrice = round(isBuy ? entryPrice + rr * risk : entryPrice - rr * risk);
+    }
 
     const leverage = g.leverage || 1;
     if (leverage <= 1) {
