@@ -40,6 +40,15 @@ const g = { portfolioValue: 1000, riskPerTrade: 0.1, minRiskRewardRatio: 0, leve
   ok('structural mode uses invalidation + RR target');
 }
 
+// --- structural mode SELL: SL = invalidation above entry, TP = entry - RR*risk ---
+{
+  const rp = new RiskPolicy({ ...g, stopMode: 'structural', structuralRR: 2 });
+  const s = rp.evaluate(sell, { entryPrice: 100, invalidation: 104 }); // risk = 4
+  near(s.order.slPrice, 104, 'structural SELL SL = invalidation');
+  near(s.order.tpPrice, 92, 'structural SELL TP = 100 - 2*4');
+  ok('structural mode SELL mirrored');
+}
+
 // --- structural with wrong-side invalidation → fallback to percent ---
 {
   const rp = new RiskPolicy({ ...g, stopMode: 'structural', structuralRR: 2 });

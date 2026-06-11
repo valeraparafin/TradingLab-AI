@@ -48,6 +48,9 @@ export class RiskPolicy {
     // The stopLossPct > 0 part of the guard is deliberate (kept identical to the
     // pre-Spec-2 condition): SL is schema-guaranteed >= 0.1% (Guard 2), so the gate is
     // never skipped for a validated config, and the fallback's /stopLossPct stays safe.
+    // NOTE: this gate measures RR from the percent/structural config regardless of stopMode.
+    // For stopMode='atr' runs the real SL/TP are ATR-derived, so set minRiskRewardRatio=0
+    // to avoid comparing ATR stops against a percent-based threshold (see PnL campaign spec).
     if (g.minRiskRewardRatio > 0 && g.stopLossPct > 0 && isFinite(g.takeProfitPct)) {
       const setupRR = computeSetupRR({ entryPrice, invalidation, side: proposal.side, takeProfitPct: g.takeProfitPct });
       if (setupRR != null) {
