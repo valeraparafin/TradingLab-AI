@@ -15,6 +15,7 @@ export function buildGuardrails(args, spec = null) {
   return {
     portfolioValue: num(args.equity, 10000),
     riskPerTrade: num(args.riskPerTrade, 0.1),
+    sizingMode: args.sizing === 'compound' ? 'compound' : 'fixed',
     maxTradeSizeUSD: args.maxTradeSizeUSD != null ? Number(args.maxTradeSizeUSD) : Infinity,
     stopLossPct: num(args.sl, 0.02),
     takeProfitPct: num(args.tp, 0.04),

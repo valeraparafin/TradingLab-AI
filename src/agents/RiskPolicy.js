@@ -62,8 +62,12 @@ export class RiskPolicy {
       }
     }
 
-    // Sizing — single unit (USD)
-    const sizeUSD = Math.min((g.portfolioValue || 0) * (g.riskPerTrade || 0), g.maxTradeSizeUSD ?? Infinity);
+    // Sizing — single unit (USD). Compound mode sizes off live equity (passed by the
+    // backtest simulator as ctx.equity); fixed mode (default) sizes off static portfolioValue.
+    const sizingBase = (g.sizingMode === 'compound' && ctx && ctx.equity != null)
+      ? ctx.equity
+      : (g.portfolioValue || 0);
+    const sizeUSD = Math.min(sizingBase * (g.riskPerTrade || 0), g.maxTradeSizeUSD ?? Infinity);
 
     // SL/TP prices mirrored by side (round to 8 dp to avoid FP artifacts)
     const round = (n) => n == null ? null : Math.round(n * 1e8) / 1e8;

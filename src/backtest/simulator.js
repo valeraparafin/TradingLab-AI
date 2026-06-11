@@ -126,6 +126,7 @@ export function simulate(p, decide = evaluateBar) {
       // Spot path omits it so behaviour is byte-identical to Phase 3 (defaults to portfolioValue).
       const portfolio = { openPositions: 0, portfolioHeatPct: 0, dailyPnlPct: 0, tradesToday: 0 };
       if (isFutures) portfolio.freeEquity = equity;
+      if (guardrails.sizingMode === 'compound') portfolio.equity = equity;
       const account = { guardrails, portfolio };
       const { decision } = decide(ctx, account);
       if (decision && decision.decision === 'PERMIT' && decision.order) {

@@ -100,6 +100,7 @@ async function main() {
         const settings = loadRiskProfile(cell.riskId);
         const mmr = args.mmr != null ? Number(args.mmr) : (spec && spec.mmr != null ? spec.mmr : null);
         const guardrails = riskProfileToGuardrails(settings, { leverage, mmr });
+        guardrails.sizingMode = args.sizing === 'compound' ? 'compound' : 'fixed';
         const costs = buildCosts(args, spec);
 
         let realRows = [];
