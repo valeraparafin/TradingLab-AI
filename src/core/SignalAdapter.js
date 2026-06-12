@@ -72,6 +72,13 @@ function fromTrendPullback(raw) {
   return { side, conviction: clamp(conviction), reason: `TrendPullback ${side}`, invalidation: raw.invalidation ?? null };
 }
 
+/** DonchianTrend: execute() already resolved the side; flat conviction (no confidence signal). */
+function fromDonchianTrend(raw) {
+  const side = raw?.side ?? SIDE.HOLD;
+  if (side === SIDE.HOLD) return hold('DonchianTrend: price inside channel');
+  return { side, conviction: 0.6, reason: `DonchianTrend ${side}`, invalidation: raw.invalidation ?? null };
+}
+
 /**
  * Dispatch raw indicator output to the matching pure mapper.
  * @param {string} logicType @param {object} raw @param {{price:number, candles:object[]}} ctx
@@ -84,6 +91,7 @@ export function deriveSignal(logicType, raw, ctx) {
     case 'BREAKOUT': return fromBreakout(raw, ctx);
     case 'REVERSAL': return fromReversal(raw);
     case 'TRENDPULLBACK': return fromTrendPullback(raw);
+    case 'DONCHIANTREND': return fromDonchianTrend(raw);
     default: throw new Error(`Unsupported logicType: ${logicType}`);
   }
 }
