@@ -25,4 +25,11 @@ const ok = (n) => { console.log(`  ok - ${n}`); passed++; };
   ok('unknown flags ignored');
 }
 
+// --- Donchian: entryLookback threads into indicators ---
+{
+  const cfg = buildLogicConfig({ entryLookback: 55 });
+  assert.strictEqual(cfg.indicators.entryLookback, 55, 'entryLookback threaded as Number');
+  ok('buildLogicConfig threads Donchian entryLookback');
+}
+
 console.log(`\n${passed} checks passed`);

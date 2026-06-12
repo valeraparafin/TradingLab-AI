@@ -54,7 +54,7 @@ export function buildCosts(args, spec = null) {
  * empty object is returned when no indicator flag is present. All values coerced to Number.
  */
 export function buildLogicConfig(args) {
-  const KEYS = ['emaBias', 'slopeLen', 'adxPeriod', 'adxMin', 'emaFast', 'rsiPeriod', 'rsiPullback', 'htfRatio'];
+  const KEYS = ['emaBias', 'slopeLen', 'adxPeriod', 'adxMin', 'emaFast', 'rsiPeriod', 'rsiPullback', 'htfRatio', 'entryLookback'];
   const indicators = {};
   for (const k of KEYS) if (args[k] != null) indicators[k] = Number(args[k]);
   return Object.keys(indicators).length ? { indicators } : {};
@@ -175,7 +175,12 @@ async function main() {
     console.log(`[backtest] HTF gate ON (emaBand, ratio=${htfOpts.ratio}, ema=${htfOpts.emaPeriod}, band=${htfOpts.band})`);
   }
 
-  const exitPolicy = args.breakevenR != null ? { breakevenR: Number(args.breakevenR) } : undefined;
+  let exitPolicy;
+  if (args.breakevenR != null || args.channelExit != null) {
+    exitPolicy = {};
+    if (args.breakevenR != null) exitPolicy.breakevenR = Number(args.breakevenR);
+    if (args.channelExit != null) exitPolicy.channelExit = Number(args.channelExit);
+  }
   const logicConfig = buildLogicConfig(args);
 
   const btDb = await openBacktestDb(path.join(process.cwd(), 'backtest.db'));
