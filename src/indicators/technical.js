@@ -66,5 +66,28 @@ export const Technicals = {
     }
     return out;
   },
+  /**
+   * RSI over a value array (e.g. closes). Uses a rolling SMA of gains/losses over
+   * each `period`-length window. Returns an ascending series of length
+   * (values.length - period), or [] if there are not more than `period` values.
+   */
+  rsi(values, period) {
+    if (!Array.isArray(values) || values.length < period + 1) return [];
+    const gains = [], losses = [];
+    for (let i = 1; i < values.length; i++) {
+      const d = values[i] - values[i - 1];
+      gains.push(d > 0 ? d : 0);
+      losses.push(d < 0 ? -d : 0);
+    }
+    const rsiAt = (g, l) => (l === 0 ? (g === 0 ? 50 : 100) : 100 - 100 / (1 + g / l));
+    const out = [];
+    for (let i = period - 1; i < gains.length; i++) {
+      let ag = 0, al = 0;
+      for (let j = i - period + 1; j <= i; j++) { ag += gains[j]; al += losses[j]; }
+      ag /= period; al /= period;
+      out.push(rsiAt(ag, al));
+    }
+    return out;
+  },
 };
 
