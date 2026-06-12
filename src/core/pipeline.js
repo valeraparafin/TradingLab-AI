@@ -17,7 +17,7 @@ export function evaluateBar(ctx, account) {
   const signal = deriveSignal(ctx.config.logicType, raw, { price, candles: ctx.candles });
   const g = account.guardrails || {};
   let atr = null;
-  if (g.stopMode === 'atr') {
+  if (g.stopMode === 'atr' || g.stopMode === 'channel') {
     const series = Technicals.atr(ctx.candles, g.atrPeriod || 14);
     atr = series.length ? series[series.length - 1] : null;
   }
