@@ -67,6 +67,22 @@ export const Technicals = {
     return out;
   },
   /**
+   * Latest Donchian channel: highest high and lowest low over the LAST `period` candles
+   * (inclusive of the final candle). Returns { upper, lower } or null if fewer than
+   * `period` candles. To get a *prior-bar* breakout level, pass candles.slice(0, -1).
+   * Pure; no look-ahead beyond the candles handed in.
+   */
+  donchian(candles, period) {
+    if (!Array.isArray(candles) || candles.length < period) return null;
+    const window = candles.slice(candles.length - period);
+    let upper = -Infinity, lower = Infinity;
+    for (const c of window) {
+      if (c.high > upper) upper = c.high;
+      if (c.low < lower) lower = c.low;
+    }
+    return { upper, lower };
+  },
+  /**
    * Wilder's RSI over a value array (e.g. closes). Seed = SMA of the first `period`
    * gains/losses, then Wilder smoothing (SMMA). Returns an ascending series of length
    * (values.length - period), or [] if there are not more than `period` values.
