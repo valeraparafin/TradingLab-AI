@@ -62,6 +62,16 @@ function fromReversal(raw) {
   return { side, conviction: clamp(conviction), reason: `Reversal ${side}`, invalidation };
 }
 
+/** TrendPullback: execute() already resolved the side; conviction from ADX strength. */
+function fromTrendPullback(raw) {
+  const side = raw?.side ?? SIDE.HOLD;
+  if (side === SIDE.HOLD) return hold('TrendPullback: layers not aligned');
+  let conviction = 0.5;
+  if ((raw.adx ?? 0) > 30) conviction += 0.2;
+  conviction += 0.15; // trigger already required a clean RSI turn upstream
+  return { side, conviction: clamp(conviction), reason: `TrendPullback ${side}`, invalidation: raw.invalidation ?? null };
+}
+
 /**
  * Dispatch raw indicator output to the matching pure mapper.
  * @param {string} logicType @param {object} raw @param {{price:number, candles:object[]}} ctx
@@ -73,6 +83,7 @@ export function deriveSignal(logicType, raw, ctx) {
     case 'VMC_CIPHERB': return fromWaveTrend(raw);
     case 'BREAKOUT': return fromBreakout(raw, ctx);
     case 'REVERSAL': return fromReversal(raw);
+    case 'TRENDPULLBACK': return fromTrendPullback(raw);
     default: throw new Error(`Unsupported logicType: ${logicType}`);
   }
 }

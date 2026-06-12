@@ -3,6 +3,7 @@ import WaveTrend from './wave-trend.js';
 import SMC from './smc.js';
 import Breakout from './breakout.js';
 import Reversal from './reversal.js';
+import TrendPullback from './trendPullback.js';
 
 export class IndicatorManager {
   constructor(config) {
@@ -28,6 +29,8 @@ export class IndicatorManager {
         return WaveTrend.execute(candles, this.config);
       case 'REVERSAL':
         return Reversal.execute(candles, this.config);
+      case 'TRENDPULLBACK':
+        return TrendPullback.execute(candles, this.config);
       default:
         throw new Error(`Unsupported indicator type: ${type}`);
     }
