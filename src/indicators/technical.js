@@ -132,5 +132,24 @@ export const Technicals = {
     for (let i = period; i < dx.length; i++) { adxVal = (adxVal * (period - 1) + dx[i]) / period; out.push(adxVal); }
     return out;
   },
+  /**
+   * Least-squares slope over the last `period` values, normalized by their mean
+   * (fractional change per bar — unit-free, comparable across symbols). Returns a
+   * single number, or null if there are fewer than `period` values.
+   */
+  slope(values, period) {
+    if (!Array.isArray(values) || values.length < period) return null;
+    const slice = values.slice(-period);
+    const n = period;
+    const sumX = (n * (n - 1)) / 2;
+    const sumX2 = (n * (n - 1) * (2 * n - 1)) / 6;
+    let sumY = 0, sumXY = 0;
+    for (let i = 0; i < n; i++) { sumY += slice[i]; sumXY += i * slice[i]; }
+    const denom = n * sumX2 - sumX * sumX;
+    if (denom === 0) return null;
+    const m = (n * sumXY - sumX * sumY) / denom; // slope per bar
+    const mean = sumY / n;
+    return mean !== 0 ? m / mean : 0;
+  },
 };
 
