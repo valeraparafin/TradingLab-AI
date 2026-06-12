@@ -67,8 +67,8 @@ export const Technicals = {
     return out;
   },
   /**
-   * RSI over a value array (e.g. closes). Uses a rolling SMA of gains/losses over
-   * each `period`-length window. Returns an ascending series of length
+   * Wilder's RSI over a value array (e.g. closes). Seed = SMA of the first `period`
+   * gains/losses, then Wilder smoothing (SMMA). Returns an ascending series of length
    * (values.length - period), or [] if there are not more than `period` values.
    */
   rsi(values, period) {
@@ -79,13 +79,15 @@ export const Technicals = {
       gains.push(d > 0 ? d : 0);
       losses.push(d < 0 ? -d : 0);
     }
+    let avgGain = 0, avgLoss = 0;
+    for (let i = 0; i < period; i++) { avgGain += gains[i]; avgLoss += losses[i]; }
+    avgGain /= period; avgLoss /= period;
     const rsiAt = (g, l) => (l === 0 ? (g === 0 ? 50 : 100) : 100 - 100 / (1 + g / l));
-    const out = [];
-    for (let i = period - 1; i < gains.length; i++) {
-      let ag = 0, al = 0;
-      for (let j = i - period + 1; j <= i; j++) { ag += gains[j]; al += losses[j]; }
-      ag /= period; al /= period;
-      out.push(rsiAt(ag, al));
+    const out = [rsiAt(avgGain, avgLoss)];
+    for (let i = period; i < gains.length; i++) {
+      avgGain = (avgGain * (period - 1) + gains[i]) / period;
+      avgLoss = (avgLoss * (period - 1) + losses[i]) / period;
+      out.push(rsiAt(avgGain, avgLoss));
     }
     return out;
   },

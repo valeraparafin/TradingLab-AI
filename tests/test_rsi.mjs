@@ -22,14 +22,17 @@ const ok = (n) => { console.log(`  ok - ${n}`); passed++; };
   ok('strictly falling → RSI 0');
 }
 
-// --- alternating equal up/down → RSI ≈ 50 ---
+// --- alternating equal up/down → RSI in a tight band around 50, bounded ---
 {
   const values = [];
   for (let i = 0; i < 40; i++) values.push(100 + (i % 2)); // 100,101,100,101,...
   const rsi = Technicals.rsi(values, 14);
   const last = rsi[rsi.length - 1];
-  assert.ok(Math.abs(last - 50) < 1e-6, `balanced moves → RSI ~50 (got ${last})`);
-  ok('alternating → RSI ~50');
+  // Wilder smoothing leaves the gain/loss streams offset by one bar, so the limit is
+  // ~52, not exactly 50. Assert a tight band + strict bounds rather than an exact value.
+  assert.ok(last > 45 && last < 55, `balanced moves → RSI near 50 (got ${last})`);
+  for (const v of rsi) assert.ok(v >= 0 && v <= 100, 'RSI bounded in [0,100]');
+  ok('alternating → RSI near 50 (Wilder)');
 }
 
 // --- insufficient data → [] ---
