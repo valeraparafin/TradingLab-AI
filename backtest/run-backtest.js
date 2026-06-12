@@ -48,6 +48,18 @@ export function buildCosts(args, spec = null) {
   };
 }
 
+/**
+ * Map known indicator CLI flags into a `config.logic` object ({ indicators: {...} }).
+ * Only TrendPullback currently reads these; other logics use their own defaults, so an
+ * empty object is returned when no indicator flag is present. All values coerced to Number.
+ */
+export function buildLogicConfig(args) {
+  const KEYS = ['emaBias', 'slopeLen', 'adxPeriod', 'adxMin', 'emaFast', 'rsiPeriod', 'rsiPullback', 'htfRatio'];
+  const indicators = {};
+  for (const k of KEYS) if (args[k] != null) indicators[k] = Number(args[k]);
+  return Object.keys(indicators).length ? { indicators } : {};
+}
+
 /** Parse an ISO date arg to epoch ms; returns `fallback` if absent, throws on a bad value. */
 export function parseDate(s, fallback) {
   if (s == null) return fallback;
@@ -78,7 +90,7 @@ export async function runOne(btRepo, p) {
   }
 
   console.log(`[backtest] ${p.label}: ${p.candles.length} candles, lookback ${p.lookback}, leverage ${p.leverage}${p.leverage > 1 ? ' (futures)' : ' (spot)'}`);
-  const config = { logicType: p.logicType, logic: {} };
+  const config = { logicType: p.logicType, logic: p.logicConfig || {} };
   // p.decide is optional; passing undefined uses simulate's default (evaluateBar).
   const sim = simulate(
     { candles: p.candles, config, guardrails: p.guardrails, costs: p.costs, symbol: p.symbol, timeframe: p.tf, lookback: p.lookback, startEquity: p.guardrails.portfolioValue, funding, exitPolicy: p.exitPolicy },
@@ -164,6 +176,7 @@ async function main() {
   }
 
   const exitPolicy = args.breakevenR != null ? { breakevenR: Number(args.breakevenR) } : undefined;
+  const logicConfig = buildLogicConfig(args);
 
   const btDb = await openBacktestDb(path.join(process.cwd(), 'backtest.db'));
   const btRepo = new BacktestRepo(btDb);
@@ -171,7 +184,7 @@ async function main() {
     label, logicType, symbol, tf, lookback, leverage,
     candles, spec, realRows, guardrails, costs,
     fundingMode, fundingRate: fundingRateArg, group: args.group ?? null,
-    decide, exitPolicy,
+    decide, exitPolicy, logicConfig,
   });
   await btDb.close();
 

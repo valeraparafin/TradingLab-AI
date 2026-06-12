@@ -8,7 +8,7 @@ import { openBacktestDb } from '../src/backtest/backtestSchema.js';
 import { BacktestRepo } from '../src/backtest/BacktestRepo.js';
 import { toCamel } from '../src/utils/casing.js';
 import { riskProfileToGuardrails } from '../src/agents/riskProfileToGuardrails.js';
-import { runOne, buildCosts, parseDate } from './run-backtest.js';
+import { runOne, buildCosts, parseDate, buildLogicConfig } from './run-backtest.js';
 import { buildReport } from './buildReport.js';
 import { parseArgs } from './download-data.js';
 
@@ -102,6 +102,7 @@ async function main() {
         const guardrails = riskProfileToGuardrails(settings, { leverage, mmr });
         guardrails.sizingMode = args.sizing === 'compound' ? 'compound' : 'fixed';
         const costs = buildCosts(args, spec);
+        const logicConfig = buildLogicConfig(args);
 
         let realRows = [];
         if (leverage > 1) {
@@ -112,7 +113,7 @@ async function main() {
         const { metrics } = await runOne(btRepo, {
           label, logicType: cell.logicType, symbol: cell.symbol, tf: cell.tf,
           lookback, leverage, candles, spec, realRows, guardrails, costs,
-          fundingMode, fundingRate, group, decide,
+          fundingMode, fundingRate, group, decide, logicConfig,
         });
         summaries.push({ ...cell, leverage, metrics });
       } catch (err) {
