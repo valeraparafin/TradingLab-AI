@@ -24,3 +24,25 @@ export function breakevenStop(position, bar, breakevenR) {
   }
   return position.slPrice;
 }
+
+/**
+ * Donchian channel trailing stop. Ratchets the stop toward price by the opposite M-bar
+ * extreme of the supplied window: BUY → up to the lowest low (never lowers); SELL → down to
+ * the highest high (never raises). Pure; the caller decides the window and applies it once
+ * per bar AFTER the exit check (so it only binds on subsequent bars).
+ *
+ * @param {{side:'BUY'|'SELL', slPrice:number}} position
+ * @param {{high:number, low:number}[]} recentCandles the last M candles
+ * @returns {number} the (possibly ratcheted) stop price
+ */
+export function channelTrailStop(position, recentCandles) {
+  if (!Array.isArray(recentCandles) || recentCandles.length === 0) return position.slPrice;
+  if (position.side === 'BUY') {
+    let lowest = Infinity;
+    for (const c of recentCandles) if (c.low < lowest) lowest = c.low;
+    return Math.max(position.slPrice, lowest); // ratchet up only
+  }
+  let highest = -Infinity;
+  for (const c of recentCandles) if (c.high > highest) highest = c.high;
+  return Math.min(position.slPrice, highest); // ratchet down only
+}

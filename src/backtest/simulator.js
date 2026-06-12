@@ -1,6 +1,6 @@
 import { evaluateBar } from '../core/pipeline.js';
 import { slip, checkExit } from './execution.js';
-import { breakevenStop } from './exitPolicy.js';
+import { breakevenStop, channelTrailStop } from './exitPolicy.js';
 import { liqPrice } from '../core/liquidation.js';
 import { fundingBetween } from './funding.js';
 
@@ -125,6 +125,15 @@ export function simulate(p, decide = evaluateBar) {
     if (position && p.exitPolicy && p.exitPolicy.breakevenR != null && !position.breakevenMoved) {
       const moved = breakevenStop(position, bar, p.exitPolicy.breakevenR);
       if (moved !== position.slPrice) { position.slPrice = moved; position.breakevenMoved = true; }
+    }
+
+    // 3c) Channel trailing stop (Donchian exit). Recompute the M-bar opposite extreme AFTER
+    // this bar's exit check so it binds only on subsequent bars (same timing as breakeven).
+    if (position && p.exitPolicy && p.exitPolicy.channelExit > 0) {
+      const M = p.exitPolicy.channelExit;
+      const w = candles.slice(Math.max(0, i - M + 1), i + 1);
+      const moved = channelTrailStop(position, w);
+      if (moved !== position.slPrice) position.slPrice = moved;
     }
 
     // 4) If flat, decide for a next-bar entry (uses only data up to close[i]).
