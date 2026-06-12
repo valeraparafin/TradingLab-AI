@@ -91,5 +91,46 @@ export const Technicals = {
     }
     return out;
   },
+  /**
+   * Wilder's ADX (Average Directional Index) — non-directional trend-strength in [0,100].
+   * Computes +DM/-DM/TR, Wilder-smooths each over `period`, forms +DI/-DI and DX, then
+   * Wilder-averages DX over `period`. Returns an ascending ADX series of length
+   * (candles.length - 2*period + 1), or [] if candles.length < 2*period + 1.
+   */
+  adx(candles, period) {
+    if (!Array.isArray(candles) || candles.length < 2 * period + 1) return [];
+    const plusDM = [], minusDM = [], tr = [];
+    for (let i = 1; i < candles.length; i++) {
+      const up = candles[i].high - candles[i - 1].high;
+      const down = candles[i - 1].low - candles[i].low;
+      plusDM.push(up > down && up > 0 ? up : 0);
+      minusDM.push(down > up && down > 0 ? down : 0);
+      const h = candles[i].high, l = candles[i].low, pc = candles[i - 1].close;
+      tr.push(Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc)));
+    }
+    // Wilder smoothing of an array, seeded by the sum of the first `period` values.
+    const smooth = (arr) => {
+      let s = 0;
+      for (let i = 0; i < period; i++) s += arr[i];
+      const out = [s];
+      for (let i = period; i < arr.length; i++) { s = s - s / period + arr[i]; out.push(s); }
+      return out;
+    };
+    const sPlus = smooth(plusDM), sMinus = smooth(minusDM), sTr = smooth(tr);
+    const dx = [];
+    for (let i = 0; i < sTr.length; i++) {
+      const pDI = sTr[i] === 0 ? 0 : 100 * (sPlus[i] / sTr[i]);
+      const mDI = sTr[i] === 0 ? 0 : 100 * (sMinus[i] / sTr[i]);
+      const denom = pDI + mDI;
+      dx.push(denom === 0 ? 0 : 100 * (Math.abs(pDI - mDI) / denom));
+    }
+    if (dx.length < period) return [];
+    let adxVal = 0;
+    for (let i = 0; i < period; i++) adxVal += dx[i];
+    adxVal /= period;
+    const out = [adxVal];
+    for (let i = period; i < dx.length; i++) { adxVal = (adxVal * (period - 1) + dx[i]) / period; out.push(adxVal); }
+    return out;
+  },
 };
 
