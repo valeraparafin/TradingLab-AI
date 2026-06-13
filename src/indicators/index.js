@@ -5,6 +5,7 @@ import Breakout from './breakout.js';
 import Reversal from './reversal.js';
 import TrendPullback from './trendPullback.js';
 import DonchianTrend from './donchianTrend.js';
+import ScalpBreakout from './scalpBreakout.js';
 
 export class IndicatorManager {
   constructor(config) {
@@ -34,6 +35,8 @@ export class IndicatorManager {
         return TrendPullback.execute(candles, this.config);
       case 'DONCHIANTREND':
         return DonchianTrend.execute(candles, this.config);
+      case 'SCALPBREAKOUT':
+        return ScalpBreakout.execute(candles, this.config);
       default:
         throw new Error(`Unsupported indicator type: ${type}`);
     }

@@ -79,6 +79,13 @@ function fromDonchianTrend(raw) {
   return { side, conviction: 0.6, reason: `DonchianTrend ${side}`, invalidation: raw.invalidation ?? null };
 }
 
+/** ScalpBreakout: execute() resolved the side; flat conviction; invalidation = broken level. */
+function fromScalpBreakout(raw) {
+  const side = raw?.side ?? SIDE.HOLD;
+  if (side === SIDE.HOLD) return hold('ScalpBreakout: no breakout');
+  return { side, conviction: 0.6, reason: `ScalpBreakout ${side}`, invalidation: raw.invalidation ?? null };
+}
+
 /**
  * Dispatch raw indicator output to the matching pure mapper.
  * @param {string} logicType @param {object} raw @param {{price:number, candles:object[]}} ctx
@@ -92,6 +99,7 @@ export function deriveSignal(logicType, raw, ctx) {
     case 'REVERSAL': return fromReversal(raw);
     case 'TRENDPULLBACK': return fromTrendPullback(raw);
     case 'DONCHIANTREND': return fromDonchianTrend(raw);
+    case 'SCALPBREAKOUT': return fromScalpBreakout(raw);
     default: throw new Error(`Unsupported logicType: ${logicType}`);
   }
 }
