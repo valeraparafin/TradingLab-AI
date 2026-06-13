@@ -59,6 +59,15 @@ add('fundingUrl + contractsUrl build expected BitGet paths', () => {
   assert.ok(contractsUrl({ symbol: 'BTCUSDT' }).includes('/api/v2/mix/market/contracts?'));
 });
 
+add('candlesUrl futures uses fapi/v1 base', () => {
+  const u = candlesUrl({ symbol: 'BTCUSDT', timeframe: '5m', limit: 1000, startTime: 1, market: 'futures' });
+  assert.ok(u.startsWith('https://fapi.binance.com/fapi/v1/klines?'), `futures base, got ${u}`);
+});
+add('candlesUrl defaults to spot api/v3', () => {
+  const u = candlesUrl({ symbol: 'BTCUSDT', timeframe: '5m', limit: 1000, startTime: 1 });
+  assert.ok(u.startsWith('https://api.binance.com/api/v3/klines?'), `spot default, got ${u}`);
+});
+
 let failed = 0;
 for (const t of tests) { try { t.fn(); console.log(`✅ ${t.n}`); } catch (e) { failed++; console.error(`❌ ${t.n}\n   ${e.message}`); } }
 if (failed) { console.error(`\n${failed} failed`); process.exit(1); }

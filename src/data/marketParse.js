@@ -1,4 +1,5 @@
 const BINANCE_BASE = 'https://api.binance.com';
+const BINANCE_FUTURES_BASE = 'https://fapi.binance.com';
 const BITGET_BASE = 'https://api.bitget.com';
 const PRODUCT = 'USDT-FUTURES';
 
@@ -28,13 +29,15 @@ export function parseCandle(arr) {
   };
 }
 
-export function candlesUrl({ symbol, timeframe, limit = 1000, startTime, endTime }) {
+export function candlesUrl({ symbol, timeframe, limit = 1000, startTime, endTime, market = 'spot' }) {
   const interval = BINANCE_INTERVAL[timeframe];
   if (!interval) throw new Error(`Unknown timeframe: ${timeframe}`);
   const p = new URLSearchParams({ symbol, interval, limit: String(limit) });
   if (startTime != null) p.set('startTime', String(startTime));
   if (endTime != null) p.set('endTime', String(endTime));
-  return `${BINANCE_BASE}/api/v3/klines?${p.toString()}`;
+  return market === 'futures'
+    ? `${BINANCE_FUTURES_BASE}/fapi/v1/klines?${p.toString()}`
+    : `${BINANCE_BASE}/api/v3/klines?${p.toString()}`;
 }
 
 // ---- BitGet funding + contracts ----
