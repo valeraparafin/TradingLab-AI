@@ -136,6 +136,38 @@ export function simulate(p, decide = evaluateBar) {
       if (moved !== position.slPrice) position.slPrice = moved;
     }
 
+    // 3d) No-impulse time-stop (arm A). If after timeStopBars the favorable excursion has not
+    // reached impulseR*R, force a market exit at this bar's close — models the trader's "вкат".
+    // Additive and gated on exitPolicy.timeStopBars; existing runs (flag absent) are unchanged.
+    if (position && p.exitPolicy && p.exitPolicy.timeStopBars > 0 && !position.timeStopDone) {
+      const age = i - position.entryIndex;
+      if (age >= p.exitPolicy.timeStopBars) {
+        position.timeStopDone = true;
+        const R = Math.abs(position.entryPrice - position.initialSlPrice);
+        const fav = position.side === 'BUY' ? bar.high - position.entryPrice : position.entryPrice - bar.low;
+        const impulseR = p.exitPolicy.impulseR != null ? p.exitPolicy.impulseR : 1;
+        if (R > 0 && fav < impulseR * R) {
+          const exitSide = position.side === 'BUY' ? 'SELL' : 'BUY';
+          const exitPrice = slip(bar.close, exitSide, slippageBps);
+          slippageCost += position.sizeUSD * Math.abs(exitPrice - bar.close) / bar.close;
+          const exitFee = position.sizeUSD * takerFee;
+          const ret = position.side === 'BUY'
+            ? (exitPrice - position.entryPrice) / position.entryPrice
+            : (position.entryPrice - exitPrice) / position.entryPrice;
+          const fees = position.entryFee + exitFee;
+          const pnl = position.sizeUSD * ret - fees - position.fundingAccrued;
+          equity += pnl;
+          totalFunding += position.fundingAccrued;
+          trades.push({
+            side: position.side, entryTime: position.entryTime, entryPrice: position.entryPrice,
+            exitTime: bar.time, exitPrice, sizeUSD: position.sizeUSD,
+            pnl, fees, funding: position.fundingAccrued, reason: 'TIME_STOP',
+          });
+          position = null;
+        }
+      }
+    }
+
     // 4) If flat, decide for a next-bar entry (uses only data up to close[i]).
     if (!position && !pending && i + 1 < n) {
       const window = candles.slice(Math.max(0, i - lookback + 1), i + 1);
