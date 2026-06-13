@@ -10,8 +10,8 @@ async function getBitget(url, fetchImpl) {
 }
 
 /** Fetch one page of Binance candles from `startTime`. Returns parsed Candle[] (ascending). */
-export async function fetchCandlesPage({ symbol, timeframe, startTime, limit = 1000 }, fetchImpl = fetch) {
-  const res = await fetchImpl(candlesUrl({ symbol, timeframe, startTime, limit }));
+export async function fetchCandlesPage({ symbol, timeframe, startTime, limit = 1000, market = 'spot' }, fetchImpl = fetch) {
+  const res = await fetchImpl(candlesUrl({ symbol, timeframe, startTime, limit, market }));
   if (!res.ok) throw new Error(`Binance HTTP ${res.status}`);
   const json = await res.json();
   if (!Array.isArray(json)) throw new Error(`Binance error: ${json.msg || JSON.stringify(json)}`);
@@ -37,7 +37,7 @@ export async function fetchContract({ symbol, mmr }, fetchImpl = fetch) {
  * max timestamp seen, and stops on no forward progress or past `to`.
  * @returns {Promise<number>} total NEW rows inserted.
  */
-export async function downloadCandles(repo, { symbol, timeframe, from, to = Date.now(), pageLimit = 1000 }, fetchImpl = fetch) {
+export async function downloadCandles(repo, { symbol, timeframe, from, to = Date.now(), pageLimit = 1000, market = 'spot' }, fetchImpl = fetch) {
   const tfMs = TF_MS[timeframe];
   if (!tfMs) throw new Error(`Unknown timeframe: ${timeframe}`);
 
@@ -46,7 +46,7 @@ export async function downloadCandles(repo, { symbol, timeframe, from, to = Date
   let total = 0;
 
   while (cursor <= to) {
-    const page = await fetchCandlesPage({ symbol, timeframe, startTime: cursor, limit: pageLimit }, fetchImpl);
+    const page = await fetchCandlesPage({ symbol, timeframe, startTime: cursor, limit: pageLimit, market }, fetchImpl);
     if (!page.length) break;
     // trim to [from, to]: the upper bound discards candles Binance returns past `to`;
     // the lower `from` bound is a defensive guard (cursor >= from always holds).
