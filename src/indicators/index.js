@@ -4,6 +4,7 @@ import SMC from './smc.js';
 import Breakout from './breakout.js';
 import Reversal from './reversal.js';
 import TrendPullback from './trendPullback.js';
+import DonchianTrend from './donchianTrend.js';
 
 export class IndicatorManager {
   constructor(config) {
@@ -31,6 +32,8 @@ export class IndicatorManager {
         return Reversal.execute(candles, this.config);
       case 'TRENDPULLBACK':
         return TrendPullback.execute(candles, this.config);
+      case 'DONCHIANTREND':
+        return DonchianTrend.execute(candles, this.config);
       default:
         throw new Error(`Unsupported indicator type: ${type}`);
     }

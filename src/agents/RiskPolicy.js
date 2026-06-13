@@ -92,6 +92,12 @@ export class RiskPolicy {
       const risk = Math.abs(entryPrice - ctx.invalidation);
       slPrice = round(ctx.invalidation);
       tpPrice = round(isBuy ? entryPrice + rr * risk : entryPrice - rr * risk);
+    } else if (g.stopMode === 'channel' && ctx && ctx.atr > 0) {
+      // Donchian: 2×ATR initial hard stop; NO fixed take-profit. The M-bar channel
+      // trailing stop (applied in the simulator) is the only profit-side exit.
+      const kSl = g.atrSL ?? 2;
+      slPrice = round(isBuy ? entryPrice - kSl * ctx.atr : entryPrice + kSl * ctx.atr);
+      tpPrice = null;
     }
 
     const leverage = g.leverage || 1;
