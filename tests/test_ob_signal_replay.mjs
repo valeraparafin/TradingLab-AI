@@ -22,4 +22,19 @@ assert.strictEqual(sigs.length, 1); ok('one breakout signal on the cross');
 assert.strictEqual(sigs[0].side, 'BUY'); ok('signal is BUY');
 assert.strictEqual(sigs[0].ts, 101); ok('signal carries snapshot ts');
 
+// --- framesToSnapshots ---
+import { framesToSnapshots } from '../src/marketdata/orderbook/replaySignals.js';
+
+const frames = [
+  { t: 1, sym: 'X', v: 'fut',  k: 'snapshot', lastUpdateId: 10, bids: [['100', '5']], asks: [['101', '5']] },
+  { t: 2, sym: 'X', v: 'spot', k: 'snapshot', lastUpdateId: 20, bids: [['100', '9']], asks: [['101', '9']] },
+  { t: 3, sym: 'X', v: 'fut',  k: 'trade', p: 100.5, q: 10, m: false },
+  { t: 4, sym: 'X', v: 'fut',  k: 'depth', U: 11, u: 12, pu: 10, b: [['100', '6']], a: [['101', '4']] },
+];
+const snaps = framesToSnapshots(frames, { symbol: 'X' });
+assert.strictEqual(snaps.length, 2); ok('snapshot emitted only on futures book events');
+assert.strictEqual(snaps[1].ready, true); ok('futures ready after depth applied');
+assert.strictEqual(snaps[1].spotReady, true); ok('spot confirmed after its snapshot');
+assert.strictEqual(snaps[1].futures.lastPrice, 100.5); ok('futures tape merged into snapshot');
+
 console.log(`\n${p} checks passed`);
