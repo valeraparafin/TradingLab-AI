@@ -43,3 +43,6 @@ graphify-out
 
 # Backtest reports
 backtest/reports/
+
+# Order book recordings
+data/orderbook/
