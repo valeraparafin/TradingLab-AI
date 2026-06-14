@@ -30,9 +30,14 @@ export class LocalOrderBook {
 
   applyDiff(diff) {
     if (this.state !== 'READY') return this.state; // must resync via snapshot first
-    const { U, u, b = [], a = [] } = diff;
-    if (u <= this.lastUpdateId) return this.state;          // stale diff, ignore
-    if (!(U <= this.lastUpdateId + 1)) return this._markStale('seq_gap');
+    const { U, u, pu, b = [], a = [] } = diff;
+    if (this.venue === VENUE.FUT) {
+      if (u < this.lastUpdateId) return this.state;        // stale diff, ignore
+      if (pu !== this.lastUpdateId) return this._markStale('seq_gap');
+    } else {
+      if (u <= this.lastUpdateId) return this.state;        // stale diff, ignore
+      if (!(U <= this.lastUpdateId + 1)) return this._markStale('seq_gap');
+    }
     for (const [px, q] of b) this._set(this.bids, px, q);
     for (const [px, q] of a) this._set(this.asks, px, q);
     this.lastUpdateId = u;
