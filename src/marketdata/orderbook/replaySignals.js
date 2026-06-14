@@ -69,12 +69,15 @@ export function framesToSnapshots(frames, { symbol, depthLimit = 20, bookOpts = 
       book.applySnapshot({ lastUpdateId: ev.lastUpdateId, bids: ev.bids, asks: ev.asks });
     } else if (ev.k === 'depth') {
       book.applyDiff({ U: ev.U, u: ev.u, pu: ev.pu, b: ev.b || [], a: ev.a || [] });
-    } else if (ev.k === 'trade' && ev.v === VENUE.FUT) {
+    } else if (ev.k === 'trade') {
+      // Tape from any venue's trades: futures aggTrade is unavailable from this network, so the
+      // recorder captures the tape from SPOT. Mirrors the live feed's single shared tape, which
+      // is fed by whichever venue emits aggTrade. In practice only one venue produces trades.
       trades.push({ t: ev.t, p: ev.p, q: ev.q, m: ev.m });
       trades = trades.filter((tr) => ev.t - tr.t <= tapeWindowMs);
       continue; // trade frames feed the tape, never emit
     } else {
-      continue; // state frames, spot trades, etc.
+      continue; // state frames, etc.
     }
     if (ev.v !== VENUE.FUT) continue; // emit only on a futures book event
 

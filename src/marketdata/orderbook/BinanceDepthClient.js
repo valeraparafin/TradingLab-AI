@@ -3,11 +3,16 @@ import WebSocket from 'ws';
 
 const ENDPOINTS = {
   spot: {
-    ws: (sym) => `wss://stream.binance.com:9443/ws/${sym.toLowerCase()}@depth@100ms`,
+    // Spot carries the TAPE: from this network the futures aggTrade stream delivers nothing
+    // (only futures @depth does), while spot aggTrade works — so the aggressor flow comes from
+    // spot. Combined-stream endpoint for depth+aggTrade; payloads arrive wrapped {stream,data}.
+    ws: (sym) => `wss://stream.binance.com:9443/stream?streams=${sym.toLowerCase()}@depth@100ms/${sym.toLowerCase()}@aggTrade`,
     rest: (sym, limit) => `https://api.binance.com/api/v3/depth?symbol=${sym.toUpperCase()}&limit=${limit}`,
   },
   fut: {
-    ws: (sym) => `wss://fstream.binance.com/ws/${sym.toLowerCase()}@depth@100ms/${sym.toLowerCase()}@aggTrade`,
+    // Combined-stream endpoint: /ws/<name> subscribes to ONE stream only (extra path segments are
+    // dropped), so depth+aggTrade must use /stream?streams=a/b. Payloads arrive wrapped {stream,data}.
+    ws: (sym) => `wss://fstream.binance.com/stream?streams=${sym.toLowerCase()}@depth@100ms/${sym.toLowerCase()}@aggTrade`,
     rest: (sym, limit) => `https://fapi.binance.com/fapi/v1/depth?symbol=${sym.toUpperCase()}&limit=${limit}`,
   },
 };
@@ -49,10 +54,12 @@ export class BinanceDepthClient {
     ws.on('message', (raw) => {
       let msg;
       try { msg = JSON.parse(raw.toString()); } catch { return; }
-      if (msg.e === 'depthUpdate') {
-        this.onDepth({ U: msg.U, u: msg.u, pu: msg.pu, b: msg.b, a: msg.a, t: msg.E });
-      } else if (msg.e === 'aggTrade') {
-        this.onTrade({ t: msg.T, p: Number(msg.p), q: Number(msg.q), m: msg.m });
+      // Combined-stream payloads are wrapped {stream,data}; single-stream (/ws/) arrive raw.
+      const d = msg.data || msg;
+      if (d.e === 'depthUpdate') {
+        this.onDepth({ U: d.U, u: d.u, pu: d.pu, b: d.b, a: d.a, t: d.E });
+      } else if (d.e === 'aggTrade') {
+        this.onTrade({ t: d.T, p: Number(d.p), q: Number(d.q), m: d.m });
       }
     });
     ws.on('close', () => { this.onStatus('close'); this._reconnect(); });
