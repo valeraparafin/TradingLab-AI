@@ -7,16 +7,25 @@ import { buildSnapshot } from './snapshot.js';
 
 /**
  * Pure replay core: drive feature snapshots + candles through the SP2a pipeline and
- * collect PERMITted signals. The candle level is computed once from `candles` (the
- * reference the live mid must cross); `prevMid` is tracked across snapshots.
+ * collect PERMITted signals. `prevMid` is tracked across snapshots.
+ *
+ * Level modes:
+ *  - default (static): the level is computed once from all `candles` — cheap offline feedback,
+ *    but the mid crosses a fixed level at most once or twice in a window (SP2a simplification).
+ *  - `opts.rolling: true`: recompute the level per snapshot from candles whose `time <= feat.ts`
+ *    (trailing structure as of that moment). Requires candles to carry a `time` field. This is
+ *    the fair test — breakouts of evolving structure fire throughout the window.
+ *
  * @param {object[]} snapshots SP1 feature snapshots in time order
- * @param {{high:number,low:number}[]} candles
- * @param {{level?:object, signal?:object, gate?:object}} [opts]
+ * @param {{high:number,low:number,time?:number}[]} candles
+ * @param {{level?:object, signal?:object, gate?:object, rolling?:boolean}} [opts]
  * @returns {Array<{ts:number, side:string, setup:string, conviction:number, rationale:string, invalidation:object}>}
  */
 export function replaySignals(snapshots, candles, opts = {}) {
-  // Static level for the whole replay window (offline feedback); not a per-bar rolling level.
-  const level = levelFromCandles(candles, opts.level);
+  const rolling = !!opts.rolling;
+  // `level` is closed over by `decide` and reassigned per snapshot when rolling; decide reads it
+  // at call time, so a single decide/gate pair stays correct across an evolving level.
+  let level = levelFromCandles(candles, opts.level);
   const decide = (ctx) => {
     const sig = breakoutSignal({ level, feat: ctx.feat, prevMid: ctx.prevMid, opts: opts.signal });
     if (!sig) return { signal: null, decision: { decision: 'HOLD' } };
@@ -27,6 +36,10 @@ export function replaySignals(snapshots, candles, opts = {}) {
   const out = [];
   let prevMid = null;
   for (const feat of snapshots) {
+    if (rolling) {
+      const trailing = candles.filter((c) => c.time != null && c.time <= feat.ts);
+      level = levelFromCandles(trailing, opts.level);
+    }
     const r = gated({ feat, prevMid }, {});
     if (r.signal && r.decision.decision === 'PERMIT') {
       out.push({ ts: feat.ts, ...r.signal });
