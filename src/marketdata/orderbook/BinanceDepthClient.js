@@ -5,12 +5,10 @@ const ENDPOINTS = {
   spot: {
     ws: (sym) => `wss://stream.binance.com:9443/ws/${sym.toLowerCase()}@depth@100ms`,
     rest: (sym, limit) => `https://api.binance.com/api/v3/depth?symbol=${sym.toUpperCase()}&limit=${limit}`,
-    hasTape: false,
   },
   fut: {
     ws: (sym) => `wss://fstream.binance.com/ws/${sym.toLowerCase()}@depth@100ms/${sym.toLowerCase()}@aggTrade`,
     rest: (sym, limit) => `https://fapi.binance.com/fapi/v1/depth?symbol=${sym.toUpperCase()}&limit=${limit}`,
-    hasTape: true,
   },
 };
 
@@ -20,14 +18,13 @@ const ENDPOINTS = {
  * lives in LocalOrderBook. Reconnects with exponential backoff.
  */
 export class BinanceDepthClient {
-  constructor({ symbol, venue, depthLimit = 20, onDepth, onTrade, onSnapshot, onStatus, maxBackoffMs = 30000 }) {
+  constructor({ symbol, venue, depthLimit = 20, onDepth, onTrade, onStatus, maxBackoffMs = 30000 }) {
     this.symbol = symbol;
     this.venue = venue;
     this.depthLimit = depthLimit;
     this.endpoints = ENDPOINTS[venue];
     this.onDepth = onDepth || (() => {});
     this.onTrade = onTrade || (() => {});
-    this.onSnapshot = onSnapshot || (() => {});
     this.onStatus = onStatus || (() => {});
     this.maxBackoffMs = maxBackoffMs;
     this.backoff = 1000;
@@ -64,9 +61,9 @@ export class BinanceDepthClient {
 
   _reconnect() {
     if (this.closed) return;
-    setTimeout(() => this.connect(), this.backoff);
+    this._reconnectTimer = setTimeout(() => this.connect(), this.backoff);
     this.backoff = Math.min(this.backoff * 2, this.maxBackoffMs);
   }
 
-  close() { this.closed = true; if (this.ws) try { this.ws.close(); } catch { /* ignore */ } }
+  close() { this.closed = true; clearTimeout(this._reconnectTimer); if (this.ws) try { this.ws.close(); } catch { /* ignore */ } }
 }

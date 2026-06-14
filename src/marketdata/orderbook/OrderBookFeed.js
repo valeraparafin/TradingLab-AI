@@ -19,6 +19,7 @@ export class OrderBookFeed {
     this.opts = { book: { depthBps }, tape: { windowMs: tapeWindowMs } };
     this.recorder = record ? new Recorder({ root: recorderRoot }) : null;
     this.books = new Map(); // futuresSymbol -> { fut, spot, trades, clients, buffers }
+    this.stopped = false;
   }
 
   start() {
@@ -64,11 +65,12 @@ export class OrderBookFeed {
         const cutoff = Date.now() - this.opts.tape.windowMs * 4;
         while (entry.trades.length && entry.trades[0].t < cutoff) entry.trades.shift();
       },
-      onStatus: (s) => { if (s === 'close') { entry.synced[venue] = false; entry.buffers[venue] = []; this._syncVenue(key, venueSymbol, venue, entry); } },
+      onStatus: (s) => { if (s === 'close' && !this.stopped) { entry.synced[venue] = false; entry.buffers[venue] = []; this._syncVenue(key, venueSymbol, venue, entry); } },
     });
   }
 
   async _syncVenue(key, venueSymbol, venue, entry) {
+    if (this.stopped) return;
     const client = entry.clients.find((c) => c.venue === venue);
     try {
       const snap = await client.fetchSnapshot();
@@ -81,6 +83,7 @@ export class OrderBookFeed {
         this._book(entry, venue).applyDiff({ U: d.U, u: d.u, pu: d.pu, b: d.b, a: d.a });
       }
       entry.synced[venue] = true;
+      if (this._book(entry, venue).state === 'STALE') this._onStale(key, venueSymbol, venue, entry);
     } catch (e) {
       setTimeout(() => this._syncVenue(key, venueSymbol, venue, entry), 2000); // retry snapshot
     }
@@ -110,6 +113,7 @@ export class OrderBookFeed {
   }
 
   stop() {
+    this.stopped = true;
     for (const entry of this.books.values()) for (const c of entry.clients) c.close();
     if (this.recorder) this.recorder.close();
   }
