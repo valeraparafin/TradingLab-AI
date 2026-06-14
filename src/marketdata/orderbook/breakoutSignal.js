@@ -28,13 +28,13 @@ export function breakoutSignal({ level, feat, prevMid, opts = {} }) {
   else if (prevMid >= level.support && mid < level.support) { side = SIDE.SELL; brokenLevel = level.support; }
   if (!side) return null;
 
-  // Book confirm (BUY: dir=+1; SELL mirrors all signs via dir=-1).
+  // Book confirm: directional imbalance (already encodes depth asymmetry — bid-heavy ⇒ thin asks
+  // for a BUY), tape aggression, and a live tape. Wall-based "thin opposite side" tuning is SP2b.
   const dir = side === SIDE.BUY ? 1 : -1;
   const imbOk = dir * f.imbalance > o.imbThresh;
   const aggOk = dir * f.aggressorImbalance > o.aggThresh;
-  const thinOpp = side === SIDE.BUY ? f.askDepthNbps < f.bidDepthNbps : f.bidDepthNbps < f.askDepthNbps;
   const velOk = f.printVelocity >= o.minVelocity;
-  if (!(imbOk && aggOk && thinOpp && velOk)) return null;
+  if (!(imbOk && aggOk && velOk)) return null;
 
   // Base conviction from alignment strength of book imbalance + tape aggression.
   const align = (Math.min(Math.abs(f.imbalance), 1) + Math.min(Math.abs(f.aggressorImbalance), 1)) / 2;

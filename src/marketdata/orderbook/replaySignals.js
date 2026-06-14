@@ -15,6 +15,7 @@ import { buildSnapshot } from './snapshot.js';
  * @returns {Array<{ts:number, side:string, setup:string, conviction:number, rationale:string, invalidation:object}>}
  */
 export function replaySignals(snapshots, candles, opts = {}) {
+  // Static level for the whole replay window (offline feedback); not a per-bar rolling level.
   const level = levelFromCandles(candles, opts.level);
   const decide = (ctx) => {
     const sig = breakoutSignal({ level, feat: ctx.feat, prevMid: ctx.prevMid, opts: opts.signal });
