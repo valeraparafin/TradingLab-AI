@@ -14,6 +14,7 @@ export class LocalOrderBook {
     this.lastUpdateId = null;
     this.state = 'INIT';   // INIT | READY | STALE
     this.staleReason = null;
+    this.seeded = false;
   }
 
   applySnapshot({ lastUpdateId, bids, asks }) {
@@ -23,6 +24,7 @@ export class LocalOrderBook {
     for (const [px, q] of asks) this._set(this.asks, px, q);
     this.lastUpdateId = lastUpdateId;
     this.staleReason = null;
+    this.seeded = false;
     this.state = this._sane() ? 'READY' : 'STALE';
     if (this.state === 'STALE') this.staleReason = 'snapshot_insane';
     return this.state;
@@ -33,7 +35,9 @@ export class LocalOrderBook {
     const { U, u, pu, b = [], a = [] } = diff;
     if (this.venue === VENUE.FUT) {
       if (u < this.lastUpdateId) return this.state;        // stale diff, ignore
-      if (pu !== this.lastUpdateId) return this._markStale('seq_gap');
+      // First diff after a snapshot seeds via range overlap (u >= lastUpdateId, guaranteed
+      // by the ignore above); only subsequent diffs chain by pu === previous u.
+      if (this.seeded && pu !== this.lastUpdateId) return this._markStale('seq_gap');
     } else {
       if (u <= this.lastUpdateId) return this.state;        // stale diff, ignore
       if (!(U <= this.lastUpdateId + 1)) return this._markStale('seq_gap');
@@ -41,6 +45,7 @@ export class LocalOrderBook {
     for (const [px, q] of b) this._set(this.bids, px, q);
     for (const [px, q] of a) this._set(this.asks, px, q);
     this.lastUpdateId = u;
+    this.seeded = true;
     if (!this._sane()) return this._markStale('crossed');
     return this.state;
   }

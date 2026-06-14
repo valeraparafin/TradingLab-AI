@@ -49,4 +49,16 @@ assert.strictEqual(fut.lastUpdateId, 205, 'fut seq advances to u'); ok('fut seq 
 fut.applyDiff({ pu: 999, U: 206, u: 210, b: [['5.0', '4']], a: [] }); // pu != lastUpdateId(205)
 assert.strictEqual(fut.state, 'STALE', 'fut broken chain → STALE'); ok('fut chain break stale');
 
+// --- futures: FIRST diff after snapshot seeds via overlap (realistic pu != lastUpdateId) ---
+const seed = new LocalOrderBook({ venue: VENUE.FUT });
+seed.applySnapshot({ lastUpdateId: 1000, bids: [['5.0', '1']], asks: [['5.1', '1']] });
+seed.applyDiff({ pu: 980, U: 995, u: 1005, b: [['5.0', '2']], a: [] }); // pu(980) != 1000, but U<=1000<=u
+assert.strictEqual(seed.state, 'READY', 'first fut diff seeds via overlap, not pu'); ok('fut seed overlap');
+assert.strictEqual(seed.lastUpdateId, 1005, 'fut seed advances to u'); ok('fut seed advances');
+seed.applyDiff({ pu: 1005, U: 1006, u: 1010, b: [['5.0', '3']], a: [] }); // now chains by pu
+assert.strictEqual(seed.state, 'READY', 'second fut diff chains by pu'); ok('fut chain after seed');
+assert.strictEqual(seed.lastUpdateId, 1010, 'fut chain advances'); ok('fut chain advances');
+seed.applyDiff({ pu: 9999, U: 1011, u: 1015, b: [['5.0', '4']], a: [] }); // broken chain
+assert.strictEqual(seed.state, 'STALE', 'broken pu chain after seed → STALE'); ok('fut chain break after seed');
+
 console.log(`\n${p} checks passed`);
