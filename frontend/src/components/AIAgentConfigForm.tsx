@@ -52,7 +52,9 @@ export const AIAgentConfigForm = ({
       name: formData.name,
       watchlist: formData.watchlist,
       timeframe: formData.timeframe,
-      logic_template_id: formData.logicTemplateId ? Number(formData.logicTemplateId) : null,
+      // Logic template ids are filename strings (e.g. "orderbook"); do NOT Number()-coerce
+      // (that yields NaN→null and silently drops the selection). SQLite stores the string fine.
+      logic_template_id: formData.logicTemplateId || null,
       risk_profile_id: formData.riskProfileId ? Number(formData.riskProfileId) : null,
       trade_mode: formData.tradeMode,
       paper_trading: formData.paperTrading ? 1 : 0,

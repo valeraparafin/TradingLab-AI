@@ -1,0 +1,16 @@
+{
+  "id": "orderbook",
+  "name": "Order Book (Live)",
+  "type": "OrderBook",
+  "indicators": {
+    "imbThresh": 0.10,
+    "aggThresh": 0.15,
+    "minVelocity": 0.5,
+    "maxSpreadBps": 8,
+    "horizonMs": 60000,
+    "htfStep": 1
+  },
+  "safety_checks": [
+    { "id": "ob_gate", "description": "Spread + imbalance gate vetoes contradicting/wide-spread crosses" }
+  ]
+}
