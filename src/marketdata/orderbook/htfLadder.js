@@ -11,7 +11,7 @@ const LADDER = ['1m', '5m', '15m', '30m', '1h', '4h', '1d'];
 export function higherTf(baseTf, step = 1) {
   const mins = (tf) => {
     const map = { '1m': 1, '5m': 5, '15m': 15, '30m': 30, '1h': 60, '4h': 240, '1d': 1440 };
-    if (map[tf]) return map[tf];
+    if (map[tf] != null) return map[tf];
     // Parse unknown formats like '7m', '20m', '2h', etc.
     const match = tf.match(/^(\d+)([mhd])$/);
     if (!match) return null;
