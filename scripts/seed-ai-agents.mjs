@@ -44,6 +44,18 @@ const MATRIX = [
     tf: '5m', watchlist: 'BTCUSDT,ETHUSDT,SOLUSDT', mode: 'futures', portfolio: 500, ob: OB_STRICT },
   { name: 'OB · Scalp Alts · 5m', logic: 'orderbook', risk: 'Scalping Alts',
     tf: '5m', watchlist: 'SUIUSDT,WLDUSDT,TONUSDT', mode: 'futures', portfolio: 300, ob: OB_SCALP },
+
+  // ── Order Book (expanded) — wider sweep over TF / risk / watchlist axes ──
+  { name: 'OB · Scalp Majors · BTC strict 5m', logic: 'orderbook', risk: 'Scalping Majors (BTC/ETH)',
+    tf: '5m', watchlist: 'BTCUSDT', mode: 'futures', portfolio: 500, ob: OB_STRICT },
+  { name: 'OB · Conservative · Majors 15m', logic: 'orderbook', risk: 'Conservative',
+    tf: '15m', watchlist: 'BTCUSDT,ETHUSDT,SOLUSDT', mode: 'futures', portfolio: 1000, ob: OB_SCALP },
+  { name: 'OB · Aggressive · Alts loose 5m', logic: 'orderbook', risk: 'Aggressive',
+    tf: '5m', watchlist: 'SUIUSDT,WLDUSDT,TONUSDT', mode: 'futures', portfolio: 300, ob: OB_LOOSE },
+  { name: 'OB · Fast Scalp · BTC strict 5m', logic: 'orderbook', risk: 'Fast Scalping Risk',
+    tf: '5m', watchlist: 'BTCUSDT', mode: 'futures', portfolio: 500, ob: OB_STRICT },
+  { name: 'OB · Scalp Majors · Majors 15m', logic: 'orderbook', risk: 'Scalping Majors (BTC/ETH)',
+    tf: '15m', watchlist: 'BTCUSDT,ETHUSDT', mode: 'futures', portfolio: 500, ob: OB_SCALP },
 ];
 
 async function main() {
