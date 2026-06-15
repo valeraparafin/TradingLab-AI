@@ -25,6 +25,30 @@ interface Trade {
   mode: string;
 }
 
+interface OpenPosition {
+  symbol: string;
+  side: string;
+  entryPrice: number;
+  qty: number;
+  slPrice: number;
+  tpPrice: number;
+  mid: number | null;
+  unrealizedPnl: number | null;
+}
+
+interface ClosedTrade {
+  id: number;
+  symbol: string;
+  side: string;
+  entry_price: number;
+  exit_price: number;
+  qty: number;
+  size_usd: number;
+  pnl_usd: number;
+  exit_reason: string;
+  closed_at: string;
+}
+
 interface AgentInfo {
   id: number;
   name: string;
@@ -44,6 +68,8 @@ export function AICockpitPage() {
   const [agentStatus, setAgentStatus] = useState<'running' | 'stopped'>('stopped');
   const [thoughtStream, setThoughtStream] = useState<AgentThought[]>([]);
   const [trades, setTrades] = useState<Trade[]>([]);
+  const [positions, setPositions] = useState<OpenPosition[]>([]);
+  const [closedTrades, setClosedTrades] = useState<ClosedTrade[]>([]);
   const [interval, setIntervalValue] = useState<'day' | 'week' | 'month'>('day');
   // Analyst = real proposal conviction; Risk = headroom derived from risk state.
   // (Optimizer is a planned agent — rendered as a placeholder, not a fake number.)
@@ -186,6 +212,33 @@ export function AICockpitPage() {
     const timer = setInterval(fetchEquity, 10000);
     return () => clearInterval(timer);
   }, [fetchEquity]);
+
+  const fetchPositions = useCallback(async () => {
+    try {
+      const res = await fetch(`http://localhost:3000/api/agents/${id}/positions`);
+      const data = await res.json();
+      if (data.success) setPositions(data.data.positions);
+    } catch (err) {
+      console.error('Failed to fetch open positions', err);
+    }
+  }, [id]);
+
+  const fetchClosedTrades = useCallback(async () => {
+    try {
+      const res = await fetch(`http://localhost:3000/api/agents/${id}/closed-trades`);
+      const data = await res.json();
+      if (data.success) setClosedTrades(data.data.trades);
+    } catch (err) {
+      console.error('Failed to fetch closed trades', err);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    fetchPositions();
+    fetchClosedTrades();
+    const timer = setInterval(() => { fetchPositions(); fetchClosedTrades(); }, 10000);
+    return () => clearInterval(timer);
+  }, [fetchPositions, fetchClosedTrades]);
 
   // Load risk templates + agent config for the configure panel
   useEffect(() => {
@@ -386,6 +439,49 @@ export function AICockpitPage() {
             </div>
           </Card>
 
+          {/* Open Positions */}
+          <Card className="overflow-hidden">
+            <div className="p-4 border-b border-border">
+              <h2 className="text-lg font-bold">Open Positions</h2>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-muted/50 text-muted-foreground">
+                  <tr>
+                    <th className="p-3 font-medium">Symbol</th>
+                    <th className="p-3 font-medium">Side</th>
+                    <th className="p-3 font-medium">Entry</th>
+                    <th className="p-3 font-medium">Mid</th>
+                    <th className="p-3 font-medium">uPnL</th>
+                    <th className="p-3 font-medium">SL</th>
+                    <th className="p-3 font-medium">TP</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {positions.length === 0 ? (
+                    <tr><td colSpan={7} className="p-8 text-center text-muted-foreground italic">No open positions.</td></tr>
+                  ) : (
+                    positions.map((pos, i) => (
+                      <tr key={i} className="hover:bg-muted/50">
+                        <td className="p-3 font-medium">{pos.symbol}</td>
+                        <td className="p-3">
+                          <Badge variant={pos.side === 'BUY' ? 'success' : 'danger'} className="text-[10px]">{pos.side}</Badge>
+                        </td>
+                        <td className="p-3">{pos.entryPrice?.toFixed(2)}</td>
+                        <td className="p-3">{pos.mid != null ? pos.mid.toFixed(2) : '—'}</td>
+                        <td className={'p-3 ' + ((pos.unrealizedPnl ?? 0) >= 0 ? 'text-green-500' : 'text-red-500')}>
+                          {pos.unrealizedPnl != null ? `$${pos.unrealizedPnl.toFixed(2)}` : '—'}
+                        </td>
+                        <td className="p-3 text-muted-foreground">{pos.slPrice?.toFixed(2)}</td>
+                        <td className="p-3 text-muted-foreground">{pos.tpPrice?.toFixed(2)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
           {/* AI Trades Table */}
           <Card className="overflow-hidden">
             <div className="p-4 border-b border-border flex justify-between items-center">
@@ -441,6 +537,47 @@ export function AICockpitPage() {
                             {trade.status}
                           </Badge>
                         </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
+          {/* Closed Trades */}
+          <Card className="overflow-hidden">
+            <div className="p-4 border-b border-border">
+              <h2 className="text-lg font-bold">Closed Trades</h2>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-muted/50 text-muted-foreground">
+                  <tr>
+                    <th className="p-3 font-medium">Closed</th>
+                    <th className="p-3 font-medium">Symbol</th>
+                    <th className="p-3 font-medium">Side</th>
+                    <th className="p-3 font-medium">Entry</th>
+                    <th className="p-3 font-medium">Exit</th>
+                    <th className="p-3 font-medium">PnL</th>
+                    <th className="p-3 font-medium">Reason</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {closedTrades.length === 0 ? (
+                    <tr><td colSpan={7} className="p-8 text-center text-muted-foreground italic">No closed trades yet.</td></tr>
+                  ) : (
+                    closedTrades.map((t) => (
+                      <tr key={t.id} className="hover:bg-muted/50">
+                        <td className="p-3 text-xs text-muted-foreground">{new Date(t.closed_at).toLocaleString()}</td>
+                        <td className="p-3 font-medium">{t.symbol}</td>
+                        <td className="p-3">
+                          <Badge variant={t.side === 'BUY' ? 'success' : 'danger'} className="text-[10px]">{t.side}</Badge>
+                        </td>
+                        <td className="p-3">{t.entry_price?.toFixed(2)}</td>
+                        <td className="p-3">{t.exit_price?.toFixed(2)}</td>
+                        <td className={'p-3 ' + ((t.pnl_usd ?? 0) >= 0 ? 'text-green-500' : 'text-red-500')}>${t.pnl_usd?.toFixed(2)}</td>
+                        <td className="p-3"><Badge variant="default" className="text-[10px]">{t.exit_reason}</Badge></td>
                       </tr>
                     ))
                   )}
