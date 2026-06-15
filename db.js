@@ -196,6 +196,24 @@ export async function initDB() {
 
         CREATE INDEX IF NOT EXISTS idx_ai_equity_snap_agent_time
             ON ai_equity_snapshots (strategy_id, timestamp);
+
+        CREATE TABLE IF NOT EXISTS ai_closed_trades (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            strategy_id INTEGER NOT NULL,
+            symbol TEXT,
+            side TEXT,
+            entry_price REAL,
+            exit_price REAL,
+            qty REAL,
+            size_usd REAL,
+            pnl_usd REAL,
+            exit_reason TEXT,
+            opened_at TEXT,
+            closed_at TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_ai_closed_agent_time
+            ON ai_closed_trades (strategy_id, closed_at);
     `);
 
     try {
@@ -231,6 +249,16 @@ export async function initDB() {
         'ALTER TABLE ai_strategies ADD COLUMN ob_config TEXT',
     ];
     for (const stmt of aiStrategyColumns) {
+        try { await aiDb.exec(stmt); } catch (e) { /* column exists */ }
+    }
+
+    const aiActivePositionColumns = [
+        'ALTER TABLE ai_active_positions ADD COLUMN side TEXT',
+        'ALTER TABLE ai_active_positions ADD COLUMN sl_price REAL',
+        'ALTER TABLE ai_active_positions ADD COLUMN tp_price REAL',
+        'ALTER TABLE ai_active_positions ADD COLUMN opened_at TEXT',
+    ];
+    for (const stmt of aiActivePositionColumns) {
         try { await aiDb.exec(stmt); } catch (e) { /* column exists */ }
     }
 
