@@ -23,6 +23,24 @@ interface AIAgentFormData {
   cycleIntervalMs: number;
 }
 
+interface ObConfig {
+  imbThresh: number;
+  aggThresh: number;
+  minVelocity: number;
+  maxSpreadBps: number;
+  horizonMs: number;
+  htfStep: number;
+}
+
+const OB_CONFIG_DEFAULTS: ObConfig = {
+  imbThresh: 0.10,
+  aggThresh: 0.15,
+  minVelocity: 0.5,
+  maxSpreadBps: 8,
+  horizonMs: 60000,
+  htfStep: 1,
+};
+
 export const AIAgentConfigForm = ({
   agent,
   logicTemplates,
@@ -43,9 +61,31 @@ export const AIAgentConfigForm = ({
     cycleIntervalMs: agent?.cycle_interval_ms ?? 300000,
   }));
 
+  const [obConfig, setObConfig] = React.useState<ObConfig>(() => {
+    if (agent?.ob_config) {
+      try {
+        const parsed = JSON.parse(agent.ob_config);
+        return { ...OB_CONFIG_DEFAULTS, ...parsed };
+      } catch {
+        // fall through to defaults
+      }
+    }
+    return { ...OB_CONFIG_DEFAULTS };
+  });
+
+  const setObField = <K extends keyof ObConfig>(key: K, value: ObConfig[K]) => {
+    setObConfig(prev => ({ ...prev, [key]: value }));
+  };
+
   const setField = <K extends keyof AIAgentFormData>(key: K, value: AIAgentFormData[K]) => {
     setFormData(prev => ({ ...prev, [key]: value }));
   };
+
+  const isOrderBook = (() => {
+    const tpl = logicTemplates.find(t => String(t.id) === formData.logicTemplateId);
+    if (!tpl) return false;
+    return tpl.name === 'Order Book (Live)' || String(tpl.id) === 'orderbook';
+  })();
 
   const handleSubmit = async () => {
     await onSave({
@@ -60,6 +100,16 @@ export const AIAgentConfigForm = ({
       paper_trading: formData.paperTrading ? 1 : 0,
       portfolio_value: Number(formData.portfolioValue),
       cycle_interval_ms: Number(formData.cycleIntervalMs),
+      ob_config: isOrderBook
+        ? JSON.stringify({
+            imbThresh: Number(obConfig.imbThresh),
+            aggThresh: Number(obConfig.aggThresh),
+            minVelocity: Number(obConfig.minVelocity),
+            maxSpreadBps: Number(obConfig.maxSpreadBps),
+            horizonMs: Number(obConfig.horizonMs),
+            htfStep: Number(obConfig.htfStep),
+          })
+        : null,
     });
   };
 
@@ -96,6 +146,63 @@ export const AIAgentConfigForm = ({
         onChange={val => setField('timeframe', val)}
         options={['1m', '5m', '15m', '1H', '4H', '1D'].map(tf => ({ label: tf, value: tf }))}
       />
+
+      {isOrderBook && (
+        <div className="space-y-3 rounded border p-3">
+          <div>
+            <p className="text-xs font-semibold mb-0.5">Order-book signal thresholds</p>
+            <p className="text-xs text-muted-foreground">Defaults are tuned; override per agent.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <FormInput
+              label="Imbalance Threshold (imbThresh)"
+              type="number"
+              value={obConfig.imbThresh}
+              onChange={val => setObField('imbThresh', val)}
+              tooltip="Bid/ask imbalance ratio to trigger a signal (e.g. 0.10 = 10%)"
+            />
+            <FormInput
+              label="Aggression Threshold (aggThresh)"
+              type="number"
+              value={obConfig.aggThresh}
+              onChange={val => setObField('aggThresh', val)}
+              tooltip="Taker aggression ratio required to confirm (e.g. 0.15 = 15%)"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <FormInput
+              label="Min Velocity (minVelocity)"
+              type="number"
+              value={obConfig.minVelocity}
+              onChange={val => setObField('minVelocity', val)}
+              tooltip="Minimum order-book velocity score (lots/sec)"
+            />
+            <FormInput
+              label="Max Spread (maxSpreadBps)"
+              type="number"
+              value={obConfig.maxSpreadBps}
+              onChange={val => setObField('maxSpreadBps', val)}
+              tooltip="Maximum allowed spread in basis points before skipping signal"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <FormInput
+              label="Horizon (horizonMs)"
+              type="number"
+              value={obConfig.horizonMs}
+              onChange={val => setObField('horizonMs', val)}
+              tooltip="Look-back window for aggregating OB events in milliseconds"
+            />
+            <FormInput
+              label="HTF Step (htfStep)"
+              type="number"
+              value={obConfig.htfStep}
+              onChange={val => setObField('htfStep', val)}
+              tooltip="Higher-timeframe confirmation step size (candle count)"
+            />
+          </div>
+        </div>
+      )}
 
       <FormInput
         label="Watchlist (comma separated)"

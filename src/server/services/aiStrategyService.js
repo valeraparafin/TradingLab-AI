@@ -118,10 +118,11 @@ export const aiStrategyService = {
         const db = getDB('ai');
         const r = await db.run(
             `INSERT INTO ai_strategies
-               (name, status, logic_template_id, risk_profile_id, watchlist, timeframe, trade_mode, paper_trading, portfolio_value, cycle_interval_ms, is_archived)
-             VALUES (?, 'stopped', ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+               (name, status, logic_template_id, risk_profile_id, watchlist, timeframe, trade_mode, paper_trading, portfolio_value, cycle_interval_ms, is_archived, ob_config)
+             VALUES (?, 'stopped', ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
             [a.name, a.logic_template_id ?? null, a.risk_profile_id ?? null, a.watchlist ?? '', a.timeframe ?? '1H',
-             a.trade_mode ?? 'spot', a.paper_trading ?? 1, a.portfolio_value ?? 10000, a.cycle_interval_ms ?? 300000]
+             a.trade_mode ?? 'spot', a.paper_trading ?? 1, a.portfolio_value ?? 10000, a.cycle_interval_ms ?? 300000,
+             a.ob_config ?? null]
         );
         return { id: r.lastID };
     },
@@ -143,7 +144,7 @@ export const aiStrategyService = {
         const db = getDB('ai');
         const where = includeArchived ? '' : 'WHERE is_archived = 0';
         return await db.all(
-            `SELECT id, name, status, logic_template_id, risk_profile_id, watchlist, timeframe, trade_mode, paper_trading, portfolio_value, cycle_interval_ms, last_run, is_archived
+            `SELECT id, name, status, logic_template_id, risk_profile_id, watchlist, timeframe, trade_mode, paper_trading, portfolio_value, cycle_interval_ms, last_run, is_archived, ob_config
                FROM ai_strategies ${where} ORDER BY name`
         );
     },
@@ -155,7 +156,7 @@ export const aiStrategyService = {
      */
     async updateAgent(id, fields) {
         const db = getDB('ai');
-        const allowed = ['name', 'logic_template_id', 'risk_profile_id', 'watchlist', 'timeframe', 'trade_mode', 'paper_trading', 'portfolio_value', 'cycle_interval_ms', 'status', 'last_run'];
+        const allowed = ['name', 'logic_template_id', 'risk_profile_id', 'watchlist', 'timeframe', 'trade_mode', 'paper_trading', 'portfolio_value', 'cycle_interval_ms', 'status', 'last_run', 'ob_config'];
         const sets = [], params = [];
         for (const [k, v] of Object.entries(fields)) {
             if (allowed.includes(k)) { sets.push(`${k} = ?`); params.push(v); }
