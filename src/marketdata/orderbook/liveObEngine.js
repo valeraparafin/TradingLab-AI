@@ -5,6 +5,8 @@ import { breakoutSignal } from './breakoutSignal.js';
 import { withOrderBookGate } from './obGate.js';
 import { signalRecord, outcomeRecord } from './obSignalLog.js';
 import { Recorder } from './Recorder.js';
+import { levelFromCandles } from './levels.js';
+import { higherTf } from './htfLadder.js';
 
 const DEF = {
   baseTf: '5m', htfStep: 1,
@@ -123,6 +125,28 @@ export class LiveObEngine {
       st.stats.netBpsSum += out.netBps;
     }, this.o.horizonMs);
     st._outcomeTimers.push(id);
+  }
+
+  async _refreshCandles(sym) {
+    const tf = higherTf(this.o.baseTf, this.o.htfStep);
+    try {
+      const candles = await this.candlesProvider(sym, tf);
+      if (Array.isArray(candles) && candles.length) {
+        const st = this.state.get(sym);
+        st.candles = candles;
+        st.level = levelFromCandles(candles, { lookback: this.o.lookback });
+      }
+    } catch (e) {
+      console.warn(`[ob-engine] candle refresh failed for ${sym}: ${e.message}`);
+    }
+  }
+
+  start() {
+    this.feed.start?.();
+    for (const s of this.symbols) this._refreshCandles(s);
+    this._tickTimer = setInterval(() => { for (const s of this.symbols) this._evaluate(s); }, this.o.tickMs);
+    this._recordTimer = setInterval(() => { for (const s of this.symbols) this._recordTick(s); }, this.o.recordIntervalMs);
+    this._candleTimer = setInterval(() => { for (const s of this.symbols) this._refreshCandles(s); }, this.o.candleRefreshMs);
   }
 
   stop() {
