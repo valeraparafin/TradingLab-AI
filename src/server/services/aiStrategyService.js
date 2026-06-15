@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { getDB } from '../../../db.js';
 import { templateService } from './template.service.js';
+import { realizedPnl } from '../../agents/PositionLedger.js';
 
 /**
  * AI Strategy Service handles the management of AI risk profiles
@@ -106,6 +107,85 @@ export const aiStrategyService = {
               WHERE strategy_id = ? AND timestamp >= ${since}
               ORDER BY timestamp ASC`,
             [Number(agentId)]
+        );
+    },
+
+    /**
+     * Opens a position if none exists for (agentId, symbol). The PK on
+     * ai_active_positions enforces one-per-symbol; INSERT OR IGNORE makes the
+     * lock atomic. Returns { opened: boolean }.
+     */
+    async openPosition(agentId, { symbol, side, entryPrice, qty, slPrice, tpPrice }) {
+        const db = getDB('ai');
+        const r = await db.run(
+            `INSERT OR IGNORE INTO ai_active_positions
+               (symbol, strategy_id, total_quantity, total_cost, avg_entry_price, current_layer, side, sl_price, tp_price, opened_at)
+             VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
+            [symbol, agentId, qty, qty * entryPrice, entryPrice, side, slPrice, tpPrice, new Date().toISOString()]
+        );
+        return { opened: r.changes > 0 };
+    },
+
+    /** Lists open positions for an agent, mapped to PositionLedger shape. */
+    async listOpenPositions(agentId) {
+        const db = getDB('ai');
+        const rows = await db.all(
+            'SELECT symbol, side, avg_entry_price, total_quantity, sl_price, tp_price, opened_at FROM ai_active_positions WHERE strategy_id = ?',
+            [agentId]
+        );
+        return rows.map((r) => ({
+            symbol: r.symbol, side: r.side, entryPrice: r.avg_entry_price, qty: r.total_quantity,
+            slPrice: r.sl_price, tpPrice: r.tp_price, openedAt: r.opened_at,
+        }));
+    },
+
+    /**
+     * Enriches open positions with a current mid and unrealized PnL.
+     * `priceFn(symbol) => Promise<number>` is injected so the math stays
+     * server-side and unit-testable. Positions whose price is unavailable get
+     * mid=null and unrealizedPnl=null.
+     */
+    async getOpenPositionsEnriched(agentId, priceFn) {
+        const positions = await this.listOpenPositions(agentId);
+        const out = [];
+        for (const pos of positions) {
+            let mid = null, unrealizedPnl = null;
+            try {
+                const px = await priceFn(pos.symbol);
+                if (typeof px === 'number' && isFinite(px) && px > 0) {
+                    mid = px;
+                    unrealizedPnl = realizedPnl(pos, px);
+                }
+            } catch (_) { /* leave nulls */ }
+            out.push({ ...pos, mid, unrealizedPnl });
+        }
+        return out;
+    },
+
+    /** Deletes the open position row for (agentId, symbol). */
+    async closePosition(agentId, symbol) {
+        const db = getDB('ai');
+        const r = await db.run('DELETE FROM ai_active_positions WHERE strategy_id = ? AND symbol = ?', [agentId, symbol]);
+        return { changes: r.changes };
+    },
+
+    /** Inserts a completed round-trip into ai_closed_trades. */
+    async recordClosedTrade(t) {
+        const db = getDB('ai');
+        await db.run(
+            `INSERT INTO ai_closed_trades
+               (strategy_id, symbol, side, entry_price, exit_price, qty, size_usd, pnl_usd, exit_reason, opened_at, closed_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [t.strategy_id, t.symbol, t.side, t.entry_price, t.exit_price, t.qty, t.size_usd, t.pnl_usd, t.exit_reason, t.opened_at, t.closed_at]
+        );
+    },
+
+    /** Lists closed trades for an agent, newest first. */
+    async listClosedTrades(agentId, limit = 100) {
+        const db = getDB('ai');
+        return await db.all(
+            'SELECT * FROM ai_closed_trades WHERE strategy_id = ? ORDER BY closed_at DESC LIMIT ?',
+            [agentId, limit]
         );
     },
 
