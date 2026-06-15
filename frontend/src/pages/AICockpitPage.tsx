@@ -5,6 +5,7 @@ import { Card, Badge, Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescrip
 import { RiskGauges } from '../components/XAI/RiskGauges';
 import { LensAgreement } from '../components/XAI/LensAgreement';
 import { AIRiskConfigForm, type AIRiskSettings } from '../components/AIRiskConfigForm';
+import { formatPrice } from '../lib/formatters';
 import { cn } from '../lib/utils';
 
 interface AgentThought {
@@ -73,12 +74,6 @@ export function AICockpitPage() {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [positions, setPositions] = useState<OpenPosition[]>([]);
   const [closedTrades, setClosedTrades] = useState<ClosedTrade[]>([]);
-
-  // Formats a price to the asset's tick precision. The precision is resolved
-  // server-side (per the fixed assetService) and arrives on each row as
-  // `pricePrecision`; the frontend only renders. Falls back to 2 if absent.
-  const fmtPrice = (precision: number | undefined, v: number | null | undefined) =>
-    v == null ? '—' : v.toFixed(precision ?? 2);
   const [interval, setIntervalValue] = useState<'day' | 'week' | 'month'>('day');
   // Analyst = real proposal conviction; Risk = headroom derived from risk state.
   // (Optimizer is a planned agent — rendered as a placeholder, not a fake number.)
@@ -476,13 +471,13 @@ export function AICockpitPage() {
                         <td className="p-3">
                           <Badge variant={pos.side === 'BUY' ? 'success' : 'danger'} className="text-[10px]">{pos.side}</Badge>
                         </td>
-                        <td className="p-3">{fmtPrice(pos.pricePrecision, pos.entryPrice)}</td>
-                        <td className="p-3">{fmtPrice(pos.pricePrecision, pos.mid)}</td>
+                        <td className="p-3">{formatPrice(pos.entryPrice, pos.pricePrecision)}</td>
+                        <td className="p-3">{formatPrice(pos.mid, pos.pricePrecision)}</td>
                         <td className={'p-3 ' + ((pos.unrealizedPnl ?? 0) >= 0 ? 'text-green-500' : 'text-red-500')}>
                           {pos.unrealizedPnl != null ? `$${pos.unrealizedPnl.toFixed(2)}` : '—'}
                         </td>
-                        <td className="p-3 text-muted-foreground">{fmtPrice(pos.pricePrecision, pos.slPrice)}</td>
-                        <td className="p-3 text-muted-foreground">{fmtPrice(pos.pricePrecision, pos.tpPrice)}</td>
+                        <td className="p-3 text-muted-foreground">{formatPrice(pos.slPrice, pos.pricePrecision)}</td>
+                        <td className="p-3 text-muted-foreground">{formatPrice(pos.tpPrice, pos.pricePrecision)}</td>
                       </tr>
                     ))
                   )}
@@ -539,7 +534,7 @@ export function AICockpitPage() {
                             {trade.side.toUpperCase()}
                           </Badge>
                         </td>
-                        <td className="p-3">{fmtPrice(trade.pricePrecision, trade.price)}</td>
+                        <td className="p-3">{formatPrice(trade.price, trade.pricePrecision)}</td>
                         <td className="p-3">${trade.size_usd?.toFixed(2)}</td>
                         <td className="p-3">
                           <Badge variant="default" className="text-[10px]">
@@ -583,8 +578,8 @@ export function AICockpitPage() {
                         <td className="p-3">
                           <Badge variant={t.side === 'BUY' ? 'success' : 'danger'} className="text-[10px]">{t.side}</Badge>
                         </td>
-                        <td className="p-3">{fmtPrice(t.pricePrecision, t.entry_price)}</td>
-                        <td className="p-3">{fmtPrice(t.pricePrecision, t.exit_price)}</td>
+                        <td className="p-3">{formatPrice(t.entry_price, t.pricePrecision)}</td>
+                        <td className="p-3">{formatPrice(t.exit_price, t.pricePrecision)}</td>
                         <td className={'p-3 ' + ((t.pnl_usd ?? 0) >= 0 ? 'text-green-500' : 'text-red-500')}>${t.pnl_usd?.toFixed(2)}</td>
                         <td className="p-3"><Badge variant="default" className="text-[10px]">{t.exit_reason}</Badge></td>
                       </tr>

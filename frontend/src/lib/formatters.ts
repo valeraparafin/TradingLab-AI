@@ -12,6 +12,17 @@ export const num = (v: number | null | undefined) =>
   v == null || !isFinite(v) ? '—' : v.toFixed(2);
 
 /**
+ * Format a PRICE to the asset's tick precision (decimals). Precision is resolved
+ * server-side (assetService) and travels with each row as `pricePrecision`.
+ * Coerces numeric strings too, so it works whether the payload sends a number
+ * or a numeric string. '—' for null/undefined/non-finite; falls back to 2dp.
+ */
+export const formatPrice = (v: number | string | null | undefined, precision?: number) => {
+  const n = typeof v === 'string' ? Number(v) : v;
+  return n == null || !isFinite(n) ? '—' : n.toFixed(precision ?? 2);
+};
+
+/**
  * Profit factor: '—' when unknown (null/undefined — metric not computed),
  * '∞' only when genuinely infinite (zero losing trades), else 2 decimals.
  */

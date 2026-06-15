@@ -129,13 +129,16 @@ class StrategyService {
       const camelPos = toCamel(p);
       const symbol = camelPos.symbol;
 
+      // Return numeric data + the asset's price precision; the client formats at
+      // the view (shared formatPrice). Keeps the API typed and lossless.
       return {
         ...camelPos,
-        currentPrice: precisionManager.format(Number(camelPos.currentPrice), symbol),
-        currentPnl: precisionManager.format(Number(camelPos.currentPnl), 'USDT'),
-        currentPnlPercent: precisionManager.format(Number(camelPos.currentPnlPercent), 'PERCENT'),
-        stopLoss: camelPos.stopLoss ? precisionManager.format(Number(camelPos.stopLoss), symbol) : null,
-        takeProfit: camelPos.takeProfit ? precisionManager.format(Number(camelPos.takeProfit), symbol) : null,
+        currentPrice: Number(camelPos.currentPrice),
+        currentPnl: Number(camelPos.currentPnl),
+        currentPnlPercent: Number(camelPos.currentPnlPercent),
+        stopLoss: camelPos.stopLoss != null ? Number(camelPos.stopLoss) : null,
+        takeProfit: camelPos.takeProfit != null ? Number(camelPos.takeProfit) : null,
+        pricePrecision: precisionManager.getPrecision(symbol),
       };
     });
   }
@@ -173,11 +176,12 @@ class StrategyService {
 
       return {
         ...camelPos,
-        exitPrice: precisionManager.format(Number(camelPos.exitPrice || camelPos.entryPrice), symbol),
-        currentPnl: precisionManager.format(finalPnl, 'USDT'),
-        currentPnlPercent: precisionManager.format(finalPnlPercent, 'PERCENT'),
-        stopLoss: camelPos.stopLoss ? precisionManager.format(Number(camelPos.stopLoss), symbol) : null,
-        takeProfit: camelPos.takeProfit ? precisionManager.format(Number(camelPos.takeProfit), symbol) : null,
+        exitPrice: Number(camelPos.exitPrice || camelPos.entryPrice),
+        currentPnl: finalPnl,
+        currentPnlPercent: finalPnlPercent,
+        stopLoss: camelPos.stopLoss != null ? Number(camelPos.stopLoss) : null,
+        takeProfit: camelPos.takeProfit != null ? Number(camelPos.takeProfit) : null,
+        pricePrecision: precisionManager.getPrecision(symbol),
       };
     });
   }

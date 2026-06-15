@@ -8,6 +8,7 @@ import RuleConfidenceList from './XAI/RuleConfidenceList';
 import { Input, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/components';
 import { StrategyConfigForm } from './StrategyConfigForm';
 import { cn } from '../lib/utils';
+import { formatPrice, num } from '../lib/formatters';
 import { ArrowLeft, Play, Square, Settings, ArrowUp, ArrowDown, Clock, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { io } from 'socket.io-client';
@@ -28,10 +29,13 @@ interface Position {
   side: 'LONG' | 'SHORT';
   entryPrice: number;
   currentPrice: number;
+  exitPrice?: number;
+  sizeUsd?: number;
   pnl: number;
-  pnl_percent: number;
+  pnlPercent: number;
   sl: number;
   tp: number;
+  pricePrecision?: number;
 }
 
 export const StrategyDetails = () => {
@@ -135,6 +139,7 @@ export const StrategyDetails = () => {
           pnlPercent: p.currentPnlPercent ?? p.pnlPercent ?? 0,
           sl: p.stopLoss ?? p.sl ?? 0,
           tp: p.takeProfit ?? p.tp ?? 0,
+          pricePrecision: p.pricePrecision,
         })));
 
         setClosedPositions(closedPosRes.data.map((p: any) => ({
@@ -144,6 +149,7 @@ export const StrategyDetails = () => {
           pnlPercent: p.currentPnlPercent ?? p.pnlPercent ?? 0,
           sl: p.stopLoss ?? p.sl ?? 0,
           tp: p.takeProfit ?? p.tp ?? 0,
+          pricePrecision: p.pricePrecision,
         })));
 
         setTradeHistory(historyRes.data || []);
@@ -203,6 +209,7 @@ export const StrategyDetails = () => {
             pnlPercent: payload.pnl_percent,
             sl: payload.stop_loss,
             tp: payload.take_profit,
+            pricePrecision: payload.price_precision,
           };
 
           if (existingIndex > -1) {
@@ -572,13 +579,13 @@ export const StrategyDetails = () => {
                                   {pos.side}
                                 </Badge>
                               </td>
-                              <td className="py-3">{pos.entryPrice?.toString()}</td>
-                              <td className="py-3">{pos.currentPrice?.toString()}</td>
+                              <td className="py-3">{formatPrice(pos.entryPrice, pos.pricePrecision)}</td>
+                              <td className="py-3">{formatPrice(pos.currentPrice, pos.pricePrecision)}</td>
                               <td className={cn("py-3 font-medium", pos.pnl >= 0 ? "text-emerald-500" : "text-rose-500")}>
-                                {pos.pnl >= 0 ? `+${pos.pnl}` : pos.pnl} USDT ({pos.pnlPercent}%)
+                                {pos.pnl >= 0 ? '+' : ''}{num(pos.pnl)} USDT ({num(pos.pnlPercent)}%)
                               </td>
                               <td className="py-3 text-xs text-muted-foreground">
-                                {pos.sl?.toString()} / {pos.tp?.toString()}
+                                {formatPrice(pos.sl, pos.pricePrecision)} / {formatPrice(pos.tp, pos.pricePrecision)}
                               </td>
                             </tr>
                           ))
@@ -616,13 +623,13 @@ export const StrategyDetails = () => {
                                 </Badge>
                               </td>
                               <td className="py-3">{pos.sizeUsd?.toString()}</td>
-                              <td className="py-3">{pos.entryPrice?.toString()}</td>
-                              <td className="py-3">{pos.exitPrice?.toString()}</td>
+                              <td className="py-3">{formatPrice(pos.entryPrice, pos.pricePrecision)}</td>
+                              <td className="py-3">{formatPrice(pos.exitPrice, pos.pricePrecision)}</td>
                               <td className={cn("py-3 font-medium", pos.pnl >= 0 ? "text-emerald-500" : "text-rose-500")}>
-                                {pos.pnl >= 0 ? `+${pos.pnl}` : pos.pnl} USDT
+                                {pos.pnl >= 0 ? '+' : ''}{num(pos.pnl)} USDT
                               </td>
                               <td className={cn("py-3 font-medium", pos.pnlPercent >= 0 ? "text-emerald-500" : "text-rose-500")}>
-                                {pos.pnlPercent}%
+                                {num(pos.pnlPercent)}%
                               </td>
                             </tr>
                           ))

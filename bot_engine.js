@@ -13,6 +13,8 @@ import { PrecisionManager } from "./src/utils/precision.js";
 import { assetService } from "./src/server/services/asset.service.js";
 import { toSnake, toCamel } from "./src/utils/casing.js";
 import { timeframeToMinutes } from "./src/utils/timeframe.js";
+import { marketDataService } from "./src/services/market-data.service.js";
+import { Technicals } from "./src/indicators/technical.js";
 
 // ─── Config ────────────────────────────────────────────────────────────────
 
@@ -147,33 +149,7 @@ async function calculateTotalOpenRisk(strategyId) {
 }
 
 // ─── Market Data ───────────────────────────────────────────────────────────────
-
-async function fetchCandles(symbol, interval, limit = 500) {
-  const intervalMap = {
-    "1m": "1m",
-    "3m": "3m",
-    "5m": "5m",
-    "15m": "15m",
-    "30m": "30m",
-    "1H": "1h",
-    "4H": "4h",
-    "1D": "1d",
-    "1W": "1w",
-  };
-  const binanceInterval = intervalMap[interval] || "1m";
-  const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${binanceInterval}&limit=${limit}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Binance API error: ${res.status}`);
-  const data = await res.json();
-  return data.map((k) => ({
-    time: k[0],
-    open: parseFloat(k[1]),
-    high: parseFloat(k[2]),
-    low: parseFloat(k[3]),
-    close: parseFloat(k[4]),
-    volume: parseFloat(k[5]),
-  }));
-}
+// Market data fetching is now handled by marketDataService
 
 // ─── Main Engine ────────────────────────────────────────────────────────────
 
@@ -300,7 +276,7 @@ async function run(inputStrategyId) {
               "INFO",
               `Fetching market data for ${symbol}...`,
             );
-            const candles = await fetchCandles(symbol, timeframe, 500);
+            const candles = await marketDataService.fetchCandles(symbol, timeframe, 500);
             const lastCandle = candles[candles.length - 1];
             const price = lastCandle.close;
             const open = lastCandle.open;
@@ -390,30 +366,27 @@ async function run(inputStrategyId) {
                   `✅ Position closed. PnL: $${await precisionManager.format(pnl, "USDT")}`,
                 );
               } else {
+                // Numeric PnL once; the socket payload + DB carry raw numbers and
+                // the asset's price precision. The client formats at the view
+                // (shared formatPrice) — no server-side string formatting.
+                const pnlUsd = activePosition.side === "BUY"
+                  ? activePosition.size_usd * (price / activePosition.entry_price - 1)
+                  : activePosition.size_usd * (1 - price / activePosition.entry_price);
+                const pnlPercent = activePosition.side === "BUY"
+                  ? (price / activePosition.entry_price - 1) * 100
+                  : (1 - price / activePosition.entry_price) * 100;
+
                 await logEvent(strategyId, "position_active", {
                   symbol,
                   side: activePosition.side,
                   entry_price: activePosition.entry_price,
                   size_usd: activePosition.size_usd,
-                  stop_loss: precisionManager.format(activePosition.stop_loss, symbol),
-                  take_profit: precisionManager.format(activePosition.take_profit, symbol),
-                  current_price: precisionManager.format(price, symbol),
-                  pnl:
-                    precisionManager.format(
-                      activePosition.side === "BUY"
-                        ? activePosition.size_usd *
-                          (price / activePosition.entry_price - 1)
-                        : activePosition.size_usd *
-                          (1 - price / activePosition.entry_price),
-                      "USDT"
-                    ),
-                  pnl_percent:
-                    precisionManager.format(
-                      activePosition.side === "BUY"
-                        ? (price / activePosition.entry_price - 1) * 100
-                        : (1 - price / activePosition.entry_price) * 100,
-                      "PERCENT"
-                    ),
+                  stop_loss: activePosition.stop_loss,
+                  take_profit: activePosition.take_profit,
+                  current_price: price,
+                  pnl: pnlUsd,
+                  pnl_percent: pnlPercent,
+                  price_precision: precisionManager.getPrecision(symbol),
                   message: "Active position found, monitoring for exit.",
                 });
 
@@ -421,14 +394,8 @@ async function run(inputStrategyId) {
                   action: "update_price",
                   symbol,
                   current_price: price,
-                  current_pnl: precisionManager.format(activePosition.side === "BUY"
-                      ? activePosition.size_usd *
-                        (price / activePosition.entry_price - 1)
-                      : activePosition.size_usd *
-                        (1 - price / activePosition.entry_price), "USDT"),
-                  current_pnl_percent: precisionManager.format(activePosition.side === "BUY"
-                      ? (price / activePosition.entry_price - 1) * 100
-                      : (1 - price / activePosition.entry_price) * 100, "PERCENT")
+                  current_pnl: pnlUsd,
+                  current_pnl_percent: pnlPercent,
                 });
               }
             } else {
@@ -449,8 +416,20 @@ async function run(inputStrategyId) {
 
               let strategyData = {};
               let side = "BUY"; // Default side
-              if (logicType) {
-                strategyData = indicatorManager.calculate(logicType, candles);
+                if (logicType) {
+                  strategyData = await indicatorManager.calculate(logicType, candles, symbol, strategyConfig);
+
+                  // ATR Calculation for dynamic stops if configured
+                  if (strategyConfig.stop_mode === "atr") {
+                    const atrPeriod = strategyConfig.atr_period || 14;
+                    const atrValues = Technicals.atr(candles, atrPeriod);
+                    if (atrValues.length > 0) {
+                      strategyData.currentAtr = atrValues[atrValues.length - 1];
+                    } else {
+                      console.warn(`[Engine] ATR calculation failed for ${symbol} (insufficient candles)`);
+                      strategyData.currentAtr = null;
+                    }
+                  }
 
                 // Operator-facing visibility (unchanged from legacy logging).
                 if (logicType === "Breakout" && strategyData.channel?.active) {
@@ -602,8 +581,26 @@ async function run(inputStrategyId) {
                   side,
                   price,
                   sizeUSD: safeTradeSize,
-                  stopLoss: precisionManager.format(side === "BUY" ? price * (1 - guardrails.stopLossPct) : price * (1 + guardrails.stopLossPct), symbol),
-                  takeProfit: precisionManager.format(side === "BUY" ? price * (1 + guardrails.takeProfitPct) : price * (1 - guardrails.takeProfitPct), symbol),
+                  stopLoss: precisionManager.format(
+                    side === "BUY"
+                      ? (strategyConfig.stop_mode === "atr" && strategyData.currentAtr
+                          ? price - strategyData.currentAtr * (strategyConfig.atr_multiplier || 1.5)
+                          : price * (1 - guardrails.stopLossPct))
+                      : (strategyConfig.stop_mode === "atr" && strategyData.currentAtr
+                          ? price + strategyData.currentAtr * (strategyConfig.atr_multiplier || 1.5)
+                          : price * (1 + guardrails.stopLossPct)),
+                    symbol
+                  ),
+                  takeProfit: precisionManager.format(
+                    side === "BUY"
+                      ? (strategyConfig.stop_mode === "atr" && strategyData.currentAtr
+                          ? price + strategyData.currentAtr * (strategyConfig.tp_multiplier || 3)
+                          : price * (1 + guardrails.takeProfitPct))
+                      : (strategyConfig.stop_mode === "atr" && strategyData.currentAtr
+                          ? price - strategyData.currentAtr * (strategyConfig.tp_multiplier || 3)
+                          : price * (1 - guardrails.takeProfitPct)),
+                    symbol
+                  ),
                 });
                 } else {
                   console.log(

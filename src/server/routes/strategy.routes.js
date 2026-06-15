@@ -261,15 +261,9 @@ router.get('/stats/:id', async (req, res) => {
 router.get('/positions/:id', async (req, res) => {
   const { id } = req.params;
   try {
-    let positions = await strategyService.getPositions(id);
-    
-    // Format calculated values, leave exchange data (prices) untouched
-    positions = positions.map(pos => ({
-      ...pos,
-      currentPnl: precisionManager.format(pos.currentPnl, 'USDT'),
-      currentPnlPercent: precisionManager.format(pos.currentPnlPercent, 'PERCENT'), // Logic for percent might be needed
-    }));
-    
+    // The service already returns numeric fields + pricePrecision; the client
+    // formats at the view (shared formatPrice). No server-side string formatting.
+    const positions = await strategyService.getPositions(id);
     res.json(positions);
   } catch (err) {
     res.status(500).json({ error: err.message });
