@@ -1,5 +1,22 @@
 import { getDB } from '../../../db.js';
 
+/**
+ * Converts a Binance tickSize/stepSize string into a decimal precision.
+ * Binance pads the value with trailing zeros (e.g. "0.00100000"), so naively
+ * counting characters after the dot yields 8 for nearly every symbol. We parse
+ * the number first so trailing zeros drop, then count the significant decimals
+ * (handling exponential form like "1e-7" for very small ticks).
+ * @param {string|number|undefined} step
+ * @returns {number} decimal places (default 2 when absent/invalid)
+ */
+export function tickSizeToPrecision(step) {
+  const n = parseFloat(step);
+  if (!(n > 0)) return 2;
+  const s = n.toString();
+  if (s.includes('e-')) return parseInt(s.split('e-')[1], 10);
+  return s.includes('.') ? s.split('.')[1].length : 0;
+}
+
 class AssetService {
   constructor() {
     this.assets = new Map();
@@ -96,9 +113,7 @@ class AssetService {
   }
 
   _calculatePrecision(stepSize) {
-    if (!stepSize) return 2;
-    const s = stepSize.toString();
-    return s.includes('.') ? s.split('.')[1].length : 0;
+    return tickSizeToPrecision(stepSize);
   }
 }
 

@@ -6,6 +6,7 @@ import { RiskPolicy } from './RiskPolicy.js';
 import { deriveRiskState } from './riskState.js';
 import { checkExits } from './PositionLedger.js';
 import { aiStrategyService } from '../server/services/aiStrategyService.js';
+import { precisionManager } from '../utils/precision.js';
 
 /**
  * AgentOrchestrator manages the loop: Analyst (qualitative proposal) ->
@@ -123,7 +124,7 @@ export default class AgentOrchestrator {
     // Candle path also monitors open positions each cycle.
     {
       const mids = {};
-      for (const symbol of this.symbolsToWatch) mids[symbol] = await this._getCurrentPrice(symbol);
+      for (const symbol of this.symbolsToWatch) mids[symbol] = await this._midFor(symbol);
       await this._sweepExits(mids);
     }
 
@@ -240,19 +241,22 @@ export default class AgentOrchestrator {
    */
   async _openPosition(symbol, order, executedPrice) {
     if (!(executedPrice > 0) || !(order.sizeUSD > 0)) return;
-    const qty = order.sizeUSD / executedPrice;
+    // Snap price and quantity to the asset's exchange precision (tick / lot step),
+    // so stored fills look like real exchange fills and PnL is computed on-tick.
+    const entryPrice = precisionManager.roundPrice(executedPrice, symbol);
+    const qty = precisionManager.roundQty(order.sizeUSD / entryPrice, symbol);
     if (!isFinite(qty) || qty <= 0) {
-      this.broadcastThought({ agent: 'orchestrator', thought: `skip open ${symbol}: bad qty` });
+      this.broadcastThought({ agent: 'orchestrator', thought: `skip open ${symbol}: qty below lot step` });
       return;
     }
+    const slPrice = precisionManager.roundPrice(order.slPrice, symbol);
+    const tpPrice = precisionManager.roundPrice(order.tpPrice, symbol);
     const { opened } = await aiStrategyService.openPosition(this.agentId, {
-      symbol, side: order.side, entryPrice: executedPrice, qty,
-      slPrice: order.slPrice, tpPrice: order.tpPrice,
+      symbol, side: order.side, entryPrice, qty, slPrice, tpPrice,
     });
     if (opened) {
       this.io.emit('position:opened', {
-        agentId: this.agentId, symbol, side: order.side,
-        entryPrice: executedPrice, qty, slPrice: order.slPrice, tpPrice: order.tpPrice,
+        agentId: this.agentId, symbol, side: order.side, entryPrice, qty, slPrice, tpPrice,
       });
     }
   }
@@ -288,13 +292,18 @@ export default class AgentOrchestrator {
     }
   }
 
-  /** Current mid for exit checks: OB engine futures mid, else latest candle close. */
+  /**
+   * Current mid for exit checks: OB engine futures mid, else latest candle close.
+   * Snapped to the asset's tick precision so exit fills/PnL are on-tick.
+   */
   async _midFor(symbol) {
+    let raw = 0;
     if (this.isObMode) {
       const m = this.obEngine.getLatestFeatures?.(symbol)?.futures?.mid;
-      if (typeof m === 'number' && isFinite(m) && m > 0) return m;
+      if (typeof m === 'number' && isFinite(m) && m > 0) raw = m;
     }
-    return await this._getCurrentPrice(symbol);
+    if (!(raw > 0)) raw = await this._getCurrentPrice(symbol);
+    return precisionManager.roundPrice(raw, symbol);
   }
 
   /**
