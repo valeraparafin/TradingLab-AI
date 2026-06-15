@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { getDB } from '../../../db.js';
 import { aiStrategyService } from '../services/aiStrategyService.js';
 import { toolRegistry } from '../../registry/ToolRegistry.js';
+import { assetService } from '../services/asset.service.js';
 
 export function createAgentsRouter(manager) {
   const r = Router();
@@ -62,7 +63,8 @@ export function createAgentsRouter(manager) {
       let sql = `SELECT * FROM ai_paper_trades WHERE timestamp >= ${dateFilter}`;
       if (agent_id) { sql += ' AND strategy_id = ?'; params.push(Number(agent_id)); }
       sql += ' ORDER BY timestamp DESC';
-      const trades = await db.all(sql, params);
+      const rows = await db.all(sql, params);
+      const trades = rows.map((t) => ({ ...t, pricePrecision: assetService.getPrecision(t.symbol) }));
       res.json({ success: true, data: { trades } });
     } catch (err) {
       console.error(`[AI Trades Error] ${err.message}`);
@@ -195,7 +197,8 @@ export function createAgentsRouter(manager) {
         const out = await toolRegistry.executeTool('get_candles', { symbol, interval: '1m', limit: 1 });
         return out.success && out.data.length ? out.data[0].close : 0;
       };
-      const positions = await aiStrategyService.getOpenPositionsEnriched(agentId, priceFn);
+      const enriched = await aiStrategyService.getOpenPositionsEnriched(agentId, priceFn);
+      const positions = enriched.map((p) => ({ ...p, pricePrecision: assetService.getPrecision(p.symbol) }));
       res.json({ success: true, data: { positions } });
     } catch (err) {
       console.error(`[AI Positions Error] ${err.message}`);
@@ -206,7 +209,8 @@ export function createAgentsRouter(manager) {
   r.get('/:id/closed-trades', async (req, res) => {
     try {
       const limit = Math.min(Number(req.query.limit) || 100, 500);
-      const trades = await aiStrategyService.listClosedTrades(Number(req.params.id), limit);
+      const rows = await aiStrategyService.listClosedTrades(Number(req.params.id), limit);
+      const trades = rows.map((t) => ({ ...t, pricePrecision: assetService.getPrecision(t.symbol) }));
       res.json({ success: true, data: { trades } });
     } catch (err) {
       console.error(`[AI Closed Trades Error] ${err.message}`);

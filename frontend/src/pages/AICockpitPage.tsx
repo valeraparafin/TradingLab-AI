@@ -5,7 +5,6 @@ import { Card, Badge, Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescrip
 import { RiskGauges } from '../components/XAI/RiskGauges';
 import { LensAgreement } from '../components/XAI/LensAgreement';
 import { AIRiskConfigForm, type AIRiskSettings } from '../components/AIRiskConfigForm';
-import { assetApi } from '../lib/api';
 import { cn } from '../lib/utils';
 
 interface AgentThought {
@@ -24,6 +23,7 @@ interface Trade {
   status: string;
   timestamp: string;
   mode: string;
+  pricePrecision?: number;
 }
 
 interface OpenPosition {
@@ -35,6 +35,7 @@ interface OpenPosition {
   tpPrice: number;
   mid: number | null;
   unrealizedPnl: number | null;
+  pricePrecision?: number;
 }
 
 interface ClosedTrade {
@@ -48,6 +49,7 @@ interface ClosedTrade {
   pnl_usd: number;
   exit_reason: string;
   closed_at: string;
+  pricePrecision?: number;
 }
 
 interface AgentInfo {
@@ -71,12 +73,12 @@ export function AICockpitPage() {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [positions, setPositions] = useState<OpenPosition[]>([]);
   const [closedTrades, setClosedTrades] = useState<ClosedTrade[]>([]);
-  // symbol -> price decimal precision (from /assets); used to format prices on-tick.
-  const [pricePrec, setPricePrec] = useState<Record<string, number>>({});
 
-  // Formats a price to the asset's tick precision (falls back to 2 if unknown).
-  const fmtPrice = (symbol: string, v: number | null | undefined) =>
-    v == null ? '—' : v.toFixed(pricePrec[symbol] ?? 2);
+  // Formats a price to the asset's tick precision. The precision is resolved
+  // server-side (per the fixed assetService) and arrives on each row as
+  // `pricePrecision`; the frontend only renders. Falls back to 2 if absent.
+  const fmtPrice = (precision: number | undefined, v: number | null | undefined) =>
+    v == null ? '—' : v.toFixed(precision ?? 2);
   const [interval, setIntervalValue] = useState<'day' | 'week' | 'month'>('day');
   // Analyst = real proposal conviction; Risk = headroom derived from risk state.
   // (Optimizer is a planned agent — rendered as a placeholder, not a fake number.)
@@ -219,17 +221,6 @@ export function AICockpitPage() {
     const timer = setInterval(fetchEquity, 10000);
     return () => clearInterval(timer);
   }, [fetchEquity]);
-
-  // Load per-asset price precision once so prices render on-tick (not hard 2dp).
-  useEffect(() => {
-    assetApi.getAssets()
-      .then((res) => {
-        const map: Record<string, number> = {};
-        for (const a of res.data) map[a.symbol] = a.pricePrecision;
-        setPricePrec(map);
-      })
-      .catch((err) => console.error('Failed to fetch asset precisions', err));
-  }, []);
 
   const fetchPositions = useCallback(async () => {
     try {
@@ -485,13 +476,13 @@ export function AICockpitPage() {
                         <td className="p-3">
                           <Badge variant={pos.side === 'BUY' ? 'success' : 'danger'} className="text-[10px]">{pos.side}</Badge>
                         </td>
-                        <td className="p-3">{fmtPrice(pos.symbol, pos.entryPrice)}</td>
-                        <td className="p-3">{fmtPrice(pos.symbol, pos.mid)}</td>
+                        <td className="p-3">{fmtPrice(pos.pricePrecision, pos.entryPrice)}</td>
+                        <td className="p-3">{fmtPrice(pos.pricePrecision, pos.mid)}</td>
                         <td className={'p-3 ' + ((pos.unrealizedPnl ?? 0) >= 0 ? 'text-green-500' : 'text-red-500')}>
                           {pos.unrealizedPnl != null ? `$${pos.unrealizedPnl.toFixed(2)}` : '—'}
                         </td>
-                        <td className="p-3 text-muted-foreground">{fmtPrice(pos.symbol, pos.slPrice)}</td>
-                        <td className="p-3 text-muted-foreground">{fmtPrice(pos.symbol, pos.tpPrice)}</td>
+                        <td className="p-3 text-muted-foreground">{fmtPrice(pos.pricePrecision, pos.slPrice)}</td>
+                        <td className="p-3 text-muted-foreground">{fmtPrice(pos.pricePrecision, pos.tpPrice)}</td>
                       </tr>
                     ))
                   )}
@@ -548,7 +539,7 @@ export function AICockpitPage() {
                             {trade.side.toUpperCase()}
                           </Badge>
                         </td>
-                        <td className="p-3">{fmtPrice(trade.symbol, trade.price)}</td>
+                        <td className="p-3">{fmtPrice(trade.pricePrecision, trade.price)}</td>
                         <td className="p-3">${trade.size_usd?.toFixed(2)}</td>
                         <td className="p-3">
                           <Badge variant="default" className="text-[10px]">
@@ -592,8 +583,8 @@ export function AICockpitPage() {
                         <td className="p-3">
                           <Badge variant={t.side === 'BUY' ? 'success' : 'danger'} className="text-[10px]">{t.side}</Badge>
                         </td>
-                        <td className="p-3">{fmtPrice(t.symbol, t.entry_price)}</td>
-                        <td className="p-3">{fmtPrice(t.symbol, t.exit_price)}</td>
+                        <td className="p-3">{fmtPrice(t.pricePrecision, t.entry_price)}</td>
+                        <td className="p-3">{fmtPrice(t.pricePrecision, t.exit_price)}</td>
                         <td className={'p-3 ' + ((t.pnl_usd ?? 0) >= 0 ? 'text-green-500' : 'text-red-500')}>${t.pnl_usd?.toFixed(2)}</td>
                         <td className="p-3"><Badge variant="default" className="text-[10px]">{t.exit_reason}</Badge></td>
                       </tr>

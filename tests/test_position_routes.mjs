@@ -26,9 +26,12 @@ assert.equal(posRes.success, true); ok('positions route ok');
 assert.equal(posRes.data.positions.length, 1); ok('one open position returned');
 assert.ok('mid' in posRes.data.positions[0]); ok('position carries mid field');
 
+assert.ok('pricePrecision' in posRes.data.positions[0]); ok('position carries pricePrecision');
+
 const clRes = await (await fetch(`${base}/${AID}/closed-trades`)).json();
 assert.equal(clRes.data.trades.length, 1); ok('one closed trade returned');
 assert.equal(clRes.data.trades[0].exit_reason, 'TP'); ok('closed trade reason');
+assert.ok('pricePrecision' in clRes.data.trades[0]); ok('closed trade carries pricePrecision');
 
 server.close();
 await db.run('DELETE FROM ai_active_positions WHERE strategy_id = ?', [AID]);
