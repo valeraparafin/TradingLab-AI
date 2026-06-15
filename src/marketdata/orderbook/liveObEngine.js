@@ -2,6 +2,7 @@
 import { breakoutSignal } from './breakoutSignal.js';
 import { withOrderBookGate } from './obGate.js';
 import { signalRecord } from './obSignalLog.js';
+import { Recorder } from './Recorder.js';
 
 const DEF = {
   baseTf: '5m', htfStep: 1,
@@ -38,6 +39,7 @@ export class LiveObEngine {
       if (!sig) return { signal: null, decision: { decision: 'HOLD' } };
       return { signal: sig, decision: { decision: 'PERMIT', order: { side: sig.side } } };
     }, { maxSpreadBps: this.o.maxSpreadBps });
+    this.recorder = this.o.record ? new Recorder({ root: this.o.recorderRoot }) : null;
   }
 
   setLevel(sym, level) { const st = this.state.get(sym); if (st) st.level = level; }
@@ -72,5 +74,35 @@ export class LiveObEngine {
     }
     st.prevMid = feat.futures.mid;
     return rec;
+  }
+
+  /** Thinned persistence: one near-mid obsnap + any new trades since the last record tick. */
+  _recordTick(sym) {
+    if (!this.recorder) return;
+    const st = this.state.get(sym);
+    const feat = this.feed.getFeatures(sym);
+    const raw = this.feed.getRawBooks(sym);
+    if (!feat || !feat.ready || !raw) return;
+    const t = feat.ts;
+    this.recorder.write(sym, 'fut', t, {
+      k: 'obsnap',
+      fut: raw.fut, spot: raw.spot,
+      features: feat.futures, spotFeatures: feat.spot || null,
+    });
+    for (const tr of raw.trades || []) {
+      if (tr.t > st.lastTradeT) {
+        this.recorder.write(sym, 'fut', tr.t, { k: 'trade', p: tr.p, q: tr.q, m: tr.m });
+        st.lastTradeT = tr.t;
+      }
+    }
+  }
+
+  stop() {
+    if (this._tickTimer) clearInterval(this._tickTimer);
+    if (this._recordTimer) clearInterval(this._recordTimer);
+    if (this._candleTimer) clearInterval(this._candleTimer);
+    for (const st of this.state.values()) for (const id of st._outcomeTimers || []) clearTimeout(id);
+    this.feed.stop?.();
+    if (this.recorder) this.recorder.close();
   }
 }
