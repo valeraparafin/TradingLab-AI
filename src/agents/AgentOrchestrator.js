@@ -28,6 +28,15 @@ export default class AgentOrchestrator {
     this.isRunning = false;
     this.loopInterval = null;
     this.symbolsToWatch = config.execution?.symbols || config.symbols || ['BTCUSDT', 'ETHUSDT'];
+
+    // ── Order-Book mode ─────────────────────────────────────────────
+    // When an obEngine is injected (agentManager builds it for OrderBook agents) the
+    // orchestrator drains live book signals on a fast loop instead of the candle analyst.
+    this.obEngine = config.obEngine || null;
+    this.obConfig = config.obConfig || {};
+    this.isObMode = !!this.obEngine;
+    this._obDrainTimer = null;
+    this._lastObProposal = null; // feeds the cockpit council in OB mode
   }
 
   /**
@@ -47,12 +56,63 @@ export default class AgentOrchestrator {
   }
 
   /**
+   * OB mode: pull buffered book signals, map → proposal, gate via RiskPolicy (structural),
+   * execute PAPER at the signal's own entryMid. Sparse by design — most ticks drain nothing.
+   */
+  async _obDrainTick() {
+    if (!this.isRunning || !this.obEngine) return;
+    const { proposalFromSignal } = await import('./ObAnalyst.js');
+    const portfolioState = await this._getPortfolioState();
+    for (const symbol of this.symbolsToWatch) {
+      let records;
+      try { records = this.obEngine.drainSignals(symbol) || []; }
+      catch (e) { console.error(`[OB] drain ${symbol}: ${e.message}`); continue; }
+      for (const rec of records) {
+        try {
+          const proposal = proposalFromSignal(rec);
+          if (proposal.side === 'HOLD' || proposal.entryMid == null) continue;
+          const entryPrice = proposal.entryMid;
+          const verdict = this.riskPolicy.evaluate(proposal, {
+            entryPrice, ...portfolioState,
+            invalidation: (typeof proposal.invalidationIdea === 'number' && isFinite(proposal.invalidationIdea))
+              ? proposal.invalidationIdea : null,
+          });
+          this._lastObProposal = proposal;
+          if (verdict.decision !== 'PERMIT') {
+            this.broadcastDecision({ symbol, decision: 'VETOED',
+              reasoning: `${proposal.side} (OB); policy denied: ${verdict.reason}` });
+            continue;
+          }
+          const order = verdict.order;
+          const tradeParams = { symbol, side: order.side.toLowerCase(), sizeUSD: order.sizeUSD,
+            price: order.entryPrice, marketType: this.execution.tradeMode };
+          this.broadcastDecision({ symbol, decision: 'EXECUTE',
+            reasoning: `${proposal.side} (OB conviction ${proposal.conviction.toFixed(2)}); SL ${order.slPrice}, TP ${order.tpPrice}`,
+            details: tradeParams });
+          const r = await this.tradeExecutor.executeTrade(tradeParams);
+          this.broadcastThought({ agent: 'orchestrator',
+            thought: `OB trade ${r.success ? 'Executed' : 'Failed'} (${order.side} ${symbol})` });
+        } catch (e) {
+          console.error(`[OB] execute ${symbol}: ${e.message}`);
+        }
+      }
+    }
+  }
+
+  /**
    * Main Adversarial Loop: Analyst -> Risk -> Execution.
    */
   async runCycle() {
     if (!this.isRunning) return;
     // Portfolio state is per-agent, not per-symbol — compute once per cycle.
     const portfolioState = await this._getPortfolioState();
+
+    // OB mode: trades are driven by the fast drain loop; the cycle only records telemetry.
+    if (this.isObMode) {
+      await this._recordTelemetry(portfolioState, this._lastObProposal);
+      return;
+    }
+
     let lastProposal = null;
     for (const symbol of this.symbolsToWatch) {
       try {
@@ -213,6 +273,11 @@ export default class AgentOrchestrator {
     if (this.isRunning) return;
     this.isRunning = true;
     console.log('AgentOrchestrator: Starting adversarial loop...');
+    if (this.isObMode) {
+      this.obEngine.start?.();
+      const drainMs = this.obConfig.drainIntervalMs || 10_000;
+      this._obDrainTimer = setInterval(() => this._obDrainTick(), drainMs);
+    }
     this.loopInterval = setInterval(() => this.runCycle(), this.config.cycleInterval || 300000);
     this.runCycle();
   }
@@ -223,6 +288,8 @@ export default class AgentOrchestrator {
       clearInterval(this.loopInterval);
       this.loopInterval = null;
     }
+    if (this._obDrainTimer) { clearInterval(this._obDrainTimer); this._obDrainTimer = null; }
+    if (this.obEngine) { try { this.obEngine.stop?.(); } catch (e) { console.error(`[OB] stop: ${e.message}`); } }
     console.log('AgentOrchestrator: Stopped.');
   }
 }
