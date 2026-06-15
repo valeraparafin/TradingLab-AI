@@ -28,7 +28,9 @@ export class LiveObEngine {
     this.candlesProvider = candlesProvider;
     this.symbols = symbols;
     this.o = { ...DEF, ...opts };
-    this.schedule = schedule || ((cb, ms) => setTimeout(cb, ms));
+    // Default schedule unrefs so a pending outcome timer never keeps the process alive on its own
+    // (the feed sockets + interval timers own the lifecycle). Tests inject a synchronous stub.
+    this.schedule = schedule || ((cb, ms) => { const id = setTimeout(cb, ms); id.unref?.(); return id; });
     this.state = new Map(); // sym -> { level, prevMid, candles, buffer, lastTradeT, stats }
     for (const s of symbols) {
       this.state.set(s, {
@@ -77,7 +79,7 @@ export class LiveObEngine {
       st.buffer.push(rec);
       if (st.buffer.length > this.o.bufferMax) st.buffer.shift();
       st.stats.signals++;
-      this._onSignal?.(sym, rec); // hook for logging + outcome scheduling (a later task)
+      this._onSignal(sym, rec); // logs the signal + schedules its forward-outcome write
     }
     st.prevMid = feat.futures.mid;
     return rec;
@@ -117,8 +119,12 @@ export class LiveObEngine {
     const id = this.schedule(() => {
       const feat = this.feed.getFeatures(sym);
       const exitMid = feat && feat.futures ? feat.futures.mid : null;
+      const idx = st._outcomeTimers.indexOf(id);
+      if (idx !== -1) st._outcomeTimers.splice(idx, 1); // prune fired timer — bounded array over long runs
       if (exitMid == null) return; // unresolved — leave it out
-      const out = outcomeRecord({ t: rec.t, sym, side: rec.side, entryMid, exitMid, horizonMs: this.o.horizonMs, costBps: this.o.costBps });
+      // Stamp the outcome at horizon-close time (signal t + horizon): deterministic, keeps the
+      // signal+outcome pair in the same daily file, resolution time recoverable.
+      const out = outcomeRecord({ t: rec.t + this.o.horizonMs, sym, side: rec.side, entryMid, exitMid, horizonMs: this.o.horizonMs, costBps: this.o.costBps });
       this._appendSignals(out);
       st.stats.resolved++;
       if (out.win) st.stats.wins++;
@@ -142,6 +148,7 @@ export class LiveObEngine {
   }
 
   start() {
+    if (this._tickTimer) return; // already running — never double-wire timers
     this.feed.start?.();
     for (const s of this.symbols) this._refreshCandles(s);
     this._tickTimer = setInterval(() => { for (const s of this.symbols) this._evaluate(s); }, this.o.tickMs);
@@ -153,7 +160,11 @@ export class LiveObEngine {
     if (this._tickTimer) clearInterval(this._tickTimer);
     if (this._recordTimer) clearInterval(this._recordTimer);
     if (this._candleTimer) clearInterval(this._candleTimer);
-    for (const st of this.state.values()) for (const id of st._outcomeTimers || []) clearTimeout(id);
+    this._tickTimer = this._recordTimer = this._candleTimer = null; // allow a clean restart
+    for (const st of this.state.values()) {
+      for (const id of st._outcomeTimers) clearTimeout(id);
+      st._outcomeTimers = [];
+    }
     this.feed.stop?.();
     if (this.recorder) this.recorder.close();
   }

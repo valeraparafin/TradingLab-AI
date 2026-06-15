@@ -34,4 +34,6 @@ setInterval(() => {
   }
 }, 30_000);
 
-process.on('SIGINT', () => { engine.stop(); console.log('\n[ob-engine] stopped.'); process.exit(0); });
+const shutdown = () => { engine.stop(); console.log('\n[ob-engine] stopped.'); process.exit(0); };
+process.on('SIGINT', shutdown);   // Ctrl-C
+process.on('SIGTERM', shutdown);  // graceful kill (systemd/docker) — flush recorder fds
