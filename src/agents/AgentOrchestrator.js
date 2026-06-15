@@ -4,6 +4,8 @@ import { toolRegistry } from '../registry/ToolRegistry.js';
 import { TradeExecutor } from './TradeExecutor.js';
 import { RiskPolicy } from './RiskPolicy.js';
 import { deriveRiskState } from './riskState.js';
+import { checkExits } from './PositionLedger.js';
+import { aiStrategyService } from '../server/services/aiStrategyService.js';
 
 /**
  * AgentOrchestrator manages the loop: Analyst (qualitative proposal) ->
@@ -92,11 +94,16 @@ export default class AgentOrchestrator {
           const r = await this.tradeExecutor.executeTrade(tradeParams);
           this.broadcastThought({ agent: 'orchestrator',
             thought: `OB trade ${r.success ? 'Executed' : 'Failed'} (${order.side} ${symbol})` });
+          if (r.success) await this._openPosition(symbol, order, r.executedPrice ?? order.entryPrice);
         } catch (e) {
           console.error(`[OB] execute ${symbol}: ${e.message}`);
         }
       }
     }
+    // Monitor open positions for SL/TP breach (structural exits).
+    const mids = {};
+    for (const symbol of this.symbolsToWatch) mids[symbol] = await this._midFor(symbol);
+    await this._sweepExits(mids);
   }
 
   /**
@@ -111,6 +118,13 @@ export default class AgentOrchestrator {
     if (this.isObMode) {
       await this._recordTelemetry(portfolioState, this._lastObProposal);
       return;
+    }
+
+    // Candle path also monitors open positions each cycle.
+    {
+      const mids = {};
+      for (const symbol of this.symbolsToWatch) mids[symbol] = await this._getCurrentPrice(symbol);
+      await this._sweepExits(mids);
     }
 
     let lastProposal = null;
@@ -157,6 +171,7 @@ export default class AgentOrchestrator {
         const executionResult = await this.tradeExecutor.executeTrade(tradeParams);
         this.broadcastThought({ agent: 'orchestrator',
           thought: `Trade ${executionResult.success ? 'Executed' : 'Failed'} (${order.side} ${symbol})` });
+        if (executionResult.success) await this._openPosition(symbol, order, executionResult.executedPrice ?? order.entryPrice);
       } catch (error) {
         console.error(`Error in cycle for ${symbol}:`, error);
       }
@@ -216,6 +231,70 @@ export default class AgentOrchestrator {
       consensus: conviction,
       lenses: [lens('Macro', 0.3), lens('Quant', 0.4), lens('Order Flow', 0.3)],
     };
+  }
+
+  /**
+   * Records an opened position from an executed order. One position per
+   * (agent, symbol) — the service's INSERT OR IGNORE is the lock. `executedPrice`
+   * is the fill price returned by the executor (includes paper slippage).
+   */
+  async _openPosition(symbol, order, executedPrice) {
+    if (!(executedPrice > 0) || !(order.sizeUSD > 0)) return;
+    const qty = order.sizeUSD / executedPrice;
+    if (!isFinite(qty) || qty <= 0) {
+      this.broadcastThought({ agent: 'orchestrator', thought: `skip open ${symbol}: bad qty` });
+      return;
+    }
+    const { opened } = await aiStrategyService.openPosition(this.agentId, {
+      symbol, side: order.side, entryPrice: executedPrice, qty,
+      slPrice: order.slPrice, tpPrice: order.tpPrice,
+    });
+    if (opened) {
+      this.io.emit('position:opened', {
+        agentId: this.agentId, symbol, side: order.side,
+        entryPrice: executedPrice, qty, slPrice: order.slPrice, tpPrice: order.tpPrice,
+      });
+    }
+  }
+
+  /**
+   * Closes any open positions whose mid breached SL/TP. `midBySymbol` is supplied
+   * by the caller (OB: engine futures mid; candle: latest close). Records each
+   * close in ai_closed_trades ONLY (never ai_paper_trades — keeps tradesToday=opens).
+   * Record-then-delete order means a crash leaves the position open, never double-closed.
+   */
+  async _sweepExits(midBySymbol) {
+    let positions;
+    try { positions = await aiStrategyService.listOpenPositions(this.agentId); }
+    catch (e) { console.error(`[Positions] list: ${e.message}`); return; }
+    if (!positions.length) return;
+    const { closed } = checkExits(positions, midBySymbol);
+    for (const c of closed) {
+      try {
+        await aiStrategyService.recordClosedTrade({
+          strategy_id: this.agentId, symbol: c.symbol, side: c.side,
+          entry_price: c.entryPrice, exit_price: c.exitPrice, qty: c.qty,
+          size_usd: c.qty * c.entryPrice, pnl_usd: c.pnlUsd, exit_reason: c.exitReason,
+          opened_at: c.openedAt, closed_at: new Date().toISOString(),
+        });
+        await aiStrategyService.closePosition(this.agentId, c.symbol);
+        this.io.emit('position:closed', {
+          agentId: this.agentId, symbol: c.symbol, side: c.side,
+          exitPrice: c.exitPrice, pnlUsd: c.pnlUsd, exitReason: c.exitReason,
+        });
+        this.broadcastThought({ agent: 'orchestrator',
+          thought: `Closed ${c.side} ${c.symbol} @ ${c.exitPrice} (${c.exitReason}) PnL ${c.pnlUsd.toFixed(2)}` });
+      } catch (e) { console.error(`[Positions] close ${c.symbol}: ${e.message}`); }
+    }
+  }
+
+  /** Current mid for exit checks: OB engine futures mid, else latest candle close. */
+  async _midFor(symbol) {
+    if (this.isObMode) {
+      const m = this.obEngine.getLatestFeatures?.(symbol)?.futures?.mid;
+      if (typeof m === 'number' && isFinite(m) && m > 0) return m;
+    }
+    return await this._getCurrentPrice(symbol);
   }
 
   /**

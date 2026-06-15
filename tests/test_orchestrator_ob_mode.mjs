@@ -53,4 +53,47 @@ assert.equal(analystCalled, false); ok('runCycle bypasses candle analyst in OB m
 o.stop();
 assert.equal(engine.stopped, true); ok('stop() stops the engine');
 
+// ─── Position lifecycle (Task 4) ───
+{
+  const opened = [];
+  const closed = [];
+  const svc = await import('../src/server/services/aiStrategyService.js');
+  const orig = { ...svc.aiStrategyService };
+  svc.aiStrategyService.openPosition = async (aid, pos) => { opened.push(pos); return { opened: true }; };
+  svc.aiStrategyService.listOpenPositions = async () => opened.map((o) => ({ ...o }));
+  svc.aiStrategyService.recordClosedTrade = async (t) => { closed.push(t); };
+  svc.aiStrategyService.closePosition = async () => { opened.length = 0; return { changes: 1 }; };
+
+  let mid = 100;
+  const fakeEngine2 = {
+    start() {}, stop() {},
+    drainSignals: (() => { let fired = false; return () => { if (fired) return []; fired = true;
+      return [{ side: 'BUY', conviction: 0.7, entryMid: 100, invalidation: 99, rationale: 'ob' }]; }; })(),
+    getLatestFeatures: () => ({ futures: { mid } }),
+  };
+  const io2 = { emit() {} };
+  const { default: AgentOrchestrator } = await import('../src/agents/AgentOrchestrator.js');
+  const o2 = new AgentOrchestrator(io2, {
+    agentId: 990002,
+    execution: { agentId: 990002, symbols: ['BTCUSDT'], tradeMode: 'spot', paperTrading: true },
+    guardrails: { stopMode: 'structural', structuralRR: 2, minRiskRewardRatio: 0, portfolioValue: 500, riskPerTrade: 0.01, maxTradeSizeUSD: 1000, leverage: 1 },
+    obEngine: fakeEngine2, obConfig: { drainIntervalMs: 10000 },
+  });
+  o2.isRunning = true;
+  o2._getPortfolioState = async () => ({ openPositions: 0, portfolioHeatPct: 0, dailyPnlPct: 0, tradesToday: 0 });
+  o2.tradeExecutor = { executeTrade: async (t) => ({ success: true, mode: 'PAPER', executedPrice: t.price, data: {} }) };
+
+  await o2._obDrainTick();
+  assert.equal(opened.length, 1); ok('drain opens one position');
+  assert.equal(opened[0].side, 'BUY'); ok('opened side BUY');
+
+  mid = 102;
+  await o2._sweepExits({ BTCUSDT: mid });
+  assert.equal(closed.length, 1); ok('sweep closes at TP');
+  assert.equal(closed[0].exit_reason, 'TP'); ok('exit reason TP');
+  assert.ok(closed[0].pnl_usd > 0); ok('pnl positive at TP');
+
+  Object.assign(svc.aiStrategyService, orig);
+}
+
 console.log(`\n${p} checks passed`);
