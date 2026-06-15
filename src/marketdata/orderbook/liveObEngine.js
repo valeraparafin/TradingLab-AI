@@ -1,7 +1,9 @@
 // src/marketdata/orderbook/liveObEngine.js
+import fs from 'node:fs';
+import path from 'node:path';
 import { breakoutSignal } from './breakoutSignal.js';
 import { withOrderBookGate } from './obGate.js';
-import { signalRecord } from './obSignalLog.js';
+import { signalRecord, outcomeRecord } from './obSignalLog.js';
 import { Recorder } from './Recorder.js';
 
 const DEF = {
@@ -10,6 +12,7 @@ const DEF = {
   maxSpreadBps: 8, horizonMs: 60_000, costBps: 5,
   tickMs: 1000, recordIntervalMs: 1000, candleRefreshMs: 30_000,
   lookback: 20, bufferMax: 50, record: true, recorderRoot: 'data/orderbook',
+  signalsRoot: 'data/orderbook/signals',
 };
 
 /**
@@ -18,16 +21,18 @@ const DEF = {
  * prevMid, a ring buffer of recent PERMITted signals (for Layer 2's drain), and stats.
  */
 export class LiveObEngine {
-  constructor({ feed, candlesProvider, symbols, opts = {} }) {
+  constructor({ feed, candlesProvider, symbols, opts = {}, schedule } = {}) {
     this.feed = feed;
     this.candlesProvider = candlesProvider;
     this.symbols = symbols;
     this.o = { ...DEF, ...opts };
+    this.schedule = schedule || ((cb, ms) => setTimeout(cb, ms));
     this.state = new Map(); // sym -> { level, prevMid, candles, buffer, lastTradeT, stats }
     for (const s of symbols) {
       this.state.set(s, {
         level: null, prevMid: null, candles: [], buffer: [], lastTradeT: 0,
         stats: { ticks: 0, signals: 0, resolved: 0, wins: 0, netBpsSum: 0 },
+        _outcomeTimers: [],
       });
     }
     // decide+gate pair mirrors replaySignals: candles define the level, the book confirms.
@@ -95,6 +100,29 @@ export class LiveObEngine {
         st.lastTradeT = tr.t;
       }
     }
+  }
+
+  _appendSignals(line) {
+    const day = new Date(line.t).toISOString().slice(0, 10);
+    fs.mkdirSync(this.o.signalsRoot, { recursive: true });
+    fs.appendFileSync(path.join(this.o.signalsRoot, `${day}.jsonl`), JSON.stringify(line) + '\n');
+  }
+
+  _onSignal(sym, rec) {
+    this._appendSignals(rec);
+    const st = this.state.get(sym);
+    const entryMid = rec.entryMid;
+    const id = this.schedule(() => {
+      const feat = this.feed.getFeatures(sym);
+      const exitMid = feat && feat.futures ? feat.futures.mid : null;
+      if (exitMid == null) return; // unresolved — leave it out
+      const out = outcomeRecord({ t: rec.t, sym, side: rec.side, entryMid, exitMid, horizonMs: this.o.horizonMs, costBps: this.o.costBps });
+      this._appendSignals(out);
+      st.stats.resolved++;
+      if (out.win) st.stats.wins++;
+      st.stats.netBpsSum += out.netBps;
+    }, this.o.horizonMs);
+    st._outcomeTimers.push(id);
   }
 
   stop() {
