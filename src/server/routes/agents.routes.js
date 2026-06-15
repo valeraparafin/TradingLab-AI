@@ -2,6 +2,7 @@
 import { Router } from 'express';
 import { getDB } from '../../../db.js';
 import { aiStrategyService } from '../services/aiStrategyService.js';
+import { toolRegistry } from '../../registry/ToolRegistry.js';
 
 export function createAgentsRouter(manager) {
   const r = Router();
@@ -182,6 +183,33 @@ export function createAgentsRouter(manager) {
       res.json({ success: true, data: { snapshots } });
     } catch (err) {
       console.error(`[Agent Equity Error] ${err.message}`);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  r.get('/:id/positions', async (req, res) => {
+    try {
+      const agentId = Number(req.params.id);
+      // Server-side mid + unrealized PnL (math stays on the server).
+      const priceFn = async (symbol) => {
+        const out = await toolRegistry.executeTool('get_candles', { symbol, interval: '1m', limit: 1 });
+        return out.success && out.data.length ? out.data[0].close : 0;
+      };
+      const positions = await aiStrategyService.getOpenPositionsEnriched(agentId, priceFn);
+      res.json({ success: true, data: { positions } });
+    } catch (err) {
+      console.error(`[AI Positions Error] ${err.message}`);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  r.get('/:id/closed-trades', async (req, res) => {
+    try {
+      const limit = Math.min(Number(req.query.limit) || 100, 500);
+      const trades = await aiStrategyService.listClosedTrades(Number(req.params.id), limit);
+      res.json({ success: true, data: { trades } });
+    } catch (err) {
+      console.error(`[AI Closed Trades Error] ${err.message}`);
       res.status(500).json({ success: false, error: err.message });
     }
   });
