@@ -112,6 +112,17 @@ export class OrderBookFeed {
     });
   }
 
+  /** Near-mid raw books + recent tape for one symbol (for the thinned recorder). null if unknown. */
+  getRawBooks(futuresSymbol) {
+    const entry = this.books.get(futuresSymbol);
+    if (!entry) return null;
+    return {
+      fut: entry.fut ? entry.fut.snapshotBook() : null,
+      spot: entry.spot ? entry.spot.snapshotBook() : null,
+      trades: entry.trades,
+    };
+  }
+
   stop() {
     this.stopped = true;
     for (const entry of this.books.values()) for (const c of entry.clients) c.close();
