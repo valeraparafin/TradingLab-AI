@@ -7,6 +7,7 @@ import { resolveConfig } from "./src/config_resolver.js";
 import { riskProfileToGuardrails } from "./src/agents/riskProfileToGuardrails.js";
 import { IndicatorManager } from "./src/indicators/index.js";
 import { resolveEntrySide } from "./src/manual/resolveEntrySide.js";
+import { resolveSignalExit, signalStateSide } from "./src/manual/resolveSignalExit.js";
 import { SafetyValidator } from "./src/validators/index.js";
 import { BitGetService } from "./src/services/exchange/bitget.js";
 import { PrecisionManager } from "./src/utils/precision.js";
@@ -296,6 +297,23 @@ async function run(inputStrategyId) {
               let exitType = "";
               let exitPrice = price;
 
+              const exitMode = strategyConfig.logic?.exit_mode || strategyConfig.exit_mode || "sl_tp";
+              if (exitMode === "signal") {
+                const exitLogicType = strategyConfig.logic?.type || null;
+                if (exitLogicType) {
+                  const sigData = await indicatorManager.calculate(exitLogicType, candles, {});
+                  const sigExit = resolveSignalExit({
+                    exitMode,
+                    positionSide: activePosition.side,
+                    strategyData: sigData,
+                  });
+                  if (sigExit.exit) {
+                    exitTriggered = true;
+                    exitType = "Signal Flip";
+                  }
+                }
+              }
+
               if (activePosition.side === "BUY") {
                 if (
                   activePosition.stop_loss &&
@@ -483,6 +501,18 @@ async function run(inputStrategyId) {
                 }
 
                 side = entry.side;
+
+                const entryExitMode = strategyConfig.logic?.exit_mode || strategyConfig.exit_mode || "sl_tp";
+                if (entryExitMode === "signal") {
+                  const stateSide = signalStateSide(strategyData);
+                  if (stateSide === "HOLD") {
+                    const skipMsg = `⏭️  No entry for ${symbol}: RangeFilter state neutral`;
+                    console.log(skipMsg);
+                    await logEventSimple(strategyId, "CHECK", skipMsg);
+                    continue;
+                  }
+                  side = stateSide;
+                }
               }
 
               // 2. Run Safety Checks using Modular Validator
