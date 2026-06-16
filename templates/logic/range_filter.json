@@ -1,0 +1,13 @@
+{
+  "name": "Range Filter (VMC Swing)",
+  "type": "RangeFilter",
+  "exit_mode": "signal",
+  "indicators": {
+    "source": "close",
+    "period": 20,
+    "multiplier": 3.5
+  },
+  "safety_checks": [
+    { "id": "rf_trend_align", "description": "Filter direction must match the trade side" }
+  ]
+}

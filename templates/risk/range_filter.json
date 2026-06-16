@@ -1,0 +1,16 @@
+{
+  "id": "range_filter",
+  "name": "Range Filter Risk",
+  "settings": {
+    "riskPerTradePercent": 1,
+    "portfolioValue": 1000,
+    "maxTradeSizeUSD": 100,
+    "stopLossPercent": 8,
+    "takeProfitPercent": 60,
+    "maxTradesPerDay": 20,
+    "maxOpenPositions": 3,
+    "maxPortfolioHeatPercent": 5,
+    "dailyLossLimitPercent": 2,
+    "dailyProfitTargetPercent": 5
+  }
+}
