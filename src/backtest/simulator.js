@@ -7,6 +7,9 @@ import { IndicatorManager } from '../indicators/index.js';
 import { Technicals } from '../indicators/technical.js';
 import { RiskPolicy } from '../agents/RiskPolicy.js';
 import { resolveSignalExit, signalStateSide } from '../manual/resolveSignalExit.js';
+import { aggregateHTF } from '../core/aggregateHTF.js';
+import { classifyHTFTrend } from '../core/classifyHTFTrend.js';
+import { bucketOf } from './htfGate.js';
 
 /**
  * Pure walk-forward backtest. Spot (leverage = 1) is byte-identical to Phase 3.
@@ -242,6 +245,16 @@ export function simulate(p, decide = evaluateBar) {
           const adxSeries = Technicals.adx(aw, p.regimeGate.adxPeriod || 14);
           const adx = adxSeries.length ? adxSeries[adxSeries.length - 1] : null;
           regimeOk = adx != null && adx >= p.regimeGate.adxMin;
+        }
+        // HTF trend gate (opt-in via p.htfGate, stackable with the ADX gate): deny an entry
+        // whose side runs AGAINST the higher-timeframe emaBand trend; with-trend and neutral
+        // pass. Same emaBand semantics as src/backtest/htfGate.js, computed on the same
+        // decision window (closed-only HTF aggregation, no look-ahead).
+        if (stateSide !== 'HOLD' && regimeOk && p.htfGate) {
+          const hw = candles.slice(Math.max(0, i - lookback + 1), i + 1);
+          const verdict = classifyHTFTrend(aggregateHTF(hw, p.htfGate.ratio),
+            { emaPeriod: p.htfGate.emaPeriod, band: p.htfGate.band }).emaBand;
+          if (bucketOf(stateSide, verdict) === 'against') regimeOk = false;
         }
         if (stateSide !== 'HOLD' && regimeOk) {
           const price = bar.close;

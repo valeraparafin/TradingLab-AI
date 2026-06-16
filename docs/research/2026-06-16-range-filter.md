@@ -127,6 +127,44 @@ It is suitable as an entry **filter/component** for RangeFilter signal mode — 
 printer. At PF ~1.04 on 15m it is thin enough to be sensitive to the cost model; the 1H/ADX≥30 cell
 (PF 1.19 OOS) is the more comfortable operating point.
 
+### Stacking the HTF trend gate (does direction-alignment add to the ADX regime gate?)
+
+The simulator also supports an opt-in HTF emaBand gate on signal entries (`simulate({ htfGate: {ratio,
+emaPeriod, band} })`, same against-trend-denied semantics as
+[src/backtest/htfGate.js](../../src/backtest/htfGate.js); tested in
+[tests/test_simulator_htf_gate.js](../../tests/test_simulator_htf_gate.js)). Compared four stacks on
+the train/test split via [backtest/stack-filters.js](../../backtest/stack-filters.js) (htf ratio 4,
+emaPeriod 50, band 0.005):
+
+**1H — 6 symbols** (adx≥30):
+
+| filter | TRAIN net/PF/%pos | TEST net/PF/%pos |
+|--------|-------------------|------------------|
+| none | +8.80 / 1.15 / 83% | +0.31 / 1.04 / 67% |
+| **adx≥30** | +9.36 / 1.24 / 83% | **+2.00 / 1.19 / 67%** |
+| htf only | +7.89 / 1.12 / 67% | −0.89 / 0.95 / 33% |
+| adx+htf | +7.93 / 1.23 / 67% | +0.60 / 1.02 / 67% |
+
+**15m — 36 symbols** (adx≥40):
+
+| filter | TRAIN net/PF/%pos | TEST net/PF/%pos |
+|--------|-------------------|------------------|
+| none | −2.49 / 0.94 / 39% | +3.00 / 0.93 / 47% |
+| **adx≥40** | +2.37 / 1.04 / 53% | +3.53 / 1.04 / 56% |
+| htf only | −0.69 / 0.99 / 44% | +2.90 / 0.91 / 47% |
+| adx+htf | +2.62 / 1.07 / 61% | +3.34 / 1.06 / 53% |
+
+**The HTF direction gate is the wrong filter for this strategy — ADX alone wins:**
+- **HTF-only hurts.** It is PF<1 out-of-sample on both timeframes (1H 0.95, 15m 0.91), worse than even
+  the ungated baseline. It blocks exactly the counter-trend flips (longs as a downtrend exhausts) that
+  become the strategy's biggest winners on the reversal.
+- **Stacking HTF onto ADX does not reliably help.** On 1H it drags the ADX edge down (test PF 1.19→1.02);
+  on 15m it is a wash (1.04→1.06, within noise, and %-positive/net are mixed). No consistent additive
+  benefit across timeframes.
+- **Trend *strength* (ADX), not trend *direction* (HTF), is what isolates the edge.** ADX keeps the
+  high-conviction moves regardless of higher-timeframe direction; the directional gate throws away the
+  reversal-catching half of the signal. **Recommended config stays ADX-only (1H / ADX≥30).**
+
 ## What the backtest engine actually honors re: `exit_mode`
 
 > **Superseded by the 2026-06-16 update.** The three bullets below described the state *before*
