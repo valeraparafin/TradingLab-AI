@@ -41,8 +41,14 @@ graphify-out/
 docs/superpowers
 graphify-out
 
-# Backtest reports
+# Backtest reports & generated run artifacts
 backtest/reports/
+backtest/*-out.txt
+backtest/*-universe.json
+
+# Throwaway scratch scripts
+scratch-*.mjs
+scratch-*.js
 
 # Order book recordings
 data/orderbook/
