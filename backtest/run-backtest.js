@@ -1,4 +1,5 @@
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { openMarketDb } from '../src/data/marketDataSchema.js';
 import { MarketDataRepo } from '../src/data/MarketDataRepo.js';
@@ -54,10 +55,40 @@ export function buildCosts(args, spec = null) {
  * empty object is returned when no indicator flag is present. All values coerced to Number.
  */
 export function buildLogicConfig(args) {
-  const KEYS = ['emaBias', 'slopeLen', 'adxPeriod', 'adxMin', 'emaFast', 'rsiPeriod', 'rsiPullback', 'htfRatio', 'entryLookback'];
+  const KEYS = ['emaBias', 'slopeLen', 'adxPeriod', 'adxMin', 'emaFast', 'rsiPeriod', 'rsiPullback', 'htfRatio', 'entryLookback',
+    // RangeFilter (VMC Swing) params — let CLI vary them like TradingView's indicator settings.
+    'period', 'multiplier'];
   const indicators = {};
   for (const k of KEYS) if (args[k] != null) indicators[k] = Number(args[k]);
+  // `source` is a string (close|hl2|hlc3|ohlc4|...), not numeric.
+  if (args.source != null) indicators.source = String(args.source);
   return Object.keys(indicators).length ? { indicators } : {};
+}
+
+/**
+ * Resolve the exit mode for a logic type. An explicit `--exitMode` flag wins; otherwise the
+ * logic template (templates/logic/*.json) whose `type` matches `logicType` supplies its
+ * `exit_mode`. Falls back to 'sl_tp' (the simulator's default fixed SL/TP behavior).
+ * @param {string} logicType e.g. 'RangeFilter'
+ * @param {object} args parsed CLI args
+ * @param {string} [dir] logic template directory (default templates/logic under cwd)
+ * @returns {string} 'signal' | 'sl_tp' | ...
+ */
+export function resolveExitMode(logicType, args, dir = path.join(process.cwd(), 'templates', 'logic')) {
+  if (args && args.exitMode != null) return String(args.exitMode);
+  try {
+    const want = String(logicType || '').toUpperCase();
+    for (const file of fs.readdirSync(dir)) {
+      if (!file.endsWith('.json')) continue;
+      const tpl = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
+      if (tpl && String(tpl.type || '').toUpperCase() === want) {
+        return tpl.exit_mode || 'sl_tp';
+      }
+    }
+  } catch {
+    // No template dir / unreadable template → fall back to fixed SL/TP.
+  }
+  return 'sl_tp';
 }
 
 /** Parse an ISO date arg to epoch ms; returns `fallback` if absent, throws on a bad value. */
@@ -93,7 +124,7 @@ export async function runOne(btRepo, p) {
   const config = { logicType: p.logicType, logic: p.logicConfig || {} };
   // p.decide is optional; passing undefined uses simulate's default (evaluateBar).
   const sim = simulate(
-    { candles: p.candles, config, guardrails: p.guardrails, costs: p.costs, symbol: p.symbol, timeframe: p.tf, lookback: p.lookback, startEquity: p.guardrails.portfolioValue, funding, exitPolicy: p.exitPolicy },
+    { candles: p.candles, config, guardrails: p.guardrails, costs: p.costs, symbol: p.symbol, timeframe: p.tf, lookback: p.lookback, startEquity: p.guardrails.portfolioValue, funding, exitPolicy: p.exitPolicy, regimeGate: p.regimeGate },
     p.decide,
   );
   const metrics = computeMetrics({ trades: sim.trades, equityCurve: sim.equityCurve, startEquity: p.guardrails.portfolioValue, slippageCost: sim.slippageCost, timeframe: p.tf, totalFunding: sim.totalFunding, liquidationCount: sim.liquidationCount });
@@ -181,7 +212,20 @@ async function main() {
     if (args.breakevenR != null) exitPolicy.breakevenR = Number(args.breakevenR);
     if (args.channelExit != null) exitPolicy.channelExit = Number(args.channelExit);
   }
+  // ADX regime gate (opt-in via --adxGate): in signal mode, only enter when ADX on the
+  // decision window clears the threshold — prunes low-ADX whipsaw flips. Optional --adxPeriod (14).
+  let regimeGate;
+  if (args.adxGate != null) {
+    regimeGate = { adxMin: Number(args.adxGate), adxPeriod: args.adxPeriod != null ? Number(args.adxPeriod) : 14 };
+    console.log(`[backtest] regime gate ON: ADX(${regimeGate.adxPeriod}) >= ${regimeGate.adxMin}`);
+  }
+
   const logicConfig = buildLogicConfig(args);
+  // Thread the logic template's exit_mode (or --exitMode) into config.logic so the simulator
+  // can honor signal-driven (stop-and-reverse) exits, not just fixed SL/TP.
+  const exitMode = resolveExitMode(logicType, args);
+  logicConfig.exit_mode = exitMode;
+  if (exitMode === 'signal') console.log(`[backtest] exit_mode=signal (stop-and-reverse; TP ignored, SL = protective floor)`);
 
   const btDb = await openBacktestDb(path.join(process.cwd(), 'backtest.db'));
   const btRepo = new BacktestRepo(btDb);
@@ -189,7 +233,7 @@ async function main() {
     label, logicType, symbol, tf, lookback, leverage,
     candles, spec, realRows, guardrails, costs,
     fundingMode, fundingRate: fundingRateArg, group: args.group ?? null,
-    decide, exitPolicy, logicConfig,
+    decide, exitPolicy, regimeGate, logicConfig,
   });
   await btDb.close();
 

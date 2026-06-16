@@ -10,20 +10,92 @@
 ## TL;DR
 
 The RangeFilter logic type is correctly wired into the backtest pipeline (`--logic RangeFilter`
-dispatches, generates signals, and trades). On BTCUSDT it is roughly break-even-to-slightly-positive
-after costs: best observed was **+2.70% over ~2 years on 1H** (PF 1.09) — not a strong edge.
+dispatches, generates signals, and trades). On BTCUSDT the **fixed-TP** variant is roughly
+break-even-to-slightly-positive after costs: best observed was **+2.70% over ~2 years on 1H**
+(PF 1.09) — not a strong edge.
 
-**Critical scope caveat:** the backtest **does not exercise the signal-exit (stop-and-reverse)
-behavior** that the strategy ships with (`exit_mode: "signal"`). The pure backtest pipeline closes
-positions only on fixed SL/TP (and optional breakeven/channel/time exit policies). The
-"no profit cap on trends" hypothesis therefore **could not be validated here** — it lives only in the
-live engine (`bot_engine.js`, Task 7) and needs a follow-up to wire `exit_mode` into the backtest shell.
+**UPDATE 2026-06-16 (signal-exit wired into the backtest shell):** `exit_mode` is now threaded
+from the logic template through `run-backtest.js` → `simulate` → `src/backtest/simulator.js`, which
+has a stop-and-reverse branch mirroring the live engine (`resolveSignalExit`/`signalStateSide`):
+close on opposite state flip, no take-profit, SL as a protective floor, re-enter on the current
+state. **The "no profit cap on trends" hypothesis is now testable — and it does NOT hold on BTC.**
+Stop-and-reverse performs strictly *worse* than the fixed-TP baseline on both 1H (−10.93% vs +2.70%)
+and 4H (−2.75% vs +1.51%): the always-in-market reversal bleeds through whipsaw, and the fixed TP
+was actually *helping* by banking winners before mean-reversion. See "Signal-exit runs" below.
+
+**UPDATE 2026-06-16 (ADX regime gate — the whipsaw *was* the problem, and it's filterable):**
+The signal-exit refutation above used `multiplier 3.5` (the TradingView default, a known dead zone)
+and *no entry filter*. Re-running at `multiplier 5` with an **ADX entry gate** (only enter when ADX
+on the decision window clears a threshold) flips the conclusion: the RangeFilter signal edge is a
+**trend-regime phenomenon**. Gating out low-ADX (chop) flips converts a break-even/negative
+stop-and-reverse into a modestly positive one. On **36 symbols / 15m** the gate lifts avg return
+from +0.4% (no gate) to **+5.9% at ADX≥40**, median PF 0.96→1.05, halves drawdown (19%→10%), and
+raises the share of profitable symbols 47%→64% — over a 6–13k-trade pool (the small-sample worry is
+resolved). On **6 symbols / 1H** the gate lifts PF 1.11→**1.25** and profitable-symbol share 67%→83%
+at ADX≥30. The optimal threshold is timeframe-dependent (lower TF ⇒ higher ADX bar). See "ADX regime
+gate" below. **This is the first standalone after-cost edge found for RangeFilter signal mode** — still
+modest (PF ~1.05–1.3) and in-sample on one 2024–2026 window, but robust across a plateau of thresholds
+and the whole symbol universe.
 
 ---
 
+## ADX regime gate (2026-06-16 update — the trend-regime filter)
+
+Hypothesis: RangeFilter flips cluster in two regimes — whipsaw chop (low ADX, negative expectancy
+after costs) and genuine trends (high ADX, where the uncapped winner lives). An ADX entry gate should
+prune the chop and keep the trend. Implemented as `simulate({ regimeGate: { adxMin, adxPeriod } })`
+(opt-in; in signal mode only, an entry is admitted only when `Technicals.adx` on the same decision
+window the indicator state used clears `adxMin`). CLI: `--adxGate <n> [--adxPeriod 14]`. Tested in
+[tests/test_simulator_regime_gate.js](../../tests/test_simulator_regime_gate.js). Sweeps run via
+[backtest/sweep-adx-gate.js](../../backtest/sweep-adx-gate.js) (in-process; signal mode, multiplier 5,
+period 20, sl 0.08, default costs taker 0.06% / slippage 5bps).
+
+**15m — all 36 symbols** (large pool; the small-sample concern):
+
+| adxMin | symbols | avg net% | median PF | win% | avg DD% | trades | % positive |
+|--------|---------|----------|-----------|------|---------|--------|------------|
+| 0 (none) | 36 | +0.36 | 0.96 | 33.8 | 19.2 | 23344 | 47% |
+| 20 | 36 | −0.45 | 0.94 | 33.5 | 19.0 | 22726 | 39% |
+| 25 | 36 | +1.17 | 0.93 | 32.6 | 17.8 | 20613 | 42% |
+| 30 | 36 | +3.04 | 0.99 | 32.3 | 15.3 | 16949 | 53% |
+| 35 | 36 | +4.20 | 1.02 | 32.4 | 12.8 | 12835 | 58% |
+| **40** | 36 | **+5.86** | 1.05 | 34.2 | 9.6 | 9113 | 64% |
+| 45 | 36 | +4.76 | 1.08 | 33.9 | 8.5 | 6147 | 67% |
+| 50 | 36 | +2.11 | 1.04 | 32.3 | 7.5 | 3926 | 58% |
+
+**1H — 6 symbols** (where a fixed-TP edge already existed):
+
+| adxMin | symbols | avg net% | median PF | win% | avg DD% | trades | % positive |
+|--------|---------|----------|-----------|------|---------|--------|------------|
+| 0 (none) | 6 | +9.32 | 1.11 | 37.3 | 11.0 | 1403 | 67% |
+| 25 | 6 | +10.79 | 1.12 | 36.5 | 9.9 | 1251 | 67% |
+| **30** | 6 | **+11.09** | 1.25 | 37.3 | 8.4 | 1044 | 83% |
+| 40 | 6 | +4.83 | 1.19 | 35.4 | 8.4 | 616 | 83% |
+| 50 | 6 | +4.53 | 1.30 | 36.7 | 6.7 | 260 | 67% |
+
+**Reading:**
+- **Monotonic, plateau-shaped, not a spike.** On 15m, net% rises smoothly 20→40 then decays
+  (over-filtering past the peak starves trade count); PF and %-positive keep climbing monotonically
+  through 45. The whole 35–45 band is consistently positive — a robust plateau, which de-risks the
+  parameter-overfit worry.
+- **Win rate barely moves (~33%).** The gain is entirely in cutting loser frequency/size: drawdown
+  roughly halves and PF crosses 1.0. Consistent with a trend follower that takes many small losses
+  and a few large wins — the gate removes the small losses born in chop.
+- **Optimal threshold is timeframe-dependent** (15m→40, 1H→30): lower timeframes carry more noise, so
+  they need a higher ADX bar to isolate a real trend.
+- **The dip at adxMin=20** (below the no-gate row) shows a *weak* gate slightly hurts — it trims a few
+  decent trades without removing enough chop. The signal is real only at strong thresholds (≥30).
+
 ## What the backtest engine actually honors re: `exit_mode`
 
-Verified by reading the code, not assumed:
+> **Superseded by the 2026-06-16 update.** The three bullets below described the state *before*
+> `exit_mode` was wired into the backtest shell. They are kept for context. As of the update:
+> `run-backtest.js` resolves `exit_mode` from the matching logic template (`resolveExitMode`, or a
+> `--exitMode` override) and threads it via `config.logic.exit_mode`; `simulator.js` recomputes the
+> indicator's persistent state per bar and, in signal mode, closes on an opposite flip, suppresses
+> TP, keeps SL as a protective floor, and re-enters on the current state (stop-and-reverse).
+
+Verified by reading the code, not assumed (pre-update state):
 
 - **`src/core/pipeline.js` `evaluateBar`** is a pure per-bar decision function:
   candles → `IndicatorManager.calculate` → `deriveSignal` → `RiskPolicy.evaluate`. It produces an
@@ -78,6 +150,48 @@ node backtest/run-backtest.js --symbol BTCUSDT --tf 1H --logic RangeFilter `
 
 ---
 
+## Signal-exit runs (2026-06-16 update — stop-and-reverse, no profit cap)
+
+Same account/cost setup (BTCUSDT, equity $200, riskPerTrade 0.10, spot, default costs, indicator
+defaults period 20 / multiplier 3.5). Signal-exit runs use `exit_mode=signal` (resolved from
+`templates/logic/range_filter.json`) with `--sl 0.08` as the protective floor and **no TP**. The
+fixed-TP controls (runs 7–8) re-run the prior `sl_tp` cells under the new code — they reproduce
+runs 2–3 **exactly**, confirming the `sl_tp` path is byte-identical (no regression).
+
+| # | run id | mode | tf | SL | TP | Trades (W/L) | Win% | PF | Net PnL | Net % | MaxDD | Sharpe |
+|---|--------|------|----|----|----|--------------|------|----|---------|-------|-------|--------|
+| 4 | 583 | **signal** | 1H | 0.08 | — | 415 (140/275) | 33.7% | 0.79 | -21.86 | **-10.93%** | 15.20% | -1.14 |
+| 5 | 584 | **signal** | 4H | 0.08 | — | 103 (40/63) | 38.8% | 0.82 | -5.49 | **-2.75%** | 9.52% | -0.29 |
+| 7 | 585 | sl_tp | 1H | 0.03 | 0.06 | 139 (52/87) | 37.4% | 1.09 | +5.40 | **+2.70%** | 4.74% | 0.41 |
+| 8 | 586 | sl_tp | 4H | 0.03 | 0.06 | 32 (13/19) | 40.6% | 1.25 | +3.02 | **+1.51%** | 1.78% | 0.46 |
+
+Commands:
+
+```powershell
+# Signal-exit (stop-and-reverse, no TP). exit_mode resolved from the logic template.
+node backtest/run-backtest.js --symbol BTCUSDT --tf 1H --logic RangeFilter `
+  --equity 200 --riskPerTrade 0.10 --sl 0.08 --group rf_signal_exit
+node backtest/run-backtest.js --symbol BTCUSDT --tf 4H --logic RangeFilter `
+  --equity 200 --riskPerTrade 0.10 --sl 0.08 --group rf_signal_exit
+
+# Fixed-TP control under the new code (forces sl_tp via --exitMode; reproduces runs 2-3 exactly).
+node backtest/run-backtest.js --symbol BTCUSDT --tf 1H --logic RangeFilter `
+  --equity 200 --riskPerTrade 0.10 --sl 0.03 --tp 0.06 --exitMode sl_tp --group rf_control
+node backtest/run-backtest.js --symbol BTCUSDT --tf 4H --logic RangeFilter `
+  --equity 200 --riskPerTrade 0.10 --sl 0.03 --tp 0.06 --exitMode sl_tp --group rf_control
+```
+
+**Signal-exit vs fixed-TP (apples-to-apples, same symbol/tf):**
+
+| tf | signal Net% / PF / MaxDD | fixed-TP Net% / PF / MaxDD | winner |
+|----|--------------------------|----------------------------|--------|
+| 1H | -10.93% / 0.79 / 15.2% | +2.70% / 1.09 / 4.7% | **fixed-TP** |
+| 4H | -2.75% / 0.82 / 9.5% | +1.51% / 1.25 / 1.8% | **fixed-TP** |
+
+The signal-exit count (~415 on 1H) matches the ~416 RangeFilter state flips over the window — i.e.
+the strategy is essentially always in the market, reversing on every flip. That is exactly the
+behavior the live engine ships with, now faithfully reproduced offline.
+
 ## Reading the results
 
 - **No strong after-cost edge on BTC.** PF ranges 0.96–1.25; net return is between -0.4% and +2.7%
@@ -91,20 +205,33 @@ node backtest/run-backtest.js --symbol BTCUSDT --tf 1H --logic RangeFilter `
 
 ## Verdict
 
-**Inconclusive for the strategy as designed.** The RangeFilter indicator + flip-entry mechanics are
-wired correctly and trade as expected, but every result above is a **fixed SL/TP** variant. The
-core hypothesis the strategy was built around — stop-and-reverse with no profit cap letting trends run
-— is **not represented** in any of these numbers. On the fixed-TP variants the edge is marginal
-(PF ≤ 1.25, best net +2.70% / 2yr on BTC), i.e. not compelling on its own.
+> **Amended by the ADX-regime-gate update (see top of doc).** The refutation below stands *only* for
+> the naive configuration it tested: `multiplier 3.5` (dead zone), no entry filter, BTC only. With
+> `multiplier 5` **plus an ADX regime gate**, signal mode has a real (if modest) after-cost edge
+> across 36 symbols — the whipsaw the verdict blames is filterable, not fatal. Read the two together.
+
+**The "no profit cap on trends" hypothesis is refuted on BTC.** With `exit_mode` now wired into the
+backtest shell, the stop-and-reverse signal-exit can be tested directly — and it loses to the
+fixed-TP baseline on both timeframes (1H: −10.93% vs +2.70%; 4H: −2.75% vs +1.51%), with PF < 1 and
+roughly 3× the drawdown. Intuition for *why*: BTC on these TFs mean-reverts often enough that letting
+every trade run until the opposite flip gives back the open profit, while the fixed TP banks it. The
+RangeFilter flips ~416 times over the window, so signal mode is almost always in the market and pays
+the whipsaw in full. The indicator + flip mechanics are sound; the *exit policy* is the problem.
+
+Neither variant shows a compelling standalone edge on BTC (best is the fixed-TP 4H cell at PF 1.25 /
++1.51% over ~2 years). RangeFilter is, at best, a marginal trend filter here — not a strategy on its
+own.
 
 ## Next steps
 
-1. **(Primary follow-up) Wire `exit_mode` into the backtest shell** so the simulator can honor
-   signal-flip exits + state re-entry. This means threading the logic template's `exit_mode` through
-   `run-backtest.js` → `simulate`, and adding a stop-and-reverse exit branch (mirroring the live
-   `resolveSignalExit` / `signalStateSide` helpers) to `src/backtest/simulator.js`. Only then can the
-   "no profit cap on trends" thesis be validated offline.
-2. **Until then, the live engine (Task 7) is the only place the signal-exit behavior runs.** Validate
-   it via paper trading rather than relying on these backtest numbers.
-3. If a backtest-shell follow-up lands, re-run a matrix across trending symbols/TFs and compare
-   signal-exit vs the fixed-TP baselines recorded here (group `rf_validation`).
+1. **Don't ship signal-exit on BTC as-is.** If the live engine is to run `exit_mode: "signal"`, gate
+   it to genuinely trending regimes or pair it with a profit-lock (e.g. trailing/breakeven) rather
+   than pure stop-and-reverse. A hybrid — signal exit *plus* a trailing stop — is the obvious next
+   experiment now that the backtest can model exit policies.
+2. **Re-test on strongly trending instruments/regimes.** The hypothesis was about trends; BTC over
+   this window is too choppy to be a fair test. Run the signal-exit vs fixed-TP matrix on assets/TFs
+   with sustained directional moves before concluding the idea is dead everywhere.
+3. **Sweep the protective SL and indicator params.** All signal runs used `--sl 0.08` and defaults
+   (period 20 / multiplier 3.5). A higher multiplier (fewer, cleaner flips) may cut the whipsaw cost.
+4. Live paper-trading remains the ground truth for the engine path; these offline numbers now agree
+   with it on mechanics (always-in-market, ~flip-count trades).

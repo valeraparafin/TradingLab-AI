@@ -3,6 +3,10 @@ import { slip, checkExit } from './execution.js';
 import { breakevenStop, channelTrailStop } from './exitPolicy.js';
 import { liqPrice } from '../core/liquidation.js';
 import { fundingBetween } from './funding.js';
+import { IndicatorManager } from '../indicators/index.js';
+import { Technicals } from '../indicators/technical.js';
+import { RiskPolicy } from '../agents/RiskPolicy.js';
+import { resolveSignalExit, signalStateSide } from '../manual/resolveSignalExit.js';
 
 /**
  * Pure walk-forward backtest. Spot (leverage = 1) is byte-identical to Phase 3.
@@ -39,6 +43,20 @@ export function simulate(p, decide = evaluateBar) {
   const isFutures = leverage > 1;
   const funding = isFutures ? p.funding : null;
 
+  // Signal-driven exit (stop-and-reverse): the logic template's exit_mode. In this mode the
+  // simulator closes an open position when the indicator's persistent state flips against it,
+  // ignores take-profit, keeps the stop-loss as a protective floor, and re-enters on the
+  // current state — mirroring the live engine (bot_engine.js + src/manual/resolveSignalExit.js).
+  const exitMode = (config && (config.logic?.exit_mode || config.exit_mode)) || 'sl_tp';
+  const signalMode = exitMode === 'signal';
+  const indicatorManager = signalMode ? new IndicatorManager(config.logic || {}) : null;
+  // TP is suppressed in signal mode (no profit cap). Null takeProfitPct so RiskPolicy yields a
+  // null tpPrice, and zero the min-RR gate — signal mode has no fixed RR target, and a null TP
+  // does NOT disable the gate on its own (isFinite(null) === true coerces to 0 → rr 0 < min).
+  const signalRiskPolicy = signalMode
+    ? new RiskPolicy({ ...guardrails, takeProfitPct: null, minRiskRewardRatio: 0 })
+    : null;
+
   let equity = startEquity;
   let position = null;
   let pending = null;
@@ -59,6 +77,14 @@ export function simulate(p, decide = evaluateBar) {
 
   for (let i = start; i < n; i++) {
     const bar = candles[i];
+
+    // Signal mode: recompute the indicator's persistent state on the window up to close[i]
+    // (no look-ahead). Drives both the flip-exit and the state-based entry below.
+    let sigRaw = null;
+    if (signalMode) {
+      const w = candles.slice(Math.max(0, i - lookback + 1), i + 1);
+      sigRaw = indicatorManager.calculate(config.logicType, w);
+    }
 
     // 1) Fill a pending entry at THIS bar's open (next-bar-open execution).
     if (pending && !position) {
@@ -120,6 +146,32 @@ export function simulate(p, decide = evaluateBar) {
       }
     }
 
+    // 3a) Signal-flip exit (stop-and-reverse). After the protective SL ran intrabar above,
+    // close at THIS bar's close when the persistent state has flipped against the position.
+    // The reverse entry is set up by the state-based entry block below (fills next-bar open).
+    if (signalMode && position) {
+      const sx = resolveSignalExit({ exitMode, positionSide: position.side, strategyData: sigRaw });
+      if (sx.exit) {
+        const exitSide = position.side === 'BUY' ? 'SELL' : 'BUY';
+        const exitPrice = slip(bar.close, exitSide, slippageBps);
+        slippageCost += position.sizeUSD * Math.abs(exitPrice - bar.close) / bar.close;
+        const exitFee = position.sizeUSD * takerFee;
+        const ret = position.side === 'BUY'
+          ? (exitPrice - position.entryPrice) / position.entryPrice
+          : (position.entryPrice - exitPrice) / position.entryPrice;
+        const fees = position.entryFee + exitFee;
+        const pnl = position.sizeUSD * ret - fees - position.fundingAccrued;
+        equity += pnl;
+        totalFunding += position.fundingAccrued;
+        trades.push({
+          side: position.side, entryTime: position.entryTime, entryPrice: position.entryPrice,
+          exitTime: bar.time, exitPrice, sizeUSD: position.sizeUSD,
+          pnl, fees, funding: position.fundingAccrued, reason: 'SIGNAL_FLIP',
+        });
+        position = null;
+      }
+    }
+
     // 3b) Breakeven stop. Recomputes the stop AFTER this bar's exit check, so it only
     // affects subsequent bars (no intrabar ambiguity). One-shot, profit-only.
     if (position && p.exitPolicy && p.exitPolicy.breakevenR != null && !position.breakevenMoved) {
@@ -170,18 +222,48 @@ export function simulate(p, decide = evaluateBar) {
 
     // 4) If flat, decide for a next-bar entry (uses only data up to close[i]).
     if (!position && !pending && i + 1 < n) {
-      const window = candles.slice(Math.max(0, i - lookback + 1), i + 1);
-      const ctx = { candles: window, config, symbol, timeframe };
       // freeEquity is only passed for futures so RiskPolicy can check margin availability.
       // Spot path omits it so behaviour is byte-identical to Phase 3 (defaults to portfolioValue).
       const portfolio = { openPositions: 0, portfolioHeatPct: 0, dailyPnlPct: 0, tradesToday: 0 };
       if (isFutures) portfolio.freeEquity = equity;
       if (guardrails.sizingMode === 'compound') portfolio.equity = equity;
-      const account = { guardrails, portfolio };
-      const { decision } = decide(ctx, account);
-      if (decision && decision.decision === 'PERMIT' && decision.order) {
-        const o = decision.order;
-        pending = { side: o.side, slPrice: o.slPrice, tpPrice: o.tpPrice, sizeUSD: o.sizeUSD };
+
+      if (signalMode) {
+        // Entry side follows the persistent state (stop-and-reverse re-entry), not a fresh
+        // flip. Size + protective SL come from RiskPolicy; TP is suppressed.
+        const stateSide = signalStateSide(sigRaw);
+        // Regime gate (opt-in via p.regimeGate.adxMin): only admit an entry when ADX on the
+        // decision window clears the threshold. Whipsaw flips cluster in low-ADX chop; this
+        // prunes them. Computed on the same window the indicator state used (no look-ahead).
+        // Absent or adxMin<=0 => no gate, byte-identical to prior runs.
+        let regimeOk = true;
+        if (stateSide !== 'HOLD' && p.regimeGate && p.regimeGate.adxMin > 0) {
+          const aw = candles.slice(Math.max(0, i - lookback + 1), i + 1);
+          const adxSeries = Technicals.adx(aw, p.regimeGate.adxPeriod || 14);
+          const adx = adxSeries.length ? adxSeries[adxSeries.length - 1] : null;
+          regimeOk = adx != null && adx >= p.regimeGate.adxMin;
+        }
+        if (stateSide !== 'HOLD' && regimeOk) {
+          const price = bar.close;
+          const invalidation = stateSide === 'BUY' ? (sigRaw.loBand ?? null) : (sigRaw.hiBand ?? null);
+          const decision = signalRiskPolicy.evaluate(
+            { side: stateSide, conviction: 1, reason: 'RangeFilter state', invalidation },
+            { ...portfolio, entryPrice: price, invalidation, atr: null },
+          );
+          if (decision && decision.decision === 'PERMIT' && decision.order) {
+            const o = decision.order;
+            pending = { side: o.side, slPrice: o.slPrice, tpPrice: null, sizeUSD: o.sizeUSD };
+          }
+        }
+      } else {
+        const window = candles.slice(Math.max(0, i - lookback + 1), i + 1);
+        const ctx = { candles: window, config, symbol, timeframe };
+        const account = { guardrails, portfolio };
+        const { decision } = decide(ctx, account);
+        if (decision && decision.decision === 'PERMIT' && decision.order) {
+          const o = decision.order;
+          pending = { side: o.side, slPrice: o.slPrice, tpPrice: o.tpPrice, sizeUSD: o.sizeUSD };
+        }
       }
     }
 
