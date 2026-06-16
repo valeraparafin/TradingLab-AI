@@ -237,6 +237,27 @@ essentially every flip regardless of slope window (verified inert for slopeBars 
 distinguish a building trend from a fading one, and the few entries it does drop were net positive.
 The `adxRising` code was removed (no dead/harmful config option); only the ADX *level* gate is kept.
 
+### Reverse-confirmation delay (hypothesis #5 — REJECTED, inert)
+
+Idea: in stop-and-reverse, don't re-enter on the very bar the state flips — wait entryDelayBars for the
+new state to persist, filtering single-bar whipsaw. Tested `entryDelayBars` 0–5 over the tuned config
+(mult 5 + ADX gate), train/test:
+
+| delay | 1H test (PF / trades) | 15m test (PF / trades) |
+|-------|-----------------------|------------------------|
+| 0 | 1.19 / 407 | 1.04 / 3793 |
+| 1 | 1.19 / 407 | 1.04 / 3793 |
+| 3 | 1.19 / 402 | 1.04 / 3701 |
+| 5 | 1.13 / 395 | 1.04 / 3641 |
+
+**Rejected — inert on the tuned config.** Trade count barely moves (≤4% at delay 5) and test PF is flat
+(1H even degrades at delay 5). Reason is the same as #2: multiplier 5 already makes the persistent state
+*sticky* and the ADX gate already drops chop entries, so by the time a flip clears the gate it has
+substance — there is no single-bar whipsaw left for a confirmation delay to filter. A small train-only PF
+bump (15m 1.04→1.06) does not carry to test. Implementation removed. **Takeaway: whipsaw-targeting
+refinements (#2, #5) are redundant once multiplier and the ADX gate are in place — the lever is regime
+(ADX) and universe (volatility), not flip-timing.**
+
 ## What the backtest engine actually honors re: `exit_mode`
 
 > **Superseded by the 2026-06-16 update.** The three bullets below described the state *before*
