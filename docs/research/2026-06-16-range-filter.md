@@ -217,6 +217,26 @@ directly. **Volatility is the safer ex-ante selector:** it captures the same tre
 high-volatility *and* adequately liquid. **Refined recommendation: universe-gate by volatility with a
 liquidity floor** (exclude the truly illiquid to keep fills sane), not by liquidity directly.
 
+### ADX slope / rising-ADX gate (hypothesis #2 — REJECTED, mechanical)
+
+Idea: entering as a trend *builds* (ADX rising) should beat entering at a high-but-fading ADX. Tested
+a `regimeGate.adxRising` refinement (admit only when windowed ADX > ADX adxSlopeBars ago) on real 1H
+data over ADX≥30:
+
+| gate | median PF | trades |
+|------|-----------|--------|
+| level only (ADX≥30) | **1.25** | 1044 |
+| + rising (slope 3 bars) | 1.18 | 1007 |
+| + rising (slope 5) | 1.17 | 1011 |
+| + rising (slope 8) | 1.17 | 1003 |
+
+**Rejected — the gate is near-inert and slightly harmful.** It removes only ~3% of entries and PF
+*drops* 1.25→1.17. The mechanism fails structurally: in stop-and-reverse, every entry coincides with a
+sharp reversal candle, and that move builds the windowed ADX upward — so "ADX rising" is true at
+essentially every flip regardless of slope window (verified inert for slopeBars 3–12). It cannot
+distinguish a building trend from a fading one, and the few entries it does drop were net positive.
+The `adxRising` code was removed (no dead/harmful config option); only the ADX *level* gate is kept.
+
 ## What the backtest engine actually honors re: `exit_mode`
 
 > **Superseded by the 2026-06-16 update.** The three bullets below described the state *before*
