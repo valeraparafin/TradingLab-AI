@@ -14,6 +14,7 @@
  * @property {{logicType: string, logic?: object}} config
  * @property {string} symbol
  * @property {string} timeframe
+ * @property {Candle[]} [htfCandles] - optional higher-timeframe candles for HTF bias (caller-fetched)
  *
  * @typedef {Object} Signal
  * @property {'BUY'|'SELL'|'HOLD'} side

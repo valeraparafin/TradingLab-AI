@@ -419,14 +419,22 @@ async function run(inputStrategyId) {
                 if (logicType) {
                   const htfTf = strategyConfig.htf_timeframe || strategyConfig.htfTimeframe;
                   let htfCandles = null;
+                  let htfFetchFailed = false;
                   if (htfTf) {
                     try {
                       htfCandles = await marketDataService.fetchCandles(symbol, htfTf, 500);
                     } catch (error) {
+                      htfFetchFailed = true;
                       console.error(`[Engine] HTF fetch failed for ${symbol} (${htfTf}): ${error.message}`);
                     }
                   }
                   strategyData = await indicatorManager.calculate(logicType, candles, { htfCandles });
+                  // Fail-closed: an HTF timeframe was required but its data could not be
+                  // fetched — treat the bias as neutral (0) so htf_trend_filter stays
+                  // conservative rather than silently passing (N/A).
+                  if (htfTf && htfFetchFailed) {
+                    strategyData.htf_trend = 0;
+                  }
 
                   // ATR Calculation for dynamic stops if configured
                   if (strategyConfig.stop_mode === "atr") {
