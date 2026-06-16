@@ -86,6 +86,15 @@ function fromScalpBreakout(raw) {
   return { side, conviction: 0.6, reason: `ScalpBreakout ${side}`, invalidation: raw.invalidation ?? null };
 }
 
+/** RangeFilter: execute() resolved side from the fresh flip; conviction +0.1 on a fresh flip. */
+function fromRangeFilter(raw) {
+  const side = raw?.side ?? SIDE.HOLD;
+  if (side === SIDE.HOLD) return hold('RangeFilter: no flip / neutral');
+  const conviction = clamp(0.6 + (raw?.freshFlip ? 0.1 : 0), 0, 1);
+  const invalidation = side === SIDE.BUY ? (raw?.loBand ?? null) : (raw?.hiBand ?? null);
+  return { side, conviction, reason: `RangeFilter ${side}`, invalidation };
+}
+
 /**
  * Dispatch raw indicator output to the matching pure mapper.
  * @param {string} logicType @param {object} raw @param {{price:number, candles:object[]}} ctx
@@ -100,6 +109,7 @@ export function deriveSignal(logicType, raw, ctx) {
     case 'TRENDPULLBACK': return fromTrendPullback(raw);
     case 'DONCHIANTREND': return fromDonchianTrend(raw);
     case 'SCALPBREAKOUT': return fromScalpBreakout(raw);
+    case 'RANGEFILTER': return fromRangeFilter(raw);
     default: throw new Error(`Unsupported logicType: ${logicType}`);
   }
 }
