@@ -165,6 +165,58 @@ emaPeriod 50, band 0.005):
   high-conviction moves regardless of higher-timeframe direction; the directional gate throws away the
   reversal-catching half of the signal. **Recommended config stays ADX-only (1H / ADX≥30).**
 
+### Universe selection (hypothesis #3 — does the edge live in a selectable subset?)
+
+ADX-only (mult 5, 15m, 36 symbols), train/test split. For each symbol: train-measured liquidity
+(median daily quote volume) and volatility (median daily range), train PF, and test PF. Harness:
+[backtest/universe-select.js](../../backtest/universe-select.js). Correlations with **test** PF:
+
+| predictor (train-measured) | corr → test PF |
+|----------------------------|----------------|
+| train PF (edge persistence) | +0.32 |
+| liquidity | **−0.31** |
+| volatility | +0.25 |
+
+Bucketed test performance (split by train characteristic, ~18 symbols/bucket):
+
+| split by | high half (test) | low half (test) |
+|----------|------------------|-----------------|
+| liquidity | medPF 0.99 / +0.6% / 44% pos | **medPF 1.22 / +6.5% / 67% pos** |
+| volatility | **medPF 1.22 / +5.5% / 61% pos** | medPF 1.02 / +1.6% / 50% pos |
+| train PF | medPF 1.02 / +1.6% / 56% pos | medPF 1.14 / +5.4% / 56% pos |
+
+Selecting symbols by *train profitability* and measuring test:
+
+| selected on train | test result |
+|-------------------|-------------|
+| PF > 1 (n=19) | medPF 0.99 / +1.5% / 53% pos |
+| PF ≤ 1 (n=17) | medPF 1.18 / +5.8% / 59% pos |
+
+**Two findings:**
+- **Performance-chasing backfires.** Train PF predicts test PF only weakly (+0.32), and the
+  train-profitable bucket actually *underperforms* the train-losing bucket out-of-sample (test medPF
+  0.99 vs 1.18). Edge mean-reverts at the symbol level — picking last period's winners is worse than
+  useless here. No symbol allow-list based on past returns.
+- **A structural characteristic does separate the edge: it lives in the *less liquid, more volatile*
+  names, not the majors.** Low-liquidity half test medPF 1.22 / 67% positive vs high-liquidity 0.99 /
+  44%; high-volatility half 1.22 / 61% vs low 1.02. RangeFilter is a trend catcher, and smaller alts
+  trend more cleanly while majors mean-revert efficiently enough to erase the edge. A liquidity/vol
+  *band* filter is a viable ex-ante universe gate (lifts portfolio PF ~1.04 → ~1.22 on test).
+
+**Caveat that matters:** the edge concentrates exactly where execution is most expensive — in illiquid
+alts, real slippage far exceeds the 5 bps modeled, so the low-liquidity bucket's PF is *overstated*.
+
+**Slippage stress test (25 bps, 5× base):** the structural direction is *robust to costs and actually
+sharpens* — liquidity→testPF −0.31→−0.44, volatility→testPF +0.25→+0.39. Low-liquidity (medPF 1.04 vs
+high 0.73) and high-volatility (1.07 vs low 0.68) buckets still separate cleanly. **But the absolute
+edge is thin and cost-sensitive:** at 25 bps even the best bucket is only PF ~1.05 (near break-even),
+and the full universe goes negative. The liquidity vs volatility selectors pull in opposite execution
+directions — low-liquidity has the strongest edge but the worst fills, so it is a trap to trade
+directly. **Volatility is the safer ex-ante selector:** it captures the same trending-names edge
+(test PF 1.07 even at 25 bps) without selecting purely for bad execution, since a name can be
+high-volatility *and* adequately liquid. **Refined recommendation: universe-gate by volatility with a
+liquidity floor** (exclude the truly illiquid to keep fills sane), not by liquidity directly.
+
 ## What the backtest engine actually honors re: `exit_mode`
 
 > **Superseded by the 2026-06-16 update.** The three bullets below described the state *before*
