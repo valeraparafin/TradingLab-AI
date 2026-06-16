@@ -417,7 +417,16 @@ async function run(inputStrategyId) {
               let strategyData = {};
               let side = "BUY"; // Default side
                 if (logicType) {
-                  strategyData = await indicatorManager.calculate(logicType, candles, symbol, strategyConfig);
+                  const htfTf = strategyConfig.htf_timeframe || strategyConfig.htfTimeframe;
+                  let htfCandles = null;
+                  if (htfTf) {
+                    try {
+                      htfCandles = await marketDataService.fetchCandles(symbol, htfTf, 500);
+                    } catch (error) {
+                      console.error(`[Engine] HTF fetch failed for ${symbol} (${htfTf}): ${error.message}`);
+                    }
+                  }
+                  strategyData = await indicatorManager.calculate(logicType, candles, { htfCandles });
 
                   // ATR Calculation for dynamic stops if configured
                   if (strategyConfig.stop_mode === "atr") {

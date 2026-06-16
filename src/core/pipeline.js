@@ -13,7 +13,11 @@ import { Technicals } from '../indicators/technical.js';
  */
 export function evaluateBar(ctx, account) {
   const price = ctx.candles[ctx.candles.length - 1].close;
-  const raw = new IndicatorManager(ctx.config.logic || {}).calculate(ctx.config.logicType, ctx.candles);
+  const raw = new IndicatorManager(ctx.config.logic || {}).calculate(
+    ctx.config.logicType,
+    ctx.candles,
+    { htfCandles: ctx.htfCandles },
+  );
   const signal = deriveSignal(ctx.config.logicType, raw, { price, candles: ctx.candles });
   const g = account.guardrails || {};
   let atr = null;
