@@ -111,9 +111,22 @@ mechanism, no change to existing templates' behavior):
 ### Protective stop value for `range_filter` risk template
 - **Default:** wide fixed `stop_loss_percent: 8` — fires only on black-swan moves,
   not on normal trend noise, so the flip exit does the real work.
-- **Optional:** ATR stop via the engine's existing `stop_mode: "atr"` + `atr_period`
-  (e.g. `3 × ATR`). More adaptive across assets/TFs; available, not the default, to
-  keep the percent-based baseline uniform across all risk templates.
+- **Optional:** ATR stop via the engine's existing `stop_mode: "atr"` + `atr_period`.
+  More adaptive across assets/TFs; available, not the default, to keep the
+  percent-based baseline uniform across all risk templates.
+
+### ATR-stop behavior notes (important for signal mode)
+- The ATR stop is **fixed at entry**, not trailing: at entry the engine computes
+  `stopLoss = price ∓ currentATR × atr_multiplier` (`bot_engine.js:584-600`) and
+  stores it as an **absolute price** in `active_positions.stop_loss`. After entry
+  the level does not move; the exit block guards that fixed price for both sides.
+- ATR therefore only sets the stop **distance** at entry (adapting to the asset/TF
+  volatility), not its movement over the trade.
+- The engine's default `atr_multiplier` is `1.5`, which is **too tight** for a
+  trend-following catastrophe floor — it would be hit before the opposite flip
+  arrives. For `exit_mode: "signal"`, use a **wide** multiplier (recommend
+  `3–4 × ATR`) so the stop only catches sharp crashes, not normal trend pullbacks.
+- In signal mode `take_profit` is ignored, so the ATR `tp_multiplier` is unused.
 
 ## 6. Templates (data)
 
@@ -166,8 +179,11 @@ work, since we touch the same AI path.
 - Signal-exit: a focused test that, given a sequence producing BUY-flip then
   SELL-flip, the resolver closes the long and re-enters short.
 - Default execution stays **paper trading** (`paperTrading: true`) — no live orders.
-- Backtest sanity: run `range_filter` on a trending symbol/TF and confirm signal
-  exits ride trends longer than the sl_tp baseline.
+- **Backtests (required after implementation):** run `range_filter` via the
+  backtest runbook (`backtest/README.md`) on trending symbol(s)/TF(s) and confirm
+  signal-exit rides trends longer than the sl_tp baseline. Compare against a
+  fixed-TP control to validate the "no profit cap" hypothesis. Report PnL/maxDD/
+  trade count.
 
 ## 10. Out of scope
 
