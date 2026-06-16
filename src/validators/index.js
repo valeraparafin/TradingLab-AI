@@ -18,33 +18,37 @@ export class SafetyValidator {
       return { results, allPass: false, gci: 0 };
     }
 
+    // Keyed by snake_case check.id to match the safety-rules export names and the
+    // ids stored in strategyConfig.logic.safetyChecks. (Previously camelCase, which
+    // never matched check.id, so every check silently fell back to the 1.0 default.)
     const weights = {
       // Critical Rules
-      confirmationBreak: 2.0,
-      structureShift: 2.0,
-      trendFilter: 2.0,
-      htfTrendFilter: 2.0,
-      rfTrendAlign: 2.0,
-      confirmationChoch: 2.0,
-      obEntry: 2.0,
+      confirmation_break: 2.0,
+      structure_shift: 2.0,
+      trend_filter: 2.0,
+      htf_trend_filter: 2.0,
+      rf_trend_align: 2.0,
+      confirmation_choch: 2.0,
+      ob_entry: 2.0,
       // Support Rules
-      wtOversold: 0.5,
-      wtOverbought: 0.5,
-      mfiBullish: 0.5,
-      mfiBearish: 0.5,
-      stochRsiOversold: 0.5,
-      stcBullish: 0.5,
-      zoneFilter: 0.5,
-      unhealthyMove: 0.5,
-      momentumShift: 1.5,
+      wt_oversold: 0.5,
+      wt_overbought: 0.5,
+      mfi_bullish: 0.5,
+      mfi_bearish: 0.5,
+      stoch_rsi_oversold: 0.5,
+      stc_bullish: 0.5,
+      zone_filter: 0.5,
+      unhealthy_move: 0.5,
+      momentum_shift: 1.5,
     };
 
     let totalWeightedScore = 0;
     let totalWeight = 0;
 
     for (const check of safetyChecks) {
-      const ruleId = check.id === "momentum_shift" ? "momentum_shift" : (check.id === "htf_trend_filter" ? "htf_trend_filter" : (check.id === "confirmation_choch" ? "confirmation_choch" : check.id));
-      const validator = rules[ruleId];
+      // Validators in safety-rules.js are exported under the same snake_case ids
+      // stored in safetyChecks, so check.id keys both the validator and weight maps.
+      const validator = rules[check.id];
       if (validator) {
         const result = validator(price, open, strategyData, strategyConfig);
         results.push(result);
