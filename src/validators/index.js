@@ -24,6 +24,7 @@ export class SafetyValidator {
       structureShift: 2.0,
       trendFilter: 2.0,
       htfTrendFilter: 2.0,
+      rfTrendAlign: 2.0,
       confirmationChoch: 2.0,
       obEntry: 2.0,
       // Support Rules

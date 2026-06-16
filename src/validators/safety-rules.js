@@ -34,6 +34,19 @@ export const confirmation_choch = (price, open, data, config) => {
   };
 };
 
+export const rf_trend_align = (price, open, data, config) => {
+  const dir = data.dir ?? 0;
+  const state = data.state ?? 0;
+  const aligned = dir !== 0 && dir === state;
+  return {
+    label: "RF Trend Align",
+    required: "Filter direction matches trade side",
+    actual: dir === 1 ? "Filter up" : dir === -1 ? "Filter down" : "Filter flat",
+    pass: aligned,
+    score: aligned ? 1.0 : 0.0,
+  };
+};
+
 export const ob_entry = (price, open, data, config) => {
   const inOB = data.obs?.some(
     (ob) => price >= ob.range.bottom && price <= ob.range.top,
