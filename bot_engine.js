@@ -297,7 +297,7 @@ async function run(inputStrategyId) {
               let exitType = "";
               let exitPrice = price;
 
-              const exitMode = strategyConfig.logic?.exit_mode || strategyConfig.exit_mode || "sl_tp";
+              const exitMode = strategyConfig.logic?.exitMode || strategyConfig.logic?.exit_mode || strategyConfig.exitMode || strategyConfig.exit_mode || "sl_tp";
               if (exitMode === "signal") {
                 const exitLogicType = strategyConfig.logic?.type || null;
                 if (exitLogicType) {
@@ -322,6 +322,7 @@ async function run(inputStrategyId) {
                   exitTriggered = true;
                   exitType = "Stop Loss";
                 } else if (
+                  exitMode !== "signal" &&
                   activePosition.take_profit &&
                   price >= activePosition.take_profit
                 ) {
@@ -336,6 +337,7 @@ async function run(inputStrategyId) {
                   exitTriggered = true;
                   exitType = "Stop Loss";
                 } else if (
+                  exitMode !== "signal" &&
                   activePosition.take_profit &&
                   price <= activePosition.take_profit
                 ) {
@@ -502,7 +504,7 @@ async function run(inputStrategyId) {
 
                 side = entry.side;
 
-                const entryExitMode = strategyConfig.logic?.exit_mode || strategyConfig.exit_mode || "sl_tp";
+                const entryExitMode = strategyConfig.logic?.exitMode || strategyConfig.logic?.exit_mode || strategyConfig.exitMode || strategyConfig.exit_mode || "sl_tp";
                 if (entryExitMode === "signal") {
                   const stateSide = signalStateSide(strategyData);
                   if (stateSide === "HOLD") {
