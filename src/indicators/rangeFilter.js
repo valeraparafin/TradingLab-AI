@@ -13,6 +13,8 @@
 const HOLD = { side: 'HOLD', state: 0, dir: 0, freshFlip: false, filter: null, hiBand: null, loBand: null, price: null };
 
 // Pine-style EMA: seed with the first value, then recursive smoothing.
+// NOTE: seeds with values[0]; Pine ta.ema warms from na over `period` bars, so the
+// first ~2*period bars differ slightly from TradingView. Immaterial past warmup.
 function ema(values, period) {
   if (!values.length) return [];
   const k = 2 / (period + 1);

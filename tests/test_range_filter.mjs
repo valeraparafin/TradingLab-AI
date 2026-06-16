@@ -46,4 +46,16 @@ const bar = (c) => ({ time: 0, open: c, high: c + 0.5, low: c - 0.5, close: c, v
   ok('reads alt params/source without throwing');
 }
 
+// --- flip on the final bar → freshFlip true + directional side ---
+{
+  const candles = [];
+  for (let i = 0; i < 40; i++) candles.push(bar(100));      // flat warmup
+  for (let i = 1; i <= 30; i++) candles.push(bar(100 - i)); // down leg → short state (to 70)
+  for (let i = 1; i <= 3; i++) candles.push(bar(70 + i * 2)); // up leg; LAST bar is the BUY flip
+  const r = RangeFilter.execute(candles, { indicators: { period: 20, multiplier: 3.5 } });
+  assert.strictEqual(r.freshFlip, true, 'flip bar → freshFlip true');
+  assert.strictEqual(r.side, 'BUY', 'flip to long → side BUY');
+  ok('fresh BUY flip on final bar');
+}
+
 console.log(`\n${passed} passed`);
