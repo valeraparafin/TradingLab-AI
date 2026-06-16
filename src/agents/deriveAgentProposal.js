@@ -2,10 +2,10 @@
 import { IndicatorManager } from '../indicators/index.js';
 import { deriveSignal } from '../core/SignalAdapter.js';
 
-// The four logic types the shared core supports.
+// The logic types the shared core supports.
 // KEEP IN SYNC with the switch in src/indicators/index.js (IndicatorManager.calculate)
-// and src/core/SignalAdapter.js (deriveSignal). Adding a fifth type means updating all three.
-const CORE_LOGIC_TYPES = new Set(['SMC', 'BREAKOUT', 'VMC_CIPHERB', 'REVERSAL']);
+// and src/core/SignalAdapter.js (deriveSignal). Adding a new type means updating all three.
+const CORE_LOGIC_TYPES = new Set(['SMC', 'BREAKOUT', 'VMC_CIPHERB', 'REVERSAL', 'RANGEFILTER']);
 
 /**
  * First indicator name that maps to a core-supported logicType, else null.

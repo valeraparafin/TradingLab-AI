@@ -21,6 +21,8 @@ export function legacyManualSide(logicType, strategyData = {}, price) {
     side = strategyData.structure?.trend === 1
       ? 'BUY'
       : (strategyData.structure?.trend === -1 ? 'SELL' : 'BUY');
+  } else if (logicType === 'RangeFilter') {
+    side = strategyData.side === 'SELL' ? 'SELL' : 'BUY';
   }
   return side;
 }

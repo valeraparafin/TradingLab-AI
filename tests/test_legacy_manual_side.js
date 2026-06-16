@@ -21,6 +21,10 @@ assert.strictEqual(legacyManualSide('Breakout', { channel: { active: true, top: 
 assert.strictEqual(legacyManualSide('Breakout', { channel: { active: true, top: 110, bottom: 90 } }, 100), 'BUY'); ok('Breakout inside → BUY (legacy)');
 assert.strictEqual(legacyManualSide('Breakout', { channel: { active: false, top: 110, bottom: 90 } }, 120), 'BUY'); ok('Breakout inactive → BUY (legacy)');
 
+// RangeFilter: side comes straight from strategyData.side
+assert.strictEqual(legacyManualSide('RangeFilter', { side: 'SELL' }, 100), 'SELL', 'RangeFilter passes through SELL'); ok('RangeFilter side SELL → SELL');
+assert.strictEqual(legacyManualSide('RangeFilter', { side: 'HOLD' }, 100), 'BUY', 'RangeFilter HOLD → legacy default BUY'); ok('RangeFilter HOLD → BUY (legacy default)');
+
 // Other logic types have no legacy side branch → always BUY
 assert.strictEqual(legacyManualSide('VMC_CipherB', { wtCrossDown: true }, 100), 'BUY'); ok('VMC_CipherB → BUY (legacy, no branch)');
 assert.strictEqual(legacyManualSide('Reversal', { rejection: { type: 'bearish' } }, 100), 'BUY'); ok('Reversal → BUY (legacy, no branch)');
