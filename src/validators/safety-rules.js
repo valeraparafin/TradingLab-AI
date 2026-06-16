@@ -1,3 +1,39 @@
+export const htf_trend_filter = (price, open, data, config) => {
+  const ltfTrend = data.structure?.trend;
+  const htfTrend = data.htf_trend;
+
+  // Legacy support: if HTF trend is not calculated (not in config), we pass the check
+  if (htfTrend === undefined || htfTrend === null) {
+    return {
+      label: "HTF Trend Filter",
+      required: "N/A (Not configured)",
+      actual: "Disabled",
+      pass: true,
+      score: 1.0,
+    };
+  }
+
+  const match = ltfTrend === htfTrend;
+  return {
+    label: "HTF Trend Filter",
+    required: `Align with HTF (${htfTrend === 1 ? "Bullish" : htfTrend === -1 ? "Bearish" : "Neutral"})`,
+    actual: `LTF is ${ltfTrend === 1 ? "Bullish" : ltfTrend === -1 ? "Bearish" : "Neutral"}`,
+    pass: match,
+    score: match ? 1.0 : 0.0,
+  };
+};
+
+export const confirmation_choch = (price, open, data, config) => {
+  const confirmed = data.choch_confirmed;
+  return {
+    label: "Confirmation CHoCH",
+    required: "Structure Break in POI",
+    actual: confirmed ? "Confirmed" : "Waiting",
+    pass: !!confirmed,
+    score: confirmed ? 1.0 : 0.0,
+  };
+};
+
 export const ob_entry = (price, open, data, config) => {
   const inOB = data.obs?.some(
     (ob) => price >= ob.range.bottom && price <= ob.range.top,

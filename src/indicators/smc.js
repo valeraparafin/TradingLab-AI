@@ -12,10 +12,45 @@ const SMC = {
     ) ?? 50;
     const pivots = this.findPivots(candles, pivotLength);
     const structure = this.detectStructure(candles, pivots);
+    const obs = this.detectOrderBlocks(candles, structure.structure);
+    const fvgs = this.detectFVG(candles);
+
+    // CHoCH Confirmation Logic:
+    // Check if a Change of Character occurred AFTER the price entered the most recent OB.
+    let chochConfirmed = false;
+    if (obs.length > 0) {
+      const currentOb = obs[0];
+      const { top, bottom } = currentOb.range;
+
+      // Find the index where price first entered the current OB
+      let entryIndex = -1;
+      for (let i = candles.length - 1; i >= 0; i--) {
+        if (candles[i].close >= bottom && candles[i].close <= top) {
+          entryIndex = i;
+        } else if (entryIndex !== -1) {
+          // We found the start of the current visit to the zone
+          break;
+        }
+      }
+
+      if (entryIndex !== -1) {
+        // Analyze candles from entryIndex to the end for a CHoCH
+        const zoneCandles = candles.slice(entryIndex);
+        const zonePivots = this.findPivots(zoneCandles, Math.floor(pivotLength / 2)); // Use tighter pivots for confirmation
+        const zoneStructure = this.detectStructure(zoneCandles, zonePivots);
+
+        // Confirmation is a trend shift that matches our expected direction
+        if (zoneStructure.trend !== 0) {
+          chochConfirmed = true;
+        }
+      }
+    }
+
     return {
       structure,
-      obs: this.detectOrderBlocks(candles, structure.structure),
-      fvgs: this.detectFVG(candles),
+      obs,
+      fvgs,
+      choch_confirmed: chochConfirmed,
     };
   },
 

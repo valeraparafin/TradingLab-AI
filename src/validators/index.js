@@ -23,6 +23,8 @@ export class SafetyValidator {
       confirmationBreak: 2.0,
       structureShift: 2.0,
       trendFilter: 2.0,
+      htfTrendFilter: 2.0,
+      confirmationChoch: 2.0,
       obEntry: 2.0,
       // Support Rules
       wtOversold: 0.5,
@@ -40,7 +42,8 @@ export class SafetyValidator {
     let totalWeight = 0;
 
     for (const check of safetyChecks) {
-      const validator = rules[check.id === "momentum_shift" ? "momentum_shift" : check.id];
+      const ruleId = check.id === "momentum_shift" ? "momentum_shift" : (check.id === "htf_trend_filter" ? "htf_trend_filter" : (check.id === "confirmation_choch" ? "confirmation_choch" : check.id));
+      const validator = rules[ruleId];
       if (validator) {
         const result = validator(price, open, strategyData, strategyConfig);
         results.push(result);
