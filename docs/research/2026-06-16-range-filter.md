@@ -392,11 +392,40 @@ as an HTF reference for lower-TF gating). Net of H6+H9: the strategy's timeframe
 enough to filter chop, low enough for a statistically meaningful trade count; both coarser TFs (4H, 1D)
 fail OOS or lack edge, both finer TFs (15m, 5m) need the ADX gate to clear break-even.
 
+### Full 3D parameter grid + regression — multiplier × period × source (hypothesis #8)
+
+The live TradingView chart's Swing Source is **(H+L+C+C)/4 = hlcc4** (and Swing Multiplier 5), a detail
+the campaign missed — every prior run used `close`. Added `hlcc4` to the port (`rangeFilter.js`, TDD) and
+ran a full factorial grid `multiplier × period × source` with a train/test split, plus a main-effect
+(regression) decomposition (`backtest/sweep-rf-grid.js`; source-only sweep `sweep-rf-source.js`).
+
+**Main effects (avg TEST PF over all other params):**
+
+| param | 1H (6 sym, ADX≥30) | 15m (36 sym, ADX≥40) | reads |
+|-------|--------------------|----------------------|-------|
+| multiplier | 6 (1.127) > 5 (1.032) > 7 (1.018) | 7 (1.056) > 5 (1.026) ≈ 6 (1.024) | both peak **above 5** |
+| source | hlcc4 (1.029) > … > close (0.983) | **close (1.058)** > hlc3 > hlcc4 (1.029) | **sign flips by TF** |
+| period | 14 (1.023) > 20 > 27 > 34 | **27 (1.073)** > 20 > 14 (1.003) | **sign flips by TF** |
+
+**Top robustness cell** (`min(trainPF,testPF)`): 1H = mult 6 / period 20 / **hlcc4** (train 1.36, test 1.29,
+83% pos); 15m = mult 7 / period 27 / **close** (train 1.09, test 1.18). The two timeframes pick *different*
+sources and periods.
+
+**Verdict (#8):** the existing `5/20/close` config already ranks **3/36 on 15m and 8/168 on 1H** — it is
+near-optimal. Every cell that beats it does so by only ~0.03–0.10 PF, and the source/period optima
+**contradict each other across timeframes** (hlcc4 wins 1H, close wins 15m; period 14 wins 1H, 27 wins 15m),
+so those are TF-specific noise, not levers. The one consistent cross-TF signal is **multiplier 6–7 ≥ 5**
+(strongest on 1H). hlcc4 — the chart source — is **not** a robust improvement: its 1H lead does not
+replicate on the 36-symbol 15m pool. Net recommendation: keep `source close`, `period 20`; the multiplier
+default (currently a stale 3.5) belongs in the **5–7 band — use 6** as the cross-TF compromise. No
+parameter combination delivers a robust improvement beyond that.
+
 ## Campaign summary — what moves the RangeFilter signal edge, and what doesn't
 
 | lever | verdict | effect |
 |-------|---------|--------|
-| Multiplier (3.5→5) | **KEEP** | 3.5 is a dead zone; 5 is the sweet spot |
+| Multiplier (3.5→**6**) | **KEEP** | 3.5 is a dead zone; 3D grid main effect peaks at 6 (1H) / 7 (15m) — use 6, band 5–7 |
+| Source / period (#8) | reject | 3D grid: optima flip sign across TF (hlcc4↔close, 14↔27); keep close / 20; not robust levers |
 | ADX regime gate (level) | **KEEP** | the core lever; PF 0.93→1.19 OOS (1H ADX≥30) |
 | Universe = volatile names (#3) | **KEEP** | structural, OOS-robust; portfolio PF ~1.04→1.22 (vol selector, liquidity floor) |
 | Protective SL width (→12%) (#4) | **KEEP** | free; wider is better, stop is a drag |
