@@ -446,6 +446,40 @@ signal is **orthogonal** to what RangeFilter already encodes (momentum/direction
 liquidity, SMC order blocks — addresses the "sell fires into support" chart observation) and **volatility
 regime** — not more momentum indicators.
 
+### Universe independence — decorrelation analysis (Phase 1 of the math track)
+
+Every cross-symbol claim above ("N% of symbols positive") implicitly assumes the symbols are independent
+bets. Crypto alts mostly track BTC, so that assumption inflates confidence. Quantified on daily log
+returns (`backtest/universe-correlation.mjs`, 27/36 symbols with ≥300 daily returns, 319 common days):
+
+| metric | value |
+|--------|-------|
+| average pairwise correlation | 0.40 |
+| largest eigenvalue (market/BTC factor) | **49.6% of total variance** |
+| **effective independent bets** Neff = (Σλ)²/Σλ² | **≈ 3.8** (of 27) |
+| diversification ratio | 0.14 |
+
+**The 27–36 symbol universe is statistically ~3.8 independent bets.** A single market factor explains half
+the variance. So every prior "% positive across symbols" overstates its confidence — the real sample size
+is ~4, and confidence intervals are far wider than the trade counts implied. This does not refute the edge,
+but it right-sizes the certainty.
+
+**Does the edge survive on independent names?** Re-ran the operating gate (mult 6, 15m) on a greedy
+decorrelated basket of 14 (pairwise |corr| ≤ 0.6):
+
+| set | TEST PF / net / %pos (ADX≥40) |
+|-----|-------------------------------|
+| full 36 | 1.04 / +3.1% / 61% |
+| decorrelated 14 | **1.33 / +10.5% / 86%** (train PF 1.04) |
+
+The edge **strengthens** on decorrelated names — it is not an artifact of correlated duplication. Two
+caveats: (a) train PF is still ~1.04, so the test outperformance is partly the recent-regime tailwind seen
+throughout; (b) the decorrelated basket is dominated by low-cap, high-volatility names (SIREN, VELVET,
+ESPORTS, SKYAI, VVV, …) — the same names hypothesis #3 favored — which carry the **highest slippage risk**,
+making the deferred higher-cost stress test essential before trusting the +10%. Phases 2–3 (structural/SMC
+gate, then meta-labeling) should be evaluated on this decorrelated basket, not the full 36, and weighted by
+the ~3.8 effective N.
+
 ## Campaign summary — what moves the RangeFilter signal edge, and what doesn't
 
 | lever | verdict | effect |
