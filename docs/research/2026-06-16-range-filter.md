@@ -369,7 +369,25 @@ burn a third of the short history on warmup). The result confirms the pre-downlo
 **In-sample median PF is below 1.0 at every ADX level** — worse than 1H (1.11–1.26) and 4H. The OOS test
 PF>1 is the same later-window regime bounce seen on 15m/4H, but here on **~5–8 trades per symbol** it is
 noise. Daily bars are too coarse: the mult-5 filter flips rarely, so the sample is tiny and shows no
-after-cost edge. **Verdict: 1D is the weakest timeframe; reject.** The backfilled 1D data is kept (useful
+after-cost edge.
+
+**Full indicator matrix (`backtest/sweep-rf-matrix.js`, multiplier × period, ADX off, train/test).** Since
+a high multiplier flips rarely on 1D, the obvious counter is a *lower* multiplier to restore trade count.
+It does — mult 1.5 yields ~330 test trades/window vs ~165 at mult 5 — but it does **not** produce edge:
+
+| mult | period | TRAIN PF / trades | TEST PF / trades | read |
+|------|--------|-------------------|------------------|------|
+| 1.5 | 20 | 1.05 / 647 | 1.03 / 328 | consistent but **break-even** |
+| 1.5 | 27 | 1.02 / 678 | 1.05 / 350 | consistent but **break-even** (most trades) |
+| 3   | 27 | 0.79 / 424 | 1.27 / 209 | curve-fit (train fails) |
+| 5   | 20 | 0.81 / 286 | 1.27 / 165 | curve-fit (train fails) |
+
+The only cells consistent across train **and** test (mult 1.5, period 20/27) sit at PF ~1.0–1.05 — exactly
+break-even — while every high-test-PF cell has a sub-1.0 train PF (sign flips between windows = noise). **No
+(multiplier, period) pair shows train and test PF both > 1.1.** Lowering the multiplier removes the
+small-sample objection but the conclusion holds: 1D has no after-cost edge at any indicator setting.
+
+**Verdict: 1D is the weakest timeframe; reject.** The backfilled 1D data is kept (useful
 as an HTF reference for lower-TF gating). Net of H6+H9: the strategy's timeframe sweet spot is **1H** — high
 enough to filter chop, low enough for a statistically meaningful trade count; both coarser TFs (4H, 1D)
 fail OOS or lack edge, both finer TFs (15m, 5m) need the ADX gate to clear break-even.
