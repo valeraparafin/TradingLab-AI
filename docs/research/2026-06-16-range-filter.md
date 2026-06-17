@@ -354,6 +354,26 @@ genuinely promising new lever since ADX, but regime-conditional.** The gate code
 risk — opt-in). Carry volMult≈1.5 as an *optional 15m filter* into forward paper-trading and re-evaluate on
 live data; do **not** bake it in as a hard rule or apply it to 1H.
 
+### Daily timeframe — 1D (hypothesis #9 — REJECTED, no edge + too thin)
+
+1D was not in `market_data.db`; backfilled from Binance on 2026-06-17 (`download-data.js --tf 1D`, 20/36
+symbols available on Binance spot, ~709 bars each, 2024-06→2026-06). Ran with `--lookback 80` (250 would
+burn a third of the short history on warmup). The result confirms the pre-download caveat:
+
+| ADX | in-sample median PF | win% | %pos | trades | OOS test PF / trades |
+|-----|---------------------|------|------|--------|----------------------|
+| 0   | 0.86 | 26.6% | 50% | 533 | 1.27 / 165 |
+| 20  | 0.87 | 24.2% | 55% | 451 | 1.15 / 127 |
+| 30  | 0.92 | 28.7% | 55% | 277 | 1.27 /  93 |
+
+**In-sample median PF is below 1.0 at every ADX level** — worse than 1H (1.11–1.26) and 4H. The OOS test
+PF>1 is the same later-window regime bounce seen on 15m/4H, but here on **~5–8 trades per symbol** it is
+noise. Daily bars are too coarse: the mult-5 filter flips rarely, so the sample is tiny and shows no
+after-cost edge. **Verdict: 1D is the weakest timeframe; reject.** The backfilled 1D data is kept (useful
+as an HTF reference for lower-TF gating). Net of H6+H9: the strategy's timeframe sweet spot is **1H** — high
+enough to filter chop, low enough for a statistically meaningful trade count; both coarser TFs (4H, 1D)
+fail OOS or lack edge, both finer TFs (15m, 5m) need the ADX gate to clear break-even.
+
 ## Campaign summary — what moves the RangeFilter signal edge, and what doesn't
 
 | lever | verdict | effect |
@@ -368,7 +388,8 @@ live data; do **not** bake it in as a hard rule or apply it to 1H.
 | ATR-adaptive SL (#4) | reject | wrong direction (tighter = worse); SL is only ~4% of exits |
 | Partial / hybrid TP (#1) | reject | caps the fat-tail winner; no OOS risk-adjusted gain |
 | Volume-confirmation gate (#7) | **CONDITIONAL** | helps 15m recent-era test PF 1.04→~1.20 (robust to cut point); absent/reversed on 1H — optional 15m filter, forward-validate |
-| Higher TF — 4H (#6) | reject | in-sample mirage; ungated PF 0.63 OOS, only ADX≥40 survives on ~49 trades (1D not in DB) |
+| Higher TF — 4H (#6) | reject | in-sample mirage; ungated PF 0.63 OOS, only ADX≥40 survives on ~49 trades |
+| Daily TF — 1D (#9) | reject | backfilled 20 symbols; in-sample median PF <1 at every ADX; ~5–8 trades/symbol, too thin |
 
 **Operating config:** RangeFilter signal mode, **multiplier 5, ADX≥30 gate (1H) / ≥40 (15m), protective
 SL ~12% (catastrophe floor only), universe filtered to higher-volatility names with a liquidity floor.**
