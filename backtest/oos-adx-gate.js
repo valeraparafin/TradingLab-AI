@@ -22,6 +22,7 @@ const sl = Number(arg('sl', '0.08'));
 const lookback = Number(arg('lookback', '250'));
 const split = Number(arg('split', '0.6'));
 const thresholds = String(arg('thresholds', '0,30,40,45')).split(',').map(Number);
+const source = arg('source', 'close');
 const symbolsArg = arg('symbols', null);
 
 const guardrails = {
@@ -31,7 +32,7 @@ const guardrails = {
   maxPortfolioHeatPct: 100, leverage: 1,
 };
 const costs = { takerFee: 0.0006, makerFee: 0.0002, slippageBps: 5 };
-const config = { logicType: 'RangeFilter', logic: { exit_mode: 'signal', indicators: { period, multiplier: mult } } };
+const config = { logicType: 'RangeFilter', logic: { exit_mode: 'signal', indicators: { period, multiplier: mult, source } } };
 
 const median = (xs) => {
   if (!xs.length) return 0;

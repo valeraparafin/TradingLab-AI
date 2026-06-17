@@ -58,4 +58,23 @@ const bar = (c) => ({ time: 0, open: c, high: c + 0.5, low: c - 0.5, close: c, v
   ok('fresh BUY flip on final bar');
 }
 
+// --- hlcc4 source = (high+low+close+close)/4, distinct from close AND ohlc4 ---
+// This is the TradingView "(H+L+C+C)/4" Swing Source the live chart uses. Build candles
+// where open != close and the bar is asymmetric, so hlcc4, ohlc4 and close all differ.
+{
+  const candles = [];
+  for (let i = 0; i < 80; i++) {
+    const c = 100 + i * 0.5;            // gentle rise so the filter actually moves
+    candles.push({ time: i, open: c - 2, high: c + 3, low: c - 1, close: c, volume: 1 });
+  }
+  const run = (source) => RangeFilter.execute(candles, { indicators: { period: 20, multiplier: 3.5, source } });
+  const fClose = run('close').filter;
+  const fOhlc4 = run('ohlc4').filter;
+  const fHlcc4 = run('hlcc4').filter;
+
+  assert.notStrictEqual(fHlcc4, fClose, 'hlcc4 must not silently fall back to close');
+  assert.notStrictEqual(fHlcc4, fOhlc4, 'hlcc4 = (H+L+C+C)/4, distinct from ohlc4 = (O+H+L+C)/4');
+  ok('hlcc4 source resolves to (high+low+close+close)/4');
+}
+
 console.log(`\n${passed} passed`);

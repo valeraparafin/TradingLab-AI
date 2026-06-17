@@ -24,6 +24,7 @@ const split = Number(arg('split', '0.6'));
 const adxMin = Number(arg('adx', '0'));
 const mults = String(arg('mults', '2,2.5,3,3.5,4,5,6')).split(',').map(Number);
 const periods = String(arg('periods', '14,20,27')).split(',').map(Number);
+const source = arg('source', 'close');
 const symbolsArg = arg('symbols', null);
 
 const guardrails = {
@@ -44,7 +45,7 @@ const median = (xs) => {
 const avg = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
 
 function runSegment(segments, mult, period) {
-  const config = { logicType: 'RangeFilter', logic: { exit_mode: 'signal', indicators: { period, multiplier: mult } } };
+  const config = { logicType: 'RangeFilter', logic: { exit_mode: 'signal', indicators: { period, multiplier: mult, source } } };
   const nets = [], pfs = []; let totalTrades = 0, positive = 0, used = 0;
   for (const candles of segments) {
     if (candles.length < lookback + 2) continue;
@@ -76,7 +77,7 @@ function runSegment(segments, mult, period) {
     testSegs.push(candles.slice(cut));
   }
   await db.close();
-  console.log(`RF param matrix ${tf}: ${trainSegs.length} symbols, sl ${sl}, lookback ${lookback}, ADX${adxMin > 0 ? `>=${adxMin}` : '=off'}, split ${split}\n`);
+  console.log(`RF param matrix ${tf}: ${trainSegs.length} symbols, source ${source}, sl ${sl}, lookback ${lookback}, ADX${adxMin > 0 ? `>=${adxMin}` : '=off'}, split ${split}\n`);
   console.log('mult | per |        TRAIN net% / PF / %pos / trades        |        TEST net% / PF / %pos / trades');
   console.log('-----|-----|----------------------------------------------|--------------------------------------------');
   for (const mult of mults) {

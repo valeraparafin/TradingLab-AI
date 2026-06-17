@@ -31,6 +31,7 @@ function resolveSource(c, source) {
     case 'hl2': return (c.high + c.low) / 2;
     case 'hlc3': return (c.high + c.low + c.close) / 3;
     case 'ohlc4': return (c.open + c.high + c.low + c.close) / 4;
+    case 'hlcc4': return (c.high + c.low + c.close + c.close) / 4; // TradingView "(H+L+C+C)/4"
     case 'close':
     default: return c.close;
   }
