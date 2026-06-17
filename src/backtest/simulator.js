@@ -266,6 +266,17 @@ export function simulate(p, decide = evaluateBar) {
           const sma = vw.reduce((a, c) => a + (c.volume || 0), 0) / vw.length;
           regimeOk = sma > 0 && bar.volume >= p.volGate.mult * sma;
         }
+        // RSI confluence gate (opt-in via p.rsiGate, stackable): momentum confirmation — admit a
+        // long only when decision-window RSI >= longMin, a short only when RSI <= 100 - longMin.
+        // RSI on the decision-window closes (no look-ahead). Absent => byte-identical.
+        if (stateSide !== 'HOLD' && regimeOk && p.rsiGate && p.rsiGate.longMin > 0) {
+          const rw = candles.slice(Math.max(0, i - lookback + 1), i + 1).map((c) => c.close);
+          const rsiSeries = Technicals.rsi(rw, p.rsiGate.period || 14);
+          const rsi = rsiSeries.length ? rsiSeries[rsiSeries.length - 1] : null;
+          if (rsi == null) regimeOk = false;
+          else if (stateSide === 'BUY') regimeOk = rsi >= p.rsiGate.longMin;
+          else regimeOk = rsi <= 100 - p.rsiGate.longMin;
+        }
         if (stateSide !== 'HOLD' && regimeOk) {
           const price = bar.close;
           const invalidation = stateSide === 'BUY' ? (sigRaw.loBand ?? null) : (sigRaw.hiBand ?? null);

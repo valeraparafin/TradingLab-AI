@@ -420,12 +420,39 @@ replicate on the 36-symbol 15m pool. Net recommendation: keep `source close`, `p
 default (currently a stale 3.5) belongs in the **5–7 band — use 6** as the cross-TF compromise. No
 parameter combination delivers a robust improvement beyond that.
 
+### RSI momentum-confluence gate (hypothesis #10 — REJECTED, inert/collinear)
+
+Tests the "combine indicators for a better entry" thesis with the classic confluence indicator: a
+momentum-confirmation gate (`p.rsiGate = { period, longMin }`) admitting a long only when
+decision-window RSI ≥ longMin, short symmetric. Opt-in, byte-identical when unset, stackable on ADX.
+TDD: `tests/test_simulator_rsi_gate.js`. Sweep stacked on the operating ADX gate (`backtest/sweep-rsi-gate.js`):
+
+| TF | rsiMin | TEST PF / trades | vs baseline |
+|----|--------|------------------|-------------|
+| 1H (mult 6, ADX≥30) | 0 → 60 | 1.18 → 1.18 | flat; only 525→492 train trades pruned |
+| 15m (mult 6, ADX≥40) | 0 → 60 | 1.04 → 1.10 | train flat (1.06→1.07); ~5% pruned = regime whiff |
+
+**Verdict (#10): inert.** The gate prunes <6% of entries and barely moves PF — the same mechanical
+inertness as rising-ADX (#2) and reverse-delay (#5). Reason: a RangeFilter BUY flip *already* means
+price has turned up with momentum, so RSI is ≥50 at nearly every admitted entry. **A momentum oscillator
+is collinear with a momentum-based filter — they fire together, so confluence adds nothing.** The tiny
+15m test-only uptick at rsiMin 55–60 mirrors the volume-gate regime whiff, not an edge (train flat). Code
+kept (opt-in, zero-risk) as a building block.
+
+**General principle for confluence (the lesson of #2/#5/#10 vs ADX):** stacking helps only when the added
+signal is **orthogonal** to what RangeFilter already encodes (momentum/direction). Momentum oscillators
+(RSI/MACD/WT) are collinear → inert. The only filter that ever helped, ADX, measures the orthogonal axis
+(trend *strength*). The next promising axes are therefore **structure/levels** (support-resistance,
+liquidity, SMC order blocks — addresses the "sell fires into support" chart observation) and **volatility
+regime** — not more momentum indicators.
+
 ## Campaign summary — what moves the RangeFilter signal edge, and what doesn't
 
 | lever | verdict | effect |
 |-------|---------|--------|
 | Multiplier (3.5→**6**) | **KEEP** | 3.5 is a dead zone; 3D grid main effect peaks at 6 (1H) / 7 (15m) — use 6, band 5–7 |
 | Source / period (#8) | reject | 3D grid: optima flip sign across TF (hlcc4↔close, 14↔27); keep close / 20; not robust levers |
+| RSI momentum confluence (#10) | reject | inert — collinear with the momentum filter; prunes <6%, PF flat. Confluence needs ORTHOGONAL signal (structure/volatility), not momentum |
 | ADX regime gate (level) | **KEEP** | the core lever; PF 0.93→1.19 OOS (1H ADX≥30) |
 | Universe = volatile names (#3) | **KEEP** | structural, OOS-robust; portfolio PF ~1.04→1.22 (vol selector, liquidity floor) |
 | Protective SL width (→12%) (#4) | **KEEP** | free; wider is better, stop is a drag |
