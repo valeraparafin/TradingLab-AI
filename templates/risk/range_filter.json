@@ -7,6 +7,7 @@
     "maxTradeSizeUSD": 100,
     "stopLossPercent": 12,
     "takeProfitPercent": 60,
+    "minRiskRewardRatio": 1.5,
     "maxTradesPerDay": 20,
     "maxOpenPositions": 3,
     "maxPortfolioHeatPercent": 5,

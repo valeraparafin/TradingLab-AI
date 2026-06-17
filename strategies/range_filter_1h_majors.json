@@ -7,9 +7,8 @@
     "timeframe": "1H",
     "trade_mode": "spot",
     "paper_trading": 1,
-    "portfolio_value": 1000,
     "logicOverrides": { "indicators": { "source": "close", "period": 20, "multiplier": 6, "adxMin": 30, "adxPeriod": 14 } },
-    "riskOverrides": { "stopLossPercent": 12 }
+    "riskOverrides": { "stopLossPercent": 12, "portfolioValue": 1000 }
   },
   "_notes": "PRIMARY validated operating point. RangeFilter signal mode (stop-and-reverse), multiplier 6, ADX>=30 regime gate, wide 12% protective SL, no TP. OOS profit factor ~1.19 (train/test). Win rate ~33% — the edge is cutting chop losses, not a high hit rate; expect long flat stretches between trend captures. Run paper first."
 }

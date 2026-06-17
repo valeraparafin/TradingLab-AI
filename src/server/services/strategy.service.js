@@ -1,4 +1,4 @@
-import { getDB } from '../../../db.js';
+import { getDB, transaction } from '../../../db.js';
 import { templateService } from './template.service.js';
 import { botService } from './bot.service.js';
 import { toCamel, toSnake } from '../../../src/utils/casing.js';
@@ -17,37 +17,41 @@ class StrategyService {
     const finalConfig = await this.assembleStrategy(name, settings, logicTemplateId, riskTemplateId);
     console.log(`[StrategyService] FINAL CONFIG TO SAVE:`, JSON.stringify(finalConfig, null, 2));
 
-    const result = await db.run(
-      'INSERT INTO strategies (name, logic_config, status) VALUES (?, ?, ?)',
-      [finalConfig.name, JSON.stringify(toSnake(finalConfig)), 'stopped']
-    );
-    const strategyId = result.lastID;
-    // ... (rest of the code remains same)
-
-
     const riskData = toSnake(finalConfig.finalRiskSettings);
 
-    const riskValues = [
-      riskData.risk_per_trade_percent,
-      riskData.stop_loss_percent,
-      riskData.take_profit_percent,
-      riskData.min_risk_reward_ratio,
-      riskData.max_portfolio_heat_percent,
-      riskData.max_open_positions,
-      riskData.max_trades_per_day,
-      riskData.max_trade_size_usd,
-      riskData.daily_loss_limit_percent,
-      riskData.daily_profit_target_percent,
-      riskData.portfolio_value,
-      strategyId
-    ];
+    // Both inserts run in one transaction: if the risk-settings insert fails (e.g. a NOT NULL
+    // constraint), the strategies row is rolled back too, so no orphaned strategy is left behind.
+    const strategyId = await transaction('main', async (txDb) => {
+      const result = await txDb.run(
+        'INSERT INTO strategies (name, logic_config, status) VALUES (?, ?, ?)',
+        [finalConfig.name, JSON.stringify(toSnake(finalConfig)), 'stopped']
+      );
+      const id = result.lastID;
 
-    await db.run(`INSERT INTO strategy_risk_settings (
-      risk_per_trade_percent, stop_loss_percent, take_profit_percent,
-      min_risk_reward_ratio, max_portfolio_heat_percent, max_open_positions,
-      max_trades_per_day, max_trade_size_usd, daily_loss_limit_percent,
-      daily_profit_target_percent, portfolio_value, strategy_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, riskValues);
+      const riskValues = [
+        riskData.risk_per_trade_percent,
+        riskData.stop_loss_percent,
+        riskData.take_profit_percent,
+        riskData.min_risk_reward_ratio,
+        riskData.max_portfolio_heat_percent,
+        riskData.max_open_positions,
+        riskData.max_trades_per_day,
+        riskData.max_trade_size_usd,
+        riskData.daily_loss_limit_percent,
+        riskData.daily_profit_target_percent,
+        riskData.portfolio_value,
+        id
+      ];
+
+      await txDb.run(`INSERT INTO strategy_risk_settings (
+        risk_per_trade_percent, stop_loss_percent, take_profit_percent,
+        min_risk_reward_ratio, max_portfolio_heat_percent, max_open_positions,
+        max_trades_per_day, max_trade_size_usd, daily_loss_limit_percent,
+        daily_profit_target_percent, portfolio_value, strategy_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, riskValues);
+
+      return id;
+    });
 
     return { id: strategyId, name: finalConfig.name };
   }
