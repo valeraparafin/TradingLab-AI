@@ -28,6 +28,7 @@ export class SafetyValidator {
       trend_filter: 2.0,
       htf_trend_filter: 2.0,
       rf_trend_align: 2.0,
+      rf_regime_adx: 2.0,
       confirmation_choch: 2.0,
       ob_entry: 2.0,
       // Support Rules

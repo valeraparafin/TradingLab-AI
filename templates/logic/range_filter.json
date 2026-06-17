@@ -5,9 +5,12 @@
   "indicators": {
     "source": "close",
     "period": 20,
-    "multiplier": 6
+    "multiplier": 6,
+    "adx_min": 30,
+    "adx_period": 14
   },
   "safety_checks": [
-    { "id": "rf_trend_align", "description": "Filter direction must match the trade side" }
+    { "id": "rf_trend_align", "description": "Filter direction must match the trade side" },
+    { "id": "rf_regime_adx", "description": "ADX must clear adx_min (trend-strength gate — the proven core lever; 1H=30, 15m=40)" }
   ]
 }

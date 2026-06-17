@@ -77,4 +77,18 @@ const bar = (c) => ({ time: 0, open: c, high: c + 0.5, low: c - 0.5, close: c, v
   ok('hlcc4 source resolves to (high+low+close+close)/4');
 }
 
+// --- emits ADX on the decision bar so the live regime gate can read it ---
+{
+  const candles = [];
+  for (let i = 0; i < 60; i++) candles.push(bar(100));
+  for (let i = 1; i <= 40; i++) candles.push(bar(100 + i)); // strong trend → high ADX
+  const r = RangeFilter.execute(candles, { indicators: { period: 20, multiplier: 3.5 } });
+  assert.strictEqual(typeof r.adx, 'number', 'adx is a number on a long series');
+  assert.ok(r.adx > 0 && r.adx <= 100, `adx in (0,100], got ${r.adx}`);
+
+  const few = RangeFilter.execute([bar(100), bar(101)], { indicators: { period: 20, multiplier: 3.5 } });
+  assert.strictEqual(few.adx, null, 'too few candles → adx null (N/A, gate is fail-open at warmup)');
+  ok('execute emits adx (number when computable, null at warmup)');
+}
+
 console.log(`\n${passed} passed`);

@@ -1,0 +1,15 @@
+{
+  "name": "RangeFilter · 15m Liquid Alts · ADX40 (experimental)",
+  "logicTemplateId": "range_filter",
+  "riskTemplateId": "range_filter",
+  "settings": {
+    "watchlist": ["SOLUSDT", "XRPUSDT", "AVAXUSDT", "LINKUSDT", "SUIUSDT", "DOGEUSDT", "ADAUSDT", "NEARUSDT"],
+    "timeframe": "15m",
+    "trade_mode": "spot",
+    "paper_trading": 1,
+    "portfolio_value": 500,
+    "logicOverrides": { "indicators": { "source": "close", "period": 20, "multiplier": 6, "adxMin": 40, "adxPeriod": 14 } },
+    "riskOverrides": { "stopLossPercent": 12 }
+  },
+  "_notes": "EXPERIMENTAL / paper-only. 15m needs the higher ADX>=40 bar to clear break-even. The OOS edge here is REAL but FRAGILE to slippage: at ~20bps/side the train window turns negative because 15m turnover is high. Watchlist is deliberately LIQUID alts (deep books) — do NOT run this on thin low-cap names, where the backtest edge does not survive real fills. Keep on paper until forward slippage is measured."
+}

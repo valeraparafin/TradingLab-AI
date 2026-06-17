@@ -10,7 +10,9 @@
  *   freshFlip: boolean        — bar where state flips (= Pine BUY/SELL label)
  *   filter, hiBand, loBand, price
  */
-const HOLD = { side: 'HOLD', state: 0, dir: 0, freshFlip: false, filter: null, hiBand: null, loBand: null, price: null };
+import { Technicals } from './technical.js';
+
+const HOLD = { side: 'HOLD', state: 0, dir: 0, freshFlip: false, filter: null, hiBand: null, loBand: null, price: null, adx: null };
 
 // Pine-style EMA: seed with the first value, then recursive smoothing.
 // NOTE: seeds with values[0]; Pine ta.ema warms from na over `period` bars, so the
@@ -98,6 +100,12 @@ const RangeFilter = {
     const state = condIni;
     const side = freshFlip ? (state === 1 ? 'BUY' : state === -1 ? 'SELL' : 'HOLD') : 'HOLD';
 
+    // ADX on the decision bar so the live regime gate (rf_regime_adx) can prune low-ADX chop —
+    // the proven core lever. Null until there are enough candles to compute it (warmup).
+    const adxPeriod = pick('adxPeriod', 'adx_period', 14);
+    const adxSeries = Technicals.adx(candles, adxPeriod);
+    const adx = adxSeries.length ? adxSeries[adxSeries.length - 1] : null;
+
     return {
       side,
       state,
@@ -107,6 +115,7 @@ const RangeFilter = {
       hiBand: filt[last] + r,
       loBand: filt[last] - r,
       price: candles[last].close,
+      adx,
     };
   },
 };

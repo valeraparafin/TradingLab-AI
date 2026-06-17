@@ -47,6 +47,25 @@ export const rf_trend_align = (price, open, data, config) => {
   };
 };
 
+export const rf_regime_adx = (price, open, data, config) => {
+  // The proven core lever: admit a RangeFilter signal only when decision-bar ADX clears the
+  // per-strategy threshold (1H ≥30, 15m ≥40). Mirror of the backtest simulator's regimeGate.
+  // Missing ADX (warmup) → N/A pass, so it never blocks before it can be computed.
+  const adxMin = config?.logic?.indicators?.adxMin ?? 30;
+  const adx = data?.adx;
+  if (adx === undefined || adx === null) {
+    return { label: "ADX Regime Gate", required: `>= ${adxMin}`, actual: "N/A (warmup)", pass: true, score: 1.0 };
+  }
+  const pass = adx >= adxMin;
+  return {
+    label: "ADX Regime Gate",
+    required: `ADX >= ${adxMin}`,
+    actual: adx.toFixed(1),
+    pass,
+    score: pass ? 1.0 : 0.0,
+  };
+};
+
 export const ob_entry = (price, open, data, config) => {
   const inOB = data.obs?.some(
     (ob) => price >= ob.range.bottom && price <= ob.range.top,

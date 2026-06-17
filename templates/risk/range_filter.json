@@ -5,7 +5,7 @@
     "riskPerTradePercent": 1,
     "portfolioValue": 1000,
     "maxTradeSizeUSD": 100,
-    "stopLossPercent": 8,
+    "stopLossPercent": 12,
     "takeProfitPercent": 60,
     "maxTradesPerDay": 20,
     "maxOpenPositions": 3,
