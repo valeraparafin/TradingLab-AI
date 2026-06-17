@@ -528,6 +528,49 @@ not a bug**. A structural distance gate would suit a *mean-reversion* entry, not
 (structure ≠ momentum). The filter's **direction must agree with the edge's mechanics** — gating *against*
 the break direction fights the very move the strategy monetizes.
 
+### Meta-labeling (Phase 3 — REJECTED; signals are not separable OOS, and the SMC question is answered)
+
+Instead of hand-coding more gates (which kept inverting the premise), let a model learn which signals to
+take. Primary model = RangeFilter signal mode + ADX gate (decides the side); a logistic **meta-model**
+predicts P(win) per signal from decision-time features and we take only signals above a probability
+threshold. Features (direction-relative, no look-ahead): momentum (`adx`, `rsiDir`, `emaSlopeDir`,
+`recentRetDir`), volatility (`atrPct`, `realizedVol`), participation (`volRatio`), and **SMC structure**
+(`roomToTarget`, `zoneSigned`, `structTrendDir`) — the last group is the learnable version of the user's
+"do the right SMC params help?" question. TDD'd logreg (`src/backtest/logreg.js`, `tests/test_logreg.js`),
+features `src/backtest/metaFeatures.js`, harness `backtest/phase3-metalabel.mjs` (pooled per-signal events,
+temporal split + embargo, threshold sweep train vs test, prints coefficients).
+
+15m, 8194 events (train 4908 / test 3279 — well-powered):
+
+| τ | TRAIN PF / win% | TEST PF / win% / avgPnl |
+|---|-----------------|-------------------------|
+| 0.00 (ADX-only base) | 1.17 / 36% | **1.09 / 34% / +0.043** |
+| 0.45 | 2.68 / 44% | **0.74** / 31% / −0.358 |
+| 0.50 | 5.48 / 50% | 0.85 / 25% / −0.252 |
+| 0.55 | 11.0 / 67% | 0.69 / 12% / −0.617 |
+| 0.60 | 22.1 / 80% | 0.98 / 17% / −0.047 |
+
+**Every threshold τ≥0.45 collapses TEST PF below the baseline (0.69–0.98 vs 1.09) into the red, while TRAIN
+PF soars (to 99).** Textbook overfit: the model learns train noise that does not transfer. The decisive
+tell is **sign instability across timeframes** — the largest coefficients flip sign between 1H and 15m:
+
+| feature | 1H coef | 15m coef |
+|---------|---------|----------|
+| emaSlopeDir | −0.38 | +0.002 |
+| zoneSigned (structure) | −0.094 | +0.093 |
+| structTrendDir (structure) | +0.029 | +0.008 ≈ 0 |
+
+**Answer to "could the right SMC parameter combo improve across TF/trend/instrument?": no — the data says
+the structural information does not separate winners from losers out-of-sample on any TF.** Given a free
+hand to weight `zoneSigned`/`roomToTarget`/`structTrendDir` (at pivotLength 50), the meta-model assigns them
+near-zero, sign-unstable weights. Tuning `length`/`eq_threshold`/OB-filter cannot rescue information that
+carries no OOS predictive power for this mechanic.
+
+**Deepest campaign conclusion: the RangeFilter+ADX edge is irreducible.** Which flip becomes the big trend
+winner is *not* predictable ex-ante from observable decision-time features — the profit lives in the
+uncapped trend winner, not in entry selection. This unifies every rejection (HTF, RSI #10, structure Phase
+2, meta Phase 3): each filter cuts against the break/reversal that is the source of the money.
+
 ## Campaign summary — what moves the RangeFilter signal edge, and what doesn't
 
 | lever | verdict | effect |
@@ -536,6 +579,7 @@ the break direction fights the very move the strategy monetizes.
 | Source / period (#8) | reject | 3D grid: optima flip sign across TF (hlcc4↔close, 14↔27); keep close / 20; not robust levers |
 | RSI momentum confluence (#10) | reject | inert — collinear with the momentum filter; prunes <6%, PF flat. Confluence needs ORTHOGONAL signal (structure/volatility), not momentum |
 | Structural SMC pivot gate (Phase 2) | reject | inert→harmful; prunes 16–25% of entries but test PF falls (1H 1.18→1.05, 15m 1.04→0.97). Premise inverted — SELL near support = breakdown/continuation, not bounce; gating against the break removes the winners |
+| Meta-labeling logreg (Phase 3) | reject | overfits train (PF→99), every τ≥0.45 collapses TEST below baseline (0.74 vs 1.09); coefficients sign-flip across TF; SMC structure features ≈0/unstable. Edge is irreducible — winners not predictable ex-ante |
 | ADX regime gate (level) | **KEEP** | the core lever; PF 0.93→1.19 OOS (1H ADX≥30) |
 | Universe = volatile names (#3) | **KEEP** | structural, OOS-robust; portfolio PF ~1.04→1.22 (vol selector, liquidity floor) |
 | Protective SL width (→12%) (#4) | **KEEP** | free; wider is better, stop is a drag |
