@@ -10,6 +10,7 @@ import { resolveSignalExit, signalStateSide } from '../manual/resolveSignalExit.
 import { aggregateHTF } from '../core/aggregateHTF.js';
 import { classifyHTFTrend } from '../core/classifyHTFTrend.js';
 import { bucketOf } from './htfGate.js';
+import SMC from '../indicators/smc.js';
 
 /**
  * Pure walk-forward backtest. Spot (leverage = 1) is byte-identical to Phase 3.
@@ -276,6 +277,24 @@ export function simulate(p, decide = evaluateBar) {
           if (rsi == null) regimeOk = false;
           else if (stateSide === 'BUY') regimeOk = rsi >= p.rsiGate.longMin;
           else regimeOk = rsi <= 100 - p.rsiGate.longMin;
+        }
+        // Structural (SMC pivot) gate (opt-in via p.structureGate, stackable): deny an entry whose
+        // direction runs INTO a nearby structural level — a SELL within minDistPct of the nearest
+        // pivot-low below price (likely to bounce off support), a BUY within minDistPct of the
+        // nearest pivot-high above price (likely to stall at resistance). Pivots from SMC.findPivots
+        // on the same decision window (no look-ahead). If no relevant level exists, admit. This is
+        // an ORTHOGONAL axis (price structure, not momentum). Absent => byte-identical.
+        if (stateSide !== 'HOLD' && regimeOk && p.structureGate && p.structureGate.minDistPct > 0) {
+          const sw = candles.slice(Math.max(0, i - lookback + 1), i + 1);
+          const price = bar.close;
+          const piv = SMC.findPivots(sw, p.structureGate.pivotLength || 50);
+          if (stateSide === 'SELL') {
+            const lows = piv.low.map((pp) => pp.price).filter((pr) => pr < price);
+            if (lows.length) regimeOk = (price - Math.max(...lows)) / price >= p.structureGate.minDistPct;
+          } else {
+            const highs = piv.high.map((pp) => pp.price).filter((pr) => pr > price);
+            if (highs.length) regimeOk = (Math.min(...highs) - price) / price >= p.structureGate.minDistPct;
+          }
         }
         if (stateSide !== 'HOLD' && regimeOk) {
           const price = bar.close;

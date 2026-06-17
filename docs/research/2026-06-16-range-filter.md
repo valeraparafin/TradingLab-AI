@@ -501,6 +501,33 @@ and eats the edge. Two consequences: (1) the comfortable operating point stays *
 doesn't dominate), not the 15m alt basket; (2) this raises the bar for the structural gate (Phase 2) — its
 value is partly in **pruning entries** (lower turnover) on top of better entry quality.
 
+### Structural SMC pivot gate (Phase 2 — REJECTED, inert→harmful; the premise is inverted)
+
+Chart observation: SELL signals fire right into support, BUY into resistance. Hypothesis: deny an entry
+within `minDistPct` of the level it heads into (nearest SMC pivot-low below for a SELL, pivot-high above
+for a BUY), so we skip the ones about to bounce. Built on `SMC.findPivots` (the only reusable structural
+primitive in `src/indicators/smc.js` — `detectStructure`/`detectFVG` are too thin). Gate `p.structureGate
+{ minDistPct, pivotLength }`, opt-in/byte-identical/stackable, computed on the decision window (no
+look-ahead). Tests: `tests/test_simulator_structure_gate.js`. Harness: `backtest/sweep-structure-gate.js`.
+
+| set | minDist 0 (ADX-only base) | rising minDist |
+|-----|---------------------------|----------------|
+| 1H ADX≥30, pivot 20 | test PF **1.18** / +1.64% | monotone down → 1.05 @ 3% |
+| 1H ADX≥30, pivot 50 | test PF **1.18** | 1.14 @ 2% |
+| 15m ADX≥40, pivot 20 | test PF **1.04** | 0.99 @ 3%, **0.97 @ 5%** |
+
+The gate prunes 16–25% of entries but test PF only **falls** — it removes mostly *winning* trades, across
+both TFs, both pivot lengths, distances to 5%. **Why the hypothesis is wrong: the premise is inverted for a
+momentum strategy.** RangeFilter signal mode is stop-and-reverse on a *break*. A SELL flip near a prior
+pivot-low is usually a **breakdown THROUGH support (continuation)**, not a bounce — so skipping "into-level"
+entries throws away the continuation winners. Same failure mode as the HTF direction gate (blocked the
+reversal winners) and every winner-capping exit. The chart pattern is real but it's a **feature of the break,
+not a bug**. A structural distance gate would suit a *mean-reversion* entry, not this momentum one.
+
+**Refinement to the orthogonality principle:** it is not enough for the added axis to be orthogonal
+(structure ≠ momentum). The filter's **direction must agree with the edge's mechanics** — gating *against*
+the break direction fights the very move the strategy monetizes.
+
 ## Campaign summary — what moves the RangeFilter signal edge, and what doesn't
 
 | lever | verdict | effect |
@@ -508,6 +535,7 @@ value is partly in **pruning entries** (lower turnover) on top of better entry q
 | Multiplier (3.5→**6**) | **KEEP** | 3.5 is a dead zone; 3D grid main effect peaks at 6 (1H) / 7 (15m) — use 6, band 5–7 |
 | Source / period (#8) | reject | 3D grid: optima flip sign across TF (hlcc4↔close, 14↔27); keep close / 20; not robust levers |
 | RSI momentum confluence (#10) | reject | inert — collinear with the momentum filter; prunes <6%, PF flat. Confluence needs ORTHOGONAL signal (structure/volatility), not momentum |
+| Structural SMC pivot gate (Phase 2) | reject | inert→harmful; prunes 16–25% of entries but test PF falls (1H 1.18→1.05, 15m 1.04→0.97). Premise inverted — SELL near support = breakdown/continuation, not bounce; gating against the break removes the winners |
 | ADX regime gate (level) | **KEEP** | the core lever; PF 0.93→1.19 OOS (1H ADX≥30) |
 | Universe = volatile names (#3) | **KEEP** | structural, OOS-robust; portfolio PF ~1.04→1.22 (vol selector, liquidity floor) |
 | Protective SL width (→12%) (#4) | **KEEP** | free; wider is better, stop is a drag |
