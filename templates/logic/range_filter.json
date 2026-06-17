@@ -5,7 +5,7 @@
   "indicators": {
     "source": "close",
     "period": 20,
-    "multiplier": 3.5
+    "multiplier": 6
   },
   "safety_checks": [
     { "id": "rf_trend_align", "description": "Filter direction must match the trade side" }
