@@ -284,6 +284,50 @@ barely move results. Confirming SL-level sweep on 1H (ADX≥30):
 — lifts 1H PF 1.248→1.264 at essentially the same trade count. The stop should be a far catastrophe
 floor; the flip does the work.
 
+### Hybrid exit: partial TP + ride the rest (hypothesis #1 — REJECTED)
+
+Idea: bank a fraction (0.5) at a +atrMult×ATR target, ride the remainder to the flip — capture some
+mean-reversion give-back without capping the whole winner. Tested on the tuned config (SL 12%),
+train/test (PF / net% / Sharpe / DD%):
+
+| config | 1H test | 15m test (decisive, 36 sym) |
+|--------|---------|------------------------------|
+| baseline | 1.19 / 2.1 / 0.44 / 5.1 | 1.04 / **3.7** / **0.33** / 6.7 |
+| partial 0.5/2ATR | 1.24 / 2.0 / 0.66 / 3.1 | 0.99 / 1.3 / 0.01 / 5.0 |
+| partial 0.5/3ATR | 1.19 / 2.1 / 0.66 / 3.3 | 1.03 / 1.5 / 0.10 / 5.4 |
+
+**Rejected.** On 1H (n=6) partial looked like a risk-adjusted win (Sharpe 0.44→0.66, DD halved) — but that
+did **not** replicate on the 36-symbol 15m test, where it is strictly worse: net more than halves
+(3.7→1.5), Sharpe *drops* (0.33→0.10), PF flat-to-worse. The only consistent effect is lower raw DD,
+which is mechanical (banking half early = smaller exposure — identical to just trading smaller size).
+The 1H Sharpe gain was small-sample noise. Partial TP caps the fat-tail winners that *are* the edge, so
+it cuts return without a real risk-adjusted payoff. Implementation removed. **This closes the loop on a
+consistent theme: every winner-capping mechanism tested — trailing stop, channel exit, breakeven, and now
+partial TP — hurts. The RangeFilter signal edge lives entirely in the uncapped winner; the only exit that
+respects it is the signal flip itself.**
+
+---
+
+## Campaign summary — what moves the RangeFilter signal edge, and what doesn't
+
+| lever | verdict | effect |
+|-------|---------|--------|
+| Multiplier (3.5→5) | **KEEP** | 3.5 is a dead zone; 5 is the sweet spot |
+| ADX regime gate (level) | **KEEP** | the core lever; PF 0.93→1.19 OOS (1H ADX≥30) |
+| Universe = volatile names (#3) | **KEEP** | structural, OOS-robust; portfolio PF ~1.04→1.22 (vol selector, liquidity floor) |
+| Protective SL width (→12%) (#4) | **KEEP** | free; wider is better, stop is a drag |
+| HTF direction gate | reject | blocks the reversal winners; PF<1 OOS |
+| Rising-ADX gate (#2) | reject | inert — flips always coincide with rising windowed ADX |
+| Reverse-confirmation delay (#5) | reject | inert — multiplier+ADX already kill single-bar whipsaw |
+| ATR-adaptive SL (#4) | reject | wrong direction (tighter = worse); SL is only ~4% of exits |
+| Partial / hybrid TP (#1) | reject | caps the fat-tail winner; no OOS risk-adjusted gain |
+
+**Operating config:** RangeFilter signal mode, **multiplier 5, ADX≥30 gate (1H) / ≥40 (15m), protective
+SL ~12% (catastrophe floor only), universe filtered to higher-volatility names with a liquidity floor.**
+Edge is real, generalizing, but modest (OOS PF ~1.04–1.25). The only exit is the signal flip — do not
+cap the winner. Remaining discipline step before any capital: a higher-slippage cost model for the
+volatile-name universe, then forward paper-trading.
+
 ## What the backtest engine actually honors re: `exit_mode`
 
 > **Superseded by the 2026-06-16 update.** The three bullets below described the state *before*
