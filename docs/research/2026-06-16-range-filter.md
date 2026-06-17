@@ -480,6 +480,27 @@ making the deferred higher-cost stress test essential before trusting the +10%. 
 gate, then meta-labeling) should be evaluated on this decorrelated basket, not the full 36, and weighted by
 the ~3.8 effective N.
 
+### Slippage stress on the decorrelated basket (Phase 1b — the +10.5% is FRAGILE)
+
+`backtest/sweep-slippage.js` re-runs the operating config (15m, mult 6, ADX≥40) on the 14-symbol
+decorrelated basket while sweeping `slippageBps`. The Phase 1 numbers assumed 5 bps — optimistic for
+low-cap alts where 20–50 bps/side is realistic.
+
+| slippageBps | TRAIN PF / net / %pos | TEST PF / net / %pos |
+|-------------|-----------------------|----------------------|
+| 5 (Phase 1 base) | 1.04 / +3.0% / 57% | **1.33 / +10.5% / 86%** |
+| 10 | 1.00 / +1.6% / 57% | 1.28 / +9.4% / 86% |
+| 20 (realistic) | **0.93 / −1.3% / 36%** | 1.19 / +7.3% / 79% |
+| 30 | 0.86 / −4.2% / 29% | 1.10 / +5.3% / 71% |
+| 50 | 0.72 / −10.0% / 21% | 0.95 / +1.1% / 50% |
+
+**Verdict: the decorrelated-basket edge does NOT survive realistic costs.** The TRAIN window already
+turns negative at 10–20 bps (PF 1.04→0.93); the TEST window holds to ~30 bps only on its recent-regime
+tailwind. Root cause = **turnover**: ~2000 train / 1433 test trades on 15m × thin-book slippage compounds
+and eats the edge. Two consequences: (1) the comfortable operating point stays **1H** (low turnover → cost
+doesn't dominate), not the 15m alt basket; (2) this raises the bar for the structural gate (Phase 2) — its
+value is partly in **pruning entries** (lower turnover) on top of better entry quality.
+
 ## Campaign summary — what moves the RangeFilter signal edge, and what doesn't
 
 | lever | verdict | effect |
