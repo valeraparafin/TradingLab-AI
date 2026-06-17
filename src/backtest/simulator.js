@@ -256,6 +256,16 @@ export function simulate(p, decide = evaluateBar) {
             { emaPeriod: p.htfGate.emaPeriod, band: p.htfGate.band }).emaBand;
           if (bucketOf(stateSide, verdict) === 'against') regimeOk = false;
         }
+        // Volume-confirmation gate (opt-in via p.volGate, stackable with the ADX/HTF gates):
+        // admit an entry only when the decision-bar volume clears mult * SMA(volume, period).
+        // A state flip on thin volume is low-conviction; an expansion confirms participation.
+        // Trailing SMA on the same decision bar i (no look-ahead). Absent => byte-identical.
+        if (stateSide !== 'HOLD' && regimeOk && p.volGate && p.volGate.mult > 0) {
+          const vp = p.volGate.period || 20;
+          const vw = candles.slice(Math.max(0, i - vp + 1), i + 1);
+          const sma = vw.reduce((a, c) => a + (c.volume || 0), 0) / vw.length;
+          regimeOk = sma > 0 && bar.volume >= p.volGate.mult * sma;
+        }
         if (stateSide !== 'HOLD' && regimeOk) {
           const price = bar.close;
           const invalidation = stateSide === 'BUY' ? (sigRaw.loBand ?? null) : (sigRaw.hiBand ?? null);

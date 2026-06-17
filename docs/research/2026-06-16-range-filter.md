@@ -308,6 +308,52 @@ respects it is the signal flip itself.**
 
 ---
 
+### Higher timeframe — 4H (hypothesis #6 — REJECTED, in-sample mirage)
+
+The strategy thesis ("edge grows with timeframe; 1H beat 15m") predicts 4H should be best. In-sample on
+the 4H pool (6 symbols, 2 yr, `backtest/sweep-adx-gate.js --tf 4H`) it *looked* spectacular: **ungated
+PF 1.29 / net +14.2% / DD 10.6% / 83% symbols positive**, with the ADX gate near-redundant (net actually
+*falls* as ADX rises). But the temporal OOS split (`oos-adx-gate.js --tf 4H`) demolishes it:
+
+| ADX | TRAIN PF / net / %pos | TEST PF / net / %pos | test trades |
+|-----|-----------------------|----------------------|-------------|
+| 0 (ungated) | 2.23 / +16.7% / 100% | **0.63 / −2.3% / 17%** | 136 |
+| 30 | 1.74 / +12.4% / 67% | 0.70 / −0.4% / 50% | 93 |
+| 40 | 1.67 / +11.1% / 100% | **1.08 / +1.66% / 67%** | 49 |
+
+The in-sample shine is entirely the train window (the 2024 trend regime). Ungated 4H **loses money OOS**
+(PF 0.63); only the strictest ADX≥40 gate clings to break-even, and on **49 trades** that is statistically
+nothing. 4H is also intrinsically lower-power than 1H (346 vs 1374 trades). **Verdict: 4H adds no robust
+edge over 1H; the ungated strength is the same regime mirage the ADX gate exists to filter.** 1H/ADX≥30
+(OOS PF 1.19 on a large pool) remains the operating point. *(1D was requested but is not in `market_data.db`;
+2 yr of daily bars would be ~730/symbol — too thin to test, would need a Binance backfill.)*
+
+### Volume-confirmation gate (hypothesis #7 — CONDITIONAL KEEP, regime-dependent)
+
+New entry lever from the literature (volume expansion confirms a flip): admit an entry only when
+decision-bar volume ≥ `mult × SMA(volume, period)`. Implemented as `simulate({ volGate:{mult,period} })`,
+opt-in and byte-identical when unset, stackable with the ADX gate. Tests: `tests/test_simulator_volume_gate.js`.
+Sweep harness: `backtest/sweep-volume-gate.js` (holds ADX fixed, sweeps volMult, reports train/test).
+
+Stacked on the ADX baseline, the two timeframes disagree in **sign**:
+- **1H (6 symbols):** vol-gate lifts *train* PF (1.26→1.58) but *test* PF is flat-to-worse (1.19 → 1.17/1.04).
+  Looks like in-sample selectivity, no OOS payoff.
+- **15m (36 symbols):** the reverse — vol-gate *hurts train* (1.04→0.92) but *lifts test* PF, and this holds
+  across every split point:
+
+| split | base test PF / %pos | vol×1.5 test PF / %pos |
+|-------|---------------------|------------------------|
+| 0.4 | 1.10 / 67% | **1.21 / 69%** |
+| 0.5 | 1.09 / 64% | **1.20 / 72%** |
+| 0.6 | 1.04 / 58% | **1.23 / 67%** |
+
+The benefit always lands on the **later** window regardless of where the cut falls — i.e. it is a property of
+the recent (~2025–2026) regime, not a timeless edge. Not overfit (consistent across cut points, n=2840–4161
+trades), but not universal either (absent/reversed on 1H, inert on the early regime). **Verdict: the first
+genuinely promising new lever since ADX, but regime-conditional.** The gate code/tests/harness are KEPT (zero
+risk — opt-in). Carry volMult≈1.5 as an *optional 15m filter* into forward paper-trading and re-evaluate on
+live data; do **not** bake it in as a hard rule or apply it to 1H.
+
 ## Campaign summary — what moves the RangeFilter signal edge, and what doesn't
 
 | lever | verdict | effect |
@@ -321,6 +367,8 @@ respects it is the signal flip itself.**
 | Reverse-confirmation delay (#5) | reject | inert — multiplier+ADX already kill single-bar whipsaw |
 | ATR-adaptive SL (#4) | reject | wrong direction (tighter = worse); SL is only ~4% of exits |
 | Partial / hybrid TP (#1) | reject | caps the fat-tail winner; no OOS risk-adjusted gain |
+| Volume-confirmation gate (#7) | **CONDITIONAL** | helps 15m recent-era test PF 1.04→~1.20 (robust to cut point); absent/reversed on 1H — optional 15m filter, forward-validate |
+| Higher TF — 4H (#6) | reject | in-sample mirage; ungated PF 0.63 OOS, only ADX≥40 survives on ~49 trades (1D not in DB) |
 
 **Operating config:** RangeFilter signal mode, **multiplier 5, ADX≥30 gate (1H) / ≥40 (15m), protective
 SL ~12% (catastrophe floor only), universe filtered to higher-volatility names with a liquidity floor.**
