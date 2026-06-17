@@ -258,6 +258,32 @@ bump (15m 1.04→1.06) does not carry to test. Implementation removed. **Takeawa
 refinements (#2, #5) are redundant once multiplier and the ADX gate are in place — the lever is regime
 (ADX) and universe (volatility), not flip-timing.**
 
+### ATR-adaptive stop / vol-targeted sizing (hypothesis #4 — REJECTED, plus a free SL widening)
+
+First, exit-reason breakdown (signal mode, tuned config): **~95–96% of exits are SIGNAL_FLIP, only
+~4–5% are SL** (1H 1004/40, 15m 8625/488). The protective stop is rarely the exit, so its geometry can
+barely move results. Confirming SL-level sweep on 1H (ADX≥30):
+
+| SL | median PF | trades | SL fires |
+|----|-----------|--------|----------|
+| 0.03 | 1.091 | 1282 | 545 |
+| 0.05 | 1.140 | 1104 | 196 |
+| 0.08 | 1.248 | 1044 | 40 |
+| **0.12** | **1.264** | 1039 | 9 |
+| 0.20 | 1.264 | 1037 | 1 |
+
+**Rejected:**
+- **ATR-adaptive SL is the wrong direction.** Wider is monotonically better — the stop is a *drag*: each
+  fire cuts a position the signal flip would have handled better. A typical 2–3×ATR stop sits *tighter*
+  than the 12–20% plateau and would fire more often, hurting PF. The optimal protective stop is "as wide
+  as a catastrophe floor allows," not adaptive-and-tighter.
+- **Vol-targeted sizing does not change per-symbol PF** (fixed-notional, independent per-symbol runs scale
+  linearly; sizing is a portfolio-allocation lever, already covered by the #3 volatility finding).
+
+**Free win from the same sweep:** widen the protective SL 8%→**12%** (it's a plateau, not a tuned peak)
+— lifts 1H PF 1.248→1.264 at essentially the same trade count. The stop should be a far catastrophe
+floor; the flip does the work.
+
 ## What the backtest engine actually honors re: `exit_mode`
 
 > **Superseded by the 2026-06-16 update.** The three bullets below described the state *before*
