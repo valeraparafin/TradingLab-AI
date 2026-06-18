@@ -7,6 +7,7 @@ import TrendPullback from './trendPullback.js';
 import DonchianTrend from './donchianTrend.js';
 import ScalpBreakout from './scalpBreakout.js';
 import RangeFilter from './rangeFilter.js';
+import SmcZone from './smcZone.js';
 
 export class IndicatorManager {
   constructor(config) {
@@ -50,6 +51,9 @@ export class IndicatorManager {
         results = ScalpBreakout.execute(candles, this.config);
         break;
       case 'RANGEFILTER': results = RangeFilter.execute(candles, this.config); break;
+      case 'SMC_ZONE':
+        results = SmcZone.execute(candles, this.config);
+        break;
       default:
         throw new Error(`Unsupported indicator type: ${type}`);
     }

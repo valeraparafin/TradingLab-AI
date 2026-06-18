@@ -17,6 +17,19 @@ function fromSMC(raw) {
   return { side, conviction: clamp(conviction), reason: `SMC structure ${side}`, invalidation };
 }
 
+/** SMC_ZONE: retracement entry. Side comes straight from the zone detector; the zone far edge
+ *  is the structural invalidation (used by guardrails' structural stopMode). */
+function fromSMCZone(raw) {
+  const side = raw?.side ?? SIDE.HOLD;
+  if (side === SIDE.HOLD) return hold('SMC_ZONE: no setup');
+  return {
+    side,
+    conviction: 0.7,
+    reason: `SMC zone ${side}`,
+    invalidation: raw?.invalidation ?? null,
+  };
+}
+
 /** WaveTrend: wt cross drives side; MFI / StochRSI / STC confluence add conviction. */
 function fromWaveTrend(raw) {
   const side = raw?.wtCrossUp ? SIDE.BUY : raw?.wtCrossDown ? SIDE.SELL : SIDE.HOLD;
@@ -103,6 +116,7 @@ function fromRangeFilter(raw) {
 export function deriveSignal(logicType, raw, ctx) {
   switch (String(logicType).toUpperCase()) {
     case 'SMC': return fromSMC(raw);
+    case 'SMC_ZONE': return fromSMCZone(raw);
     case 'VMC_CIPHERB': return fromWaveTrend(raw);
     case 'BREAKOUT': return fromBreakout(raw, ctx);
     case 'REVERSAL': return fromReversal(raw);
