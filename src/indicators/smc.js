@@ -1,3 +1,5 @@
+import { findPivots } from './pivots.js';
+
 const SMC = {
   execute(candles, config = {}) {
     // Params live under `config.indicators`. Templates store snake_case keys
@@ -10,7 +12,7 @@ const SMC = {
     const pivotLength = [ind.pivotLength, ind.pivot_length].find(
       (v) => v !== undefined && v !== null
     ) ?? 50;
-    const pivots = this.findPivots(candles, pivotLength);
+    const pivots = findPivots(candles, pivotLength);
     const structure = this.detectStructure(candles, pivots);
     const obs = this.detectOrderBlocks(candles, structure.structure);
     const fvgs = this.detectFVG(candles);
@@ -36,7 +38,7 @@ const SMC = {
       if (entryIndex !== -1) {
         // Analyze candles from entryIndex to the end for a CHoCH
         const zoneCandles = candles.slice(entryIndex);
-        const zonePivots = this.findPivots(zoneCandles, Math.floor(pivotLength / 2)); // Use tighter pivots for confirmation
+        const zonePivots = findPivots(zoneCandles, Math.floor(pivotLength / 2)); // Use tighter pivots for confirmation
         const zoneStructure = this.detectStructure(zoneCandles, zonePivots);
 
         // Confirmation is a trend shift that matches our expected direction
@@ -52,22 +54,6 @@ const SMC = {
       fvgs,
       choch_confirmed: chochConfirmed,
     };
-  },
-
-  findPivots(candles, length) {
-    const pivots = { high: [], low: [] };
-    for (let i = length; i < candles.length - length; i++) {
-      let isHigh = true;
-      let isLow = true;
-      for (let j = i - length; j <= i + length; j++) {
-        if (i === j) continue;
-        if (candles[j].high > candles[i].high) isHigh = false;
-        if (candles[j].low < candles[i].low) isLow = false;
-      }
-      if (isHigh) pivots.high.push({ index: i, price: candles[i].high });
-      if (isLow) pivots.low.push({ index: i, price: candles[i].low });
-    }
-    return pivots;
   },
 
   detectStructure(candles, pivots) {
