@@ -45,6 +45,7 @@ graphify-out
 backtest/reports/
 backtest/*-out.txt
 backtest/*-universe.json
+backtest/_*
 
 # Throwaway scratch scripts
 scratch-*.mjs
