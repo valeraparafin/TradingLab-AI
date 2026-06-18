@@ -10,6 +10,7 @@
 // participation (volRatio), structure/SMC (roomToTarget, zoneSigned, structTrendDir).
 import { Technicals } from '../indicators/technical.js';
 import SMC from '../indicators/smc.js';
+import { findPivots } from '../indicators/pivots.js';
 
 export const FEATURE_NAMES = [
   'adx', 'rsiDir', 'emaSlopeDir', 'recentRetDir',
@@ -52,7 +53,7 @@ export function extractFeatures(window, side, { pivotLength = 50 } = {}) {
   const volRatio = volSma > 0 ? vols[n - 1] / volSma : 1;
 
   // structure / SMC (the orthogonal axis, now as learnable features not a hand-coded gate)
-  const piv = SMC.findPivots(window, pivotLength);
+  const piv = findPivots(window, pivotLength);
   // room to the level the trade heads INTO (BUY -> nearest pivot-high above; SELL -> pivot-low below)
   let roomToTarget;
   if (dir === 1) {

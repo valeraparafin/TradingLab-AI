@@ -8,7 +8,7 @@
 // stackable with the ADX gate, ignored in sl_tp mode.
 import assert from 'node:assert';
 import { simulate } from '../src/backtest/simulator.js';
-import SMC from '../src/indicators/smc.js';
+import { findPivots } from '../src/indicators/pivots.js';
 
 let passed = 0;
 const ok = (n) => { console.log(`  ok - ${n}`); passed++; };
@@ -46,7 +46,7 @@ function distToLevel(candles, entryIndex, side) {
   const i = entryIndex - 1;
   const w = candles.slice(Math.max(0, i - LOOKBACK + 1), i + 1);
   const price = w[w.length - 1].close;
-  const piv = SMC.findPivots(w, PIVOT_LEN);
+  const piv = findPivots(w, PIVOT_LEN);
   if (side === 'SELL') {
     const lows = piv.low.map((p) => p.price).filter((pr) => pr < price);
     if (!lows.length) return null;
