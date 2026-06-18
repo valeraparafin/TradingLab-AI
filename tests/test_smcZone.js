@@ -1,5 +1,6 @@
 import assert from 'assert';
 import { findLatestBreak, buildZone, mitigated } from '../src/indicators/smcZone.js';
+import SmcZone from '../src/indicators/smcZone.js';
 
 const tests = [];
 const add = (name, fn) => tests.push({ name, fn });
@@ -47,6 +48,37 @@ add('mitigated=true when a bar closes below the zone bottom (bullish)', () => {
     .concat(BULL.slice(11));
   const z = buildZone(dipped, { direction: 'bullish', barIndex: 9 }, 'ob');
   assert.strictEqual(mitigated(dipped, { direction: 'bullish', barIndex: 9 }, z), true);
+});
+
+const cfg = (o) => ({ indicators: { pivotLength: 2, zoneType: 'ob', biasSource: 'bos_choch', ...o } });
+
+// Mirror of BULL around 100 → bearish break + up-candle OB + retracement.
+const BEAR = fromCloses([100.0, 99.4, 99.0, 99.5, 99.8, 99.6, 99.4, 99.8, 99.2, 98.4, 99.0, 99.8]);
+
+add('execute → BUY when close retraces into the OB after a bullish break', () => {
+  const r = SmcZone.execute(BULL, cfg());
+  assert.strictEqual(r.side, 'BUY');
+  assert.ok(Math.abs(r.invalidation - 100.1) < 1e-9, `invalidation should be OB bottom 100.1, got ${r.invalidation}`);
+});
+
+add('execute → HOLD when price has not yet returned to the zone', () => {
+  const r = SmcZone.execute(BULL.slice(0, 11), cfg());
+  assert.strictEqual(r.side, 'HOLD');
+});
+
+add('execute → HOLD under biasSource=choch (the break is a BOS)', () => {
+  const r = SmcZone.execute(BULL, cfg({ biasSource: 'choch' }));
+  assert.strictEqual(r.side, 'HOLD');
+});
+
+add('execute → SELL on the mirrored bearish setup', () => {
+  const r = SmcZone.execute(BEAR, cfg());
+  assert.strictEqual(r.side, 'SELL');
+});
+
+add('execute → HOLD on a bearish setup when longOnly=true', () => {
+  const r = SmcZone.execute(BEAR, cfg({ longOnly: true }));
+  assert.strictEqual(r.side, 'HOLD');
 });
 
 let failed = 0;

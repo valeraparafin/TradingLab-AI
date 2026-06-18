@@ -74,3 +74,36 @@ export function mitigated(candles, event, zone) {
   }
   return false;
 }
+
+const SmcZone = {
+  execute(candles, config = {}) {
+    const ind = config.indicators || {};
+    const pivotLength = pick(ind.pivotLength, ind.pivot_length, 50);
+    const zoneType = pick(ind.zoneType, ind.zone_type, 'ob');
+    const biasSource = pick(ind.biasSource, ind.bias_source, 'bos_choch');
+    const longOnly = pick(ind.longOnly, ind.long_only, false) === true;
+
+    const n = candles.length;
+    const hold = { side: 'HOLD', zone: null, biasEvent: null, invalidation: null };
+    if (n < pivotLength * 2 + 3) return hold;
+
+    const event = findLatestBreak(candles, pivotLength, biasSource);
+    if (!event) return hold;
+
+    const zone = buildZone(candles, event, zoneType);
+    if (!zone) return { ...hold, biasEvent: event };
+
+    if (mitigated(candles, event, zone)) return { side: 'HOLD', zone, biasEvent: event, invalidation: null };
+
+    const close = candles[n - 1].close;
+    if (close < zone.bottom || close > zone.top) return { side: 'HOLD', zone, biasEvent: event, invalidation: null };
+
+    let side = event.direction === 'bullish' ? 'BUY' : 'SELL';
+    if (longOnly && side === 'SELL') return { side: 'HOLD', zone, biasEvent: event, invalidation: null };
+
+    const invalidation = side === 'BUY' ? zone.bottom : zone.top;
+    return { side, zone, biasEvent: event, invalidation };
+  },
+};
+
+export default SmcZone;
