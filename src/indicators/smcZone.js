@@ -34,3 +34,43 @@ export function findLatestBreak(candles, pivotLength, biasSource) {
   for (let k = breaks.length - 1; k >= 0; k--) if (ok(breaks[k])) return breaks[k];
   return null;
 }
+
+/**
+ * Zone left by the impulse that caused the break. OB = the last opposite-color candle at/before
+ * the break bar (down candle for a bullish break, up candle for bearish). FVG = the most recent
+ * 3-candle gap in that leg. zoneType selects 'ob' | 'fvg' | 'either' (OB preferred, FVG fallback).
+ * Returns { top, bottom } or null. Scan is capped at 50 bars back.
+ */
+export function buildZone(candles, event, zoneType) {
+  const b = event.barIndex;
+  const bull = event.direction === 'bullish';
+  let ob = null;
+  for (let i = b; i >= 1 && b - i < 50; i--) {
+    const c = candles[i];
+    if (bull ? c.close < c.open : c.close > c.open) { ob = { top: c.high, bottom: c.low }; break; }
+  }
+  let fvg = null;
+  for (let i = b; i >= 2 && b - i < 50; i--) {
+    const a = candles[i - 2], c = candles[i];
+    if (bull && c.low > a.high) { fvg = { top: c.low, bottom: a.high }; break; }
+    if (!bull && c.high < a.low) { fvg = { top: a.low, bottom: c.high }; break; }
+  }
+  if (zoneType === 'ob') return ob;
+  if (zoneType === 'fvg') return fvg;
+  return ob || fvg;
+}
+
+/**
+ * The bias is invalidated if, between the break and the current bar (exclusive), any bar CLOSES
+ * beyond the far edge of the zone against the bias - i.e. price has already traded clean through
+ * the zone (mitigated). An opposite structural break is handled implicitly by findLatestBreak
+ * always returning the latest qualifying event.
+ */
+export function mitigated(candles, event, zone) {
+  const bull = event.direction === 'bullish';
+  for (let i = event.barIndex + 1; i < candles.length - 1; i++) {
+    const close = candles[i].close;
+    if (bull ? close < zone.bottom : close > zone.top) return true;
+  }
+  return false;
+}

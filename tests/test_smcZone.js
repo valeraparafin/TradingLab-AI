@@ -1,5 +1,5 @@
 import assert from 'assert';
-import { findLatestBreak } from '../src/indicators/smcZone.js';
+import { findLatestBreak, buildZone, mitigated } from '../src/indicators/smcZone.js';
 
 const tests = [];
 const add = (name, fn) => tests.push({ name, fn });
@@ -27,6 +27,26 @@ add('finds the latest bullish break (BOS) with pivotLength 2', () => {
 add('biasSource=choch rejects a pure BOS', () => {
   const e = findLatestBreak(BULL, 2, 'choch');
   assert.strictEqual(e, null);
+});
+
+add('buildZone(ob) returns the last opposite-color candle before a bullish impulse', () => {
+  const z = buildZone(BULL, { direction: 'bullish', barIndex: 9 }, 'ob');
+  assert.ok(z, 'expected an OB zone');
+  assert.ok(Math.abs(z.top - 100.3) < 1e-9 && Math.abs(z.bottom - 100.1) < 1e-9,
+    `OB zone should be idx7 [100.1,100.3], got [${z.bottom},${z.top}]`);
+});
+
+add('mitigated=false when price never closes through the far edge before entry', () => {
+  const z = buildZone(BULL, { direction: 'bullish', barIndex: 9 }, 'ob');
+  assert.strictEqual(mitigated(BULL, { direction: 'bullish', barIndex: 9 }, z), false);
+});
+
+add('mitigated=true when a bar closes below the zone bottom (bullish)', () => {
+  const dipped = BULL.slice(0, 10)
+    .concat([{ open: 101.0, high: 99.1, low: 98.9, close: 99.0, volume: 1000 }])
+    .concat(BULL.slice(11));
+  const z = buildZone(dipped, { direction: 'bullish', barIndex: 9 }, 'ob');
+  assert.strictEqual(mitigated(dipped, { direction: 'bullish', barIndex: 9 }, z), true);
 });
 
 let failed = 0;
