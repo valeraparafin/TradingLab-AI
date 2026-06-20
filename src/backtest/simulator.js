@@ -1,5 +1,5 @@
 import { evaluateBar } from '../core/pipeline.js';
-import { slip, checkExit } from './execution.js';
+import { slip, checkExit, quantizeToLot } from './execution.js';
 import { breakevenStop, channelTrailStop } from './exitPolicy.js';
 import { liqPrice } from '../core/liquidation.js';
 import { fundingBetween } from './funding.js';
@@ -41,6 +41,7 @@ export function simulate(p, decide = evaluateBar) {
   const makerFee = (costs && costs.makerFee) || 0;
   const slippageBps = (costs && costs.slippageBps) || 0;
   const liqFeeRate = (costs && costs.liqFeeRate != null) ? costs.liqFeeRate : takerFee;
+  const lotSize = p.lotSize || 0; // 0 = legacy fractional sizing (byte-identical); >=1 quantizes to lots
 
   const leverage = guardrails.leverage || 1;
   const mmr = guardrails.mmr;
@@ -93,17 +94,26 @@ export function simulate(p, decide = evaluateBar) {
     // 1) Fill a pending entry at THIS bar's open (next-bar-open execution).
     if (pending && !position) {
       const entryFill = slip(bar.open, pending.side, slippageBps);
-      slippageCost += pending.sizeUSD * Math.abs(entryFill - bar.open) / bar.open;
-      position = {
-        side: pending.side, entryIndex: i, entryTime: bar.time,
-        entryPrice: entryFill, slPrice: pending.slPrice, tpPrice: pending.tpPrice,
-        sizeUSD: pending.sizeUSD, entryFee: pending.sizeUSD * takerFee, // market entry → taker
-        marginUSD: isFutures ? pending.sizeUSD / leverage : pending.sizeUSD,
-        liqPrice: isFutures ? liqPrice(entryFill, pending.side, leverage, mmr) : null,
-        fundingAccrued: 0, lastFundingTime: bar.time,
-        initialSlPrice: pending.slPrice, breakevenMoved: false,
-      };
-      pending = null;
+      // MOEX equities fill in whole lots; quantize the target notional at the fill price.
+      // A target too small to fund even one lot cancels the entry (fall through to this bar's
+      // exit/decision logic — don't skip the bar).
+      const q = quantizeToLot(pending.sizeUSD, entryFill, lotSize);
+      if (q.skip) {
+        pending = null;
+      } else {
+        pending.sizeUSD = q.sizeUSD;
+        slippageCost += pending.sizeUSD * Math.abs(entryFill - bar.open) / bar.open;
+        position = {
+          side: pending.side, entryIndex: i, entryTime: bar.time,
+          entryPrice: entryFill, slPrice: pending.slPrice, tpPrice: pending.tpPrice,
+          sizeUSD: pending.sizeUSD, entryFee: pending.sizeUSD * takerFee, // market entry → taker
+          marginUSD: isFutures ? pending.sizeUSD / leverage : pending.sizeUSD,
+          liqPrice: isFutures ? liqPrice(entryFill, pending.side, leverage, mmr) : null,
+          fundingAccrued: 0, lastFundingTime: bar.time,
+          initialSlPrice: pending.slPrice, breakevenMoved: false,
+        };
+        pending = null;
+      }
     }
 
     // 2) Accrue funding over the holding period (futures only), before exit/MtM.
@@ -147,6 +157,47 @@ export function simulate(p, decide = evaluateBar) {
           pnl, fees, funding: position.fundingAccrued, reason: ex.reason,
         });
         position = null;
+      }
+    }
+
+    // 3a-scale) Partial profit-take (opt-in via p.exitPolicy.scaleOut={atR,frac,breakeven}).
+    // When favorable excursion first reaches atR×R, close `frac` of the position at that level and
+    // (if breakeven) pull the remainder's stop to entry — bank a winner, cap giveback, let the rest
+    // run. One-shot, after the full-exit check so SL/TP take precedence on the same bar. The partial
+    // is booked as its own SCALE_OUT trade; entry fee + accrued funding are split proportionally so
+    // total fees/funding are conserved across the partial and the eventual final close. Absent =>
+    // byte-identical to prior runs. Models the trader's missing exit discipline (long-compatible).
+    if (position && p.exitPolicy && p.exitPolicy.scaleOut && !position.scaledOut && position.entryIndex !== i) {
+      const so = p.exitPolicy.scaleOut;
+      const R = Math.abs(position.entryPrice - position.initialSlPrice);
+      const target = position.side === 'BUY' ? position.entryPrice + so.atR * R : position.entryPrice - so.atR * R;
+      const hit = R > 0 && (position.side === 'BUY' ? bar.high >= target : bar.low <= target);
+      if (hit) {
+        const frac = so.frac;
+        const closeSize = position.sizeUSD * frac;
+        const exitSide = position.side === 'BUY' ? 'SELL' : 'BUY';
+        const exitPrice = slip(target, exitSide, slippageBps);
+        slippageCost += closeSize * Math.abs(exitPrice - target) / target;
+        const exitFee = closeSize * takerFee;
+        const entryFeePortion = position.entryFee * frac;
+        const fundPortion = position.fundingAccrued * frac;
+        const ret = position.side === 'BUY'
+          ? (exitPrice - position.entryPrice) / position.entryPrice
+          : (position.entryPrice - exitPrice) / position.entryPrice;
+        const fees = entryFeePortion + exitFee;
+        const pnl = closeSize * ret - fees - fundPortion;
+        equity += pnl;
+        totalFunding += fundPortion;
+        trades.push({
+          side: position.side, entryTime: position.entryTime, entryPrice: position.entryPrice,
+          exitTime: bar.time, exitPrice, sizeUSD: closeSize,
+          pnl, fees, funding: fundPortion, reason: 'SCALE_OUT',
+        });
+        position.sizeUSD -= closeSize;
+        position.entryFee -= entryFeePortion;
+        position.fundingAccrued -= fundPortion;
+        position.scaledOut = true;
+        if (so.breakeven) position.slPrice = position.entryPrice;
       }
     }
 
@@ -225,7 +276,11 @@ export function simulate(p, decide = evaluateBar) {
     }
 
     // 4) If flat, decide for a next-bar entry (uses only data up to close[i]).
-    if (!position && !pending && i + 1 < n) {
+    // Market-regime gate (opt-in via p.marketRegime: (ts)=>bool): a CROSS-SECTIONAL filter the
+    // per-symbol gates above cannot express. When the basket index is risk-OFF (e.g. below its
+    // long MA — a 2022-style crisis), admit NO new entries on any name (step the whole book aside).
+    // Existing positions still exit normally. Absent => byte-identical to prior runs.
+    if (!position && !pending && i + 1 < n && (!p.marketRegime || p.marketRegime(bar.time))) {
       // freeEquity is only passed for futures so RiskPolicy can check margin availability.
       // Spot path omits it so behaviour is byte-identical to Phase 3 (defaults to portfolioValue).
       const portfolio = { openPositions: 0, portfolioHeatPct: 0, dailyPnlPct: 0, tradesToday: 0 };

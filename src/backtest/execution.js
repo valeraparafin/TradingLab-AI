@@ -12,6 +12,23 @@ export function slip(price, side, bps) {
 }
 
 /**
+ * Quantize a notional target to a realisable size given the instrument's lot.
+ * MOEX equities trade in lots: the executable quantity is floor(notional / lotValue) lots.
+ * With no lotSize (null/0/undefined) the notional passes through unchanged — byte-identical
+ * to the legacy fractional sizing, so non-MOEX backtests are unaffected.
+ * @param {number} sizeUSD target notional
+ * @param {number} price fill price (one share)
+ * @param {number|null|undefined} lotSize shares per lot (>=1 to quantize)
+ * @returns {{sizeUSD:number, skip:boolean}} adjusted notional; skip=true when not even one lot fits
+ */
+export function quantizeToLot(sizeUSD, price, lotSize) {
+  if (!lotSize || lotSize <= 0 || !(price > 0)) return { sizeUSD, skip: false };
+  const lots = Math.floor(sizeUSD / (price * lotSize));
+  if (lots <= 0) return { sizeUSD: 0, skip: true };
+  return { sizeUSD: lots * lotSize * price, skip: false };
+}
+
+/**
  * Detect an exit for an open position on a single bar.
  * Priority: gap-on-open (non-entry bars only) → intrabar SL/LIQ → intrabar TP.
  * SL is a MARKET fill (slippage applied); TP is a LIMIT fill (no slippage, fills at tpPrice).

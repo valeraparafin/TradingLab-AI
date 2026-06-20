@@ -16,6 +16,7 @@ const DonchianTrend = {
       return v ?? def;
     };
     const entryLookback = pick('entryLookback', 'entry_lookback', 20);
+    const longOnly = pick('longOnly', 'long_only', false); // true => suppress downside-breakout SELLs
 
     const HOLD = { side: 'HOLD', upper: null, lower: null, price: null, invalidation: null };
     if (!Array.isArray(candles) || candles.length < entryLookback + 1) return HOLD;
@@ -27,7 +28,7 @@ const DonchianTrend = {
     const price = candles[candles.length - 1].close;
     let side = 'HOLD';
     if (price > ch.upper) side = 'BUY';
-    else if (price < ch.lower) side = 'SELL';
+    else if (price < ch.lower) side = longOnly ? 'HOLD' : 'SELL';
 
     return { side, upper: ch.upper, lower: ch.lower, price, invalidation: null };
   },
