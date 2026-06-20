@@ -52,6 +52,17 @@ const TEST_END = 0.75;
 const COST_ARGS = { takerFee: 0.0005, makerFee: 0.0002, slippageBps: 10 };
 const BASE_G = { equity: 100000, riskPerTrade: 0.1, leverage: 1, maxOpen: 1 };
 
+// MOEX share lots (from T-Bank invest_list_shares). With --lots the sim rounds each entry down
+// to a whole-lot quantity at the fill price (realistic execution); without it, legacy fractional.
+const LOT_MAP = {
+  AFKS: 100, AFLT: 10, ALRS: 10, BSPB: 10, CBOM: 100, CHMF: 1, CNRU: 1, DOMRF: 1, ENPG: 1, FLOT: 10,
+  GAZP: 10, GMKN: 10, HEAD: 1, IRAO: 100, LENT: 1, LKOH: 1, MAGN: 10, MDMG: 1, MOEX: 10, MSNG: 1000,
+  MTSS: 10, NLMK: 10, NVTK: 1, OZON: 1, PHOR: 1, PIKK: 1, PLZL: 1, POSI: 1, RENI: 10, ROSN: 1,
+  RTKM: 10, RUAL: 10, SBER: 1, SNGS: 100, SVCB: 100, T: 1, TATN: 1, TRNFP: 1, UGLD: 1000, VKCO: 1,
+  VTBR: 1, X5: 1,
+};
+const USE_LOTS = process.argv.includes('--lots');
+
 const SL_GRID = [0.03, 0.04, 0.05, 0.06];
 const RR_GRID = [1.5, 2, 2.5, 3];
 
@@ -119,7 +130,7 @@ function buildGrid() {
   return grid;
 }
 
-function runSeg(candles, cfg) {
+function runSeg(candles, cfg, lot = 1) {
   const sim = simulate({
     candles,
     config: { logicType: cfg.logicType, logic: cfg.logic },
@@ -130,6 +141,7 @@ function runSeg(candles, cfg) {
     lookback: LOOKBACK,
     startEquity: cfg.guardrails.portfolioValue,
     funding: null,
+    lotSize: USE_LOTS ? (lot || 1) : 0,
   });
   const m = computeMetrics({
     trades: sim.trades,
@@ -144,12 +156,12 @@ function runSeg(candles, cfg) {
 }
 
 /** Score one combo across the whole basket on a given segment slice-fn. Returns aggregate stats. */
-function scoreCombo(cfg, perSymbolCandles) {
+function scoreCombo(cfg, perSymbolBars) {
   let net = 0, totN = 0, tradedSyms = 0, winPF = 0;
   const pfs = [];
-  for (const candles of perSymbolCandles) {
+  for (const { sym, candles } of perSymbolBars) {
     if (candles.length < LOOKBACK + 30) continue;
-    const r = runSeg(candles, cfg);
+    const r = runSeg(candles, cfg, LOT_MAP[sym] || 1);
     net += r.net; totN += r.n;
     if (r.n > 0) { tradedSyms++; if (Number.isFinite(r.pf)) pfs.push(r.pf); if (r.pf > 1) winPF++; }
   }
@@ -178,9 +190,9 @@ async function main() {
     used++;
     const iTrain = Math.floor(c.length * TRAIN_END);
     const iTest = Math.floor(c.length * TEST_END);
-    train.push(c.slice(0, iTrain));
-    test.push(c.slice(Math.max(0, iTrain - LOOKBACK), iTest));
-    hold.push(c.slice(Math.max(0, iTest - LOOKBACK)));
+    train.push({ sym, candles: c.slice(0, iTrain) });
+    test.push({ sym, candles: c.slice(Math.max(0, iTrain - LOOKBACK), iTest) });
+    hold.push({ sym, candles: c.slice(Math.max(0, iTest - LOOKBACK)) });
   }
 
   const grid = buildGrid();
