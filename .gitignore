@@ -27,9 +27,8 @@ Thumbs.db
 .env.*
 !.env.example
 
-# Claude Code
+# Claude Code (CLAUDE.md is tracked as project architecture documentation)
 .claude/
-CLAUDE.md
 
 # Database & Data
 *.db
