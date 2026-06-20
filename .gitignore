@@ -53,3 +53,7 @@ scratch-*.js
 
 # Order book recordings
 data/orderbook/
+
+# Regenerable MOEX candle cache (rebuilt by merge-candles.mjs; cold start auto-bootstraps ~400d).
+# The forward-test record lives in data/live-journal.md (tracked), not here.
+data/live-candles/

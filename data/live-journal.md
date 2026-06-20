@@ -1,0 +1,1 @@
+2026-06-19 13:39Z | regime OFF (idx 0.8259 vs sma 0.9696) | portfolio 200363.71₽ | actions: none (regime gate); 5 existing longs held — SBER(95sh/SL@297.77/TP@329.11), GAZP(280sh/SL@100.81/TP@111.43), LKOH(6sh/SL@4169.5/TP@4608.5), MOEX(170sh/SL@161.73/TP@178.75), GMKN(140sh/SL@124.24/TP@144.44); all TP1 pending, no breakeven adjustment
